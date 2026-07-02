@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pbidoc"
+version = "0.1.0"
+description = "Enterprise Power BI Documentation Generator — metadata-only parser and AI documentation pipeline."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "pbidoc" }]
+# Phase 0 core is intentionally ZERO-DEPENDENCY (stdlib only).
+# This keeps the parser portable, easy to audit, and minimises the number of
+# third-party libraries that ever touch customer metadata (zero-data-leakage).
+dependencies = []
+
+[project.optional-dependencies]
+# Added in later phases — kept out of the core so the parser stays dependency-free.
+# pbix: legacy .pbix semantic-model extraction. pbixray currently needs
+# Python <= 3.13 (its xpress9 decompressor has no 3.14 wheel yet).
+pbix = ["pbixray"]
+agents = ["anthropic", "google-genai"]  # Claude / Gemini providers (offline engine needs nothing)
+service = ["fastapi", "uvicorn", "python-multipart"]  # async web service + upload UI
+docs = ["jinja2"]
+dev = ["pytest", "httpx"]  # httpx backs FastAPI's TestClient
+
+[project.scripts]
+pbidoc = "pbidoc.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"pbidoc.service" = ["static/*.html"]

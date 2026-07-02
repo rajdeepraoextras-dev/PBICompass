@@ -1,0 +1,14 @@
+.venv/
+**/__pycache__/
+*.pyc
+.git/
+.gitignore
+.claude/
+tests/
+out/
+*.db
+*.model.json
+*.document.json
+*.document.md
+IMPLEMENTATION_PLAN.md
+DEPLOYMENT.md

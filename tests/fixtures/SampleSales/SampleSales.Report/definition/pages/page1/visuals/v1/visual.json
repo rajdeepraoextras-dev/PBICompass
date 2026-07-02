@@ -1,0 +1,17 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.0.0/schema.json",
+  "name": "v1",
+  "position": { "x": 16, "y": 80, "z": 0, "width": 600, "height": 400, "tabOrder": 0 },
+  "visual": {
+    "visualType": "clusteredColumnChart",
+    "query": {
+      "queryState": {
+        "Category": { "projections": [ { "queryRef": "Date.Year" } ] },
+        "Y": { "projections": [ { "queryRef": "Total Revenue" } ] }
+      }
+    },
+    "objects": {
+      "title": [ { "properties": { "text": { "expr": { "Literal": { "Value": "'Revenue by Year'" } } } } } ]
+    }
+  }
+}

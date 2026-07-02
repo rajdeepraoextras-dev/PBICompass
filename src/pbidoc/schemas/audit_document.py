@@ -1,0 +1,117 @@
+"""The ``audit_document.json`` contract — an evaluation of the model, not a
+description of it. Populated entirely by deterministic rules
+(:mod:`pbidoc.agents.audit_rules`), except ``narrative_overview`` which
+optionally goes through an LLM with a deterministic fallback.
+
+Audience: BI architects, technical leads, governance teams, managers.
+
+Two things are explicitly out of scope and intentionally absent, rather than
+faked, because today's ``model.json`` genuinely lacks the data:
+hierarchies/calculation groups (never populated by the parsers) are omitted
+from :class:`UnusedAssets`, and every :class:`PerformanceRisk` is a
+metadata-only heuristic (no row-level data is ever extracted) — its
+``detail`` text says so explicitly.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+from dataclasses import dataclass, field
+from typing import Any, Optional
+
+from .shared import DocMetadataCore
+
+Severity = str  # "Critical" | "High" | "Medium" | "Low"
+
+
+@dataclass
+class HealthScore:
+    overall: int  # 0-100
+    band: str  # "Excellent" | "Good" | "Fair" | "Poor"
+    component_scores: dict[str, int] = field(default_factory=dict)  # modeling, dax, governance, performance, unused_assets
+
+
+@dataclass
+class ComplexityAssessment:
+    level: str  # "Low" | "Medium" | "High"
+    table_count: int
+    measure_count: int
+    relationship_count: int
+    calculated_column_count: int
+    max_relationship_depth: int
+    rationale: str = ""
+
+
+@dataclass
+class DaxFinding:
+    measure: str
+    table: Optional[str]
+    kind: str  # duplicate_logic | very_long_expression | missing_description | naming_issue | repeated_pattern
+    detail: str
+    severity: Severity = "Medium"
+
+
+@dataclass
+class BestPracticeCheck:
+    id: str
+    name: str
+    passed: bool
+    detail: str
+    category: str = "modeling"  # schema | naming | documentation | modeling
+
+
+@dataclass
+class PerformanceRisk:
+    kind: str  # large_calc_column | high_cardinality_signal | large_text_column | heavy_dax
+               # | visual_density | slow_slicer_signal | cross_filter_complexity
+    object_name: str
+    table: Optional[str]
+    detail: str
+    severity: Severity = "Medium"
+
+
+@dataclass
+class GovernanceFinding:
+    area: str  # rls | descriptions | ownership | sensitive_columns | data_source_consistency
+    detail: str
+    severity: Severity = "Medium"
+
+
+@dataclass
+class UnusedAssets:
+    measures: list[str] = field(default_factory=list)
+    columns: list[dict[str, str]] = field(default_factory=list)  # {table, column}
+    tables: list[str] = field(default_factory=list)
+    calculated_columns: list[dict[str, str]] = field(default_factory=list)  # {table, column}
+    report_pages: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Recommendation:
+    priority: str  # Critical | High | Medium | Low
+    issue: str
+    why_it_matters: str
+    suggested_fix: str
+    expected_benefit: str
+
+
+@dataclass
+class AuditDocument:
+    """Top-level ``audit_document.json`` object."""
+    metadata: DocMetadataCore
+    health: HealthScore
+    complexity: ComplexityAssessment
+    dax_findings: list[DaxFinding] = field(default_factory=list)
+    best_practices: list[BestPracticeCheck] = field(default_factory=list)
+    performance_risks: list[PerformanceRisk] = field(default_factory=list)
+    governance: list[GovernanceFinding] = field(default_factory=list)
+    unused_assets: UnusedAssets = field(default_factory=UnusedAssets)
+    recommendations: list[Recommendation] = field(default_factory=list)
+    narrative_overview: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    def to_json(self, *, indent: int | None = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)

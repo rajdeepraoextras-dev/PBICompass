@@ -1,0 +1,12 @@
+role 'Regional Manager'
+	modelPermission: read
+
+	tablePermission Customer = Customer[Region] = "West"
+
+role 'Sales Rep'
+	modelPermission: read
+
+	tablePermission Sales =
+			Sales[Status] <> "Canceled"
+
+	member rep1@contoso.com

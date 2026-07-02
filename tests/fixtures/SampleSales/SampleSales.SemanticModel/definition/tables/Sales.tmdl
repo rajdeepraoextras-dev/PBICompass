@@ -1,0 +1,67 @@
+table Sales
+	column SalesKey
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: SalesKey
+
+	column CustomerKey
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: CustomerKey
+
+	column OrderDateKey
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: OrderDateKey
+
+	column ShipDateKey
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: ShipDateKey
+
+	column Quantity
+		dataType: int64
+		summarizeBy: sum
+		sourceColumn: Quantity
+
+	column UnitPrice
+		dataType: double
+		summarizeBy: sum
+		sourceColumn: UnitPrice
+		formatString: \$#,0.00
+
+	column Status
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Status
+
+	column LineTotal = Sales[Quantity] * Sales[UnitPrice]
+		dataType: double
+		summarizeBy: sum
+
+	measure 'Total Revenue' =
+			SUMX (
+				FILTER ( Sales, Sales[Status] <> "Canceled" ),
+				Sales[Quantity] * Sales[UnitPrice]
+			)
+		formatString: \$#,0
+		displayFolder: Revenue
+
+	measure 'Revenue YTD' = TOTALYTD ( [Total Revenue], 'Date'[Date] )
+		formatString: \$#,0
+		displayFolder: Revenue
+
+	measure 'Orphan Margin' = [Total Revenue] * 0.3
+		formatString: \$#,0
+		displayFolder: Unused
+		isHidden
+
+	partition Sales = m
+		mode: import
+		source =
+				let
+					Source = Sql.Database("prod-sql.contoso.com", "SalesDW"),
+					Fact = Source{[Schema="dbo",Item="FactSales"]}[Data]
+				in
+					Fact

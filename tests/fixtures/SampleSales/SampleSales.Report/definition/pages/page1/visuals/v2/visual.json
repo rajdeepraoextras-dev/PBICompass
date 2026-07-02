@@ -1,0 +1,13 @@
+{
+  "name": "v2",
+  "position": { "x": 16, "y": 16, "z": 1, "width": 300, "height": 60 },
+  "visual": {
+    "visualType": "slicer",
+    "query": {
+      "queryState": {
+        "Values": { "projections": [ { "queryRef": "Date.Date" } ] }
+      }
+    },
+    "objects": {}
+  }
+}

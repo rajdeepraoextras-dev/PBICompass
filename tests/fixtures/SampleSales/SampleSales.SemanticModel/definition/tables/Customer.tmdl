@@ -1,0 +1,30 @@
+table Customer
+	column CustomerKey
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: CustomerKey
+
+	column 'Customer Name'
+		dataType: string
+		summarizeBy: none
+		sourceColumn: CustomerName
+
+	column Region
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Region
+
+	column Segment
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Segment
+
+	partition Customer = m
+		mode: import
+		source =
+				let
+					Source = Sql.Database("prod-sql.contoso.com", "SalesDW"),
+					Dim = Source{[Schema="dbo",Item="DimCustomer"]}[Data]
+				in
+					Dim

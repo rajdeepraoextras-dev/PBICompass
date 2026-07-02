@@ -1,0 +1,14 @@
+table 'Key Measures'
+	column _placeholder
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: _placeholder
+
+	measure 'Avg Order Value' = DIVIDE ( [Total Revenue], DISTINCTCOUNT ( Sales[SalesKey] ) )
+		formatString: \$#,0.00
+		displayFolder: KPIs
+
+	partition 'Key Measures' = calculated
+		mode: import
+		source = {0}

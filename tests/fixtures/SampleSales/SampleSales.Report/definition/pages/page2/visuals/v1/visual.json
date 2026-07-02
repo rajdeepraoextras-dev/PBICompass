@@ -1,0 +1,16 @@
+{
+  "name": "v1",
+  "position": { "x": 16, "y": 16, "z": 0, "width": 1240, "height": 680 },
+  "visual": {
+    "visualType": "map",
+    "query": {
+      "queryState": {
+        "Location": { "projections": [ { "queryRef": "Customer.Region" } ] },
+        "Size": { "projections": [ { "queryRef": "Total Revenue" } ] }
+      }
+    },
+    "objects": {
+      "title": [ { "properties": { "text": { "expr": { "Literal": { "Value": "'Revenue by Region'" } } } } } ]
+    }
+  }
+}

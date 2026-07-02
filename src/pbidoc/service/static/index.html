@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PBICompass — Power BI Knowledge Platform: Technical, Audit, Executive &amp; User Docs</title>
+<meta name="description" content="Zero-retention, AI-powered Power BI knowledge platform. From a single parse, generate Technical Documentation, an Audit &amp; Health Report, an Executive Summary, and a Business User Guide — in Markdown, HTML, DOCX, PDF &amp; JSON.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #060606;
+    --bg-2: #0a0a0a;
+    --panel: rgba(24, 20, 10, 0.6);
+    --panel-solid: #14110a;
+    --glass: rgba(255, 255, 255, 0.035);
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 255, 255, 0.16);
+
+    /* Power BI yellow, tuned into a gold/amber/bronze ramp for depth */
+    --gold: #f2c811;
+    --gold-light: #ffe066;
+    --amber: #f5a623;
+    --bronze: #c9971b;
+    --violet: #f2c811;   /* legacy name kept — every former accent usage now resolves to gold */
+    --cyan: #22d3ee;
+    --ink: #171204;      /* near-black text used on top of solid gold fills, for contrast */
+
+    --grad: linear-gradient(120deg, #ffe066 0%, #f2c811 50%, #c9971b 100%);
+    --grad-soft: linear-gradient(120deg, #ffe680, #f2c811, #d9a406);
+    --grad-amber: linear-gradient(120deg, #fbbf24, #f59e0b);
+
+    --text: #f7f5ee;
+    --muted: #bdb6a4;
+    --dim: #8a8372;
+    --success: #34d399;
+    --danger: #fb7185;
+
+    --primary-glow: 0 0 0 1px rgba(242,200,17,.45), 0 16px 40px -12px rgba(180,140,10,.55);
+    --shadow: 0 30px 70px -28px rgba(0, 0, 0, .85);
+    --r: 18px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: rgba(242, 200, 17, .45); color: var(--ink); }
+
+  a { color: inherit; text-decoration: none; }
+
+  /* ===================== ANIMATED BACKGROUND ===================== */
+  .bg {
+    position: fixed; inset: 0; z-index: -3;
+    background:
+      radial-gradient(1200px 700px at 80% -10%, rgba(242,200,17,.16), transparent 60%),
+      radial-gradient(900px 600px at 0% 10%, rgba(245,166,35,.11), transparent 55%),
+      radial-gradient(900px 800px at 50% 110%, rgba(201,151,27,.10), transparent 55%),
+      var(--bg);
+  }
+  .grid-overlay {
+    position: fixed; inset: -2px; z-index: -2; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 58px 58px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 80%);
+            mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 80%);
+    animation: gridDrift 28s linear infinite;
+  }
+  @keyframes gridDrift { to { background-position: 58px 58px, 58px 58px; } }
+
+  #stars { position: fixed; inset: 0; z-index: -2; pointer-events: none; }
+
+  .noise {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ===================== LAYOUT ===================== */
+  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  section { position: relative; }
+
+  /* ===================== NAVBAR ===================== */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid transparent;
+    transition: border-color .3s, background .3s;
+  }
+  nav.scrolled { background: rgba(6,6,6,.78); border-bottom-color: var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 70px; }
+  .brand { display: flex; align-items: center; gap: 11px; font-weight: 800; font-size: 1.16rem; letter-spacing: -.02em; }
+  .logo {
+    width: 34px; height: 34px; border-radius: 10px; position: relative; flex: none;
+    background: var(--grad); box-shadow: 0 8px 22px -6px rgba(242,200,17,.65);
+    display: grid; place-items: center;
+  }
+  .logo::before {
+    content: ""; position: absolute; inset: 0; border-radius: 10px; padding: 1px;
+    background: linear-gradient(140deg, rgba(255,255,255,.7), transparent 50%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+  }
+  .logo svg { width: 19px; height: 19px; }
+  .brand b { background: var(--grad-soft); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .nav-links { display: flex; align-items: center; gap: 4px; }
+  .nav-links a { color: var(--muted); font-size: .9rem; font-weight: 500; padding: 9px 14px; border-radius: 9px; transition: color .2s, background .2s; }
+  .nav-links a:hover { color: var(--text); background: var(--glass); }
+  .nav-cta {
+    margin-left: 8px; padding: 9px 18px !important; color: var(--ink) !important;
+    background: var(--grad); border-radius: 10px !important; font-weight: 700 !important;
+    box-shadow: 0 10px 24px -10px rgba(201,151,27,.7); transition: transform .2s, box-shadow .2s !important;
+  }
+  .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 14px 30px -10px rgba(201,151,27,.85); background: var(--grad) !important; }
+  .menu-toggle { display: none; }
+
+  /* ===================== HERO ===================== */
+  .hero { padding: 96px 0 60px; }
+  .hero-grid { display: grid; grid-template-columns: 1fr; justify-items: center; text-align: center; max-width: 860px; margin: 0 auto; }
+  .hero-copy { display: flex; flex-direction: column; align-items: center; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 7px 15px 7px 11px; border-radius: 100px;
+    background: var(--glass); border: 1px solid var(--border);
+    font-size: .8rem; font-weight: 500; color: var(--muted);
+    backdrop-filter: blur(8px); margin-bottom: 26px;
+  }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 0 rgba(52,211,153,.6); animation: pulse 2s infinite; }
+  @keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(52,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); } }
+  .pill b { color: var(--text); font-weight: 600; }
+
+  h1.hero-title {
+    font-size: clamp(2.5rem, 5.4vw, 4.3rem);
+    line-height: 1.04; font-weight: 800; letter-spacing: -.035em; margin-bottom: 22px;
+  }
+  h1.hero-title .shine {
+    background: linear-gradient(110deg, #fff 20%, #ffe066 42%, #f2c811 58%, #fff 80%);
+    background-size: 220% auto; -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; animation: shimmer 6s linear infinite;
+  }
+  @keyframes shimmer { to { background-position: 220% center; } }
+  .hero p.lead { font-size: 1.12rem; color: var(--muted); max-width: 600px; margin: 0 auto 34px; font-weight: 400; }
+  .hero p.lead b { color: var(--text); font-weight: 600; }
+
+  .hero-cta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+    font-family: inherit; font-weight: 600; font-size: .98rem; border: none;
+    padding: 14px 26px; border-radius: 13px; transition: transform .2s, box-shadow .2s, background .2s;
+  }
+  .btn-primary { color: var(--ink); font-weight: 700; background: var(--grad); box-shadow: var(--primary-glow); position: relative; overflow: hidden; }
+  .btn-primary::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.55) 48%, transparent 66%);
+    transform: translateX(-120%); transition: transform .55s ease;
+  }
+  .btn-primary:hover::after { transform: translateX(120%); }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px rgba(242,200,17,.55), 0 22px 50px -14px rgba(201,151,27,.8); }
+  .btn-primary svg { transition: transform .2s; position: relative; }
+  .btn-primary:hover svg { transform: translateX(4px); }
+  .btn-ghost { color: var(--text); background: var(--glass); border: 1px solid var(--border); }
+  .btn-ghost:hover { transform: translateY(-2px); border-color: var(--border-strong); background: rgba(255,255,255,.06); }
+
+  .hero-meta { display: flex; gap: 26px; margin-top: 32px; flex-wrap: wrap; justify-content: center; }
+  .hero-meta div { display: flex; align-items: center; gap: 8px; font-size: .86rem; color: var(--dim); }
+  .hero-meta svg { width: 16px; height: 16px; color: var(--success); flex: none; }
+
+  /* ===================== MARQUEE ===================== */
+  .marquee-wrap { padding: 26px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-top: 40px; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+  .marquee { display: flex; gap: 56px; width: max-content; animation: scroll 26s linear infinite; }
+  .marquee:hover { animation-play-state: paused; }
+  .marquee span { display: flex; align-items: center; gap: 11px; font-size: .92rem; font-weight: 600; color: var(--dim); white-space: nowrap; }
+  .marquee span svg { width: 17px; height: 17px; color: var(--violet); }
+  @keyframes scroll { to { transform: translateX(-50%); } }
+
+  /* ===================== SECTION HEADERS ===================== */
+  .sec-head { text-align: center; max-width: 660px; margin: 0 auto 56px; }
+  .eyebrow { font-size: .78rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; background: var(--grad-soft); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 14px; }
+  h2.sec-title { font-size: clamp(1.9rem, 3.6vw, 2.7rem); font-weight: 800; letter-spacing: -.03em; line-height: 1.1; margin-bottom: 16px; }
+  .sec-head p { color: var(--muted); font-size: 1.04rem; }
+
+  /* ===================== STATS ===================== */
+  .stats { padding: 70px 0 10px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .stat {
+    text-align: center; padding: 30px 18px; border-radius: var(--r);
+    background: var(--glass); border: 1px solid var(--border); position: relative; overflow: hidden;
+  }
+  .stat::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--grad); opacity: .8; }
+  .stat .num { font-size: 2.7rem; font-weight: 800; letter-spacing: -.04em; background: var(--grad-soft); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; line-height: 1; }
+  .stat .lbl { color: var(--muted); font-size: .9rem; margin-top: 9px; font-weight: 500; }
+
+  /* ===================== FEATURES ===================== */
+  .features { padding: 100px 0; }
+  .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .card {
+    position: relative; padding: 30px; border-radius: 20px; overflow: hidden;
+    background: var(--panel); border: 1px solid var(--border);
+    backdrop-filter: blur(12px); transition: transform .3s, border-color .3s, box-shadow .3s;
+  }
+  .card::before {
+    content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity .35s; pointer-events: none;
+    background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(242,200,17,.16), transparent 42%);
+  }
+  .card:hover { transform: translateY(-6px) scale(1.012); border-color: var(--border-strong); box-shadow: 0 30px 60px -30px rgba(201,151,27,.5); }
+  .card:hover::before { opacity: 1; }
+  .feat-ico {
+    width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; margin-bottom: 20px;
+    background: linear-gradient(150deg, rgba(242,200,17,.24), rgba(201,151,27,.14));
+    border: 1px solid rgba(242,200,17,.32); color: #ffe066;
+  }
+  .feat-ico svg { width: 25px; height: 25px; }
+  .card.amber .feat-ico { background: linear-gradient(150deg, rgba(249,115,22,.22), rgba(234,88,12,.13)); border-color: rgba(249,115,22,.34); color: #fdba74; }
+  .card.cyan .feat-ico { background: linear-gradient(150deg, rgba(34,211,238,.18), rgba(13,148,136,.13)); border-color: rgba(34,211,238,.3); color: #67e8f9; }
+  .card h3 { font-size: 1.18rem; font-weight: 700; margin-bottom: 10px; letter-spacing: -.01em; }
+  .card p { color: var(--muted); font-size: .94rem; }
+  .card .tag { display: inline-block; margin-top: 16px; font-size: .72rem; font-weight: 700; padding: 4px 10px; border-radius: 6px; background: var(--glass); border: 1px solid var(--border); color: var(--dim); font-family: 'Poppins', sans-serif; letter-spacing: .01em; }
+
+  /* ===================== HOW IT WORKS ===================== */
+  .how { padding: 30px 0 100px; }
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; position: relative; }
+  .step { position: relative; padding: 28px 22px; border-radius: 18px; background: var(--panel); border: 1px solid var(--border); }
+  .step .n { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-weight: 800; font-size: 1.05rem; color: var(--ink); background: var(--grad); margin-bottom: 18px; box-shadow: 0 10px 24px -10px rgba(201,151,27,.75); }
+  .step h4 { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+  .step p { color: var(--muted); font-size: .88rem; }
+  .step .arrow { position: absolute; right: -13px; top: 42px; color: var(--violet); z-index: 2; }
+  .step:last-child .arrow { display: none; }
+
+  /* ===================== GENERATOR (APP) ===================== */
+  .generator { padding: 30px 0 110px; }
+  .app-shell {
+    max-width: 880px; margin: 0 auto; border-radius: 26px; position: relative;
+    background: linear-gradient(165deg, rgba(19,17,10,.88), rgba(6,6,4,.94));
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .app-glow {
+    position: absolute; inset: 0; pointer-events: none; border-radius: 26px; padding: 1px;
+    background: conic-gradient(from var(--ang, 0deg), rgba(242,200,17,.75), transparent 22%, transparent 55%, rgba(201,151,27,.55), transparent 78%, rgba(242,200,17,.75));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: rotateGlow 7s linear infinite;
+  }
+  @keyframes rotateGlow { to { --ang: 360deg; } }
+  @property --ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+  .app-head { padding: 34px 40px 0; text-align: center; }
+  .app-head .pill { margin-bottom: 16px; }
+  .app-head h3 { font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 8px; }
+  .app-head p { color: var(--muted); font-size: .96rem; }
+  .app-body { padding: 28px 40px 40px; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 6px; padding: 5px; background: rgba(0,0,0,.32); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 28px; }
+  .tab-btn {
+    flex: 1; background: none; border: none; color: var(--muted); padding: 11px 10px;
+    font-family: inherit; font-size: .87rem; font-weight: 600; cursor: pointer; border-radius: 10px;
+    transition: color .2s, background .2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .tab-btn .tn { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: .72rem; font-weight: 700; background: var(--glass); color: var(--dim); transition: all .2s; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--ink); background: var(--grad); box-shadow: 0 10px 24px -12px rgba(201,151,27,.85); }
+  .tab-btn.active .tn { background: rgba(0,0,0,.16); color: var(--ink); }
+  @media (max-width: 600px) { .tab-btn span.txt { display: none; } }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; animation: fadeUp .35s ease; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* Document-type selector */
+  .doctype-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px; }
+  @media (max-width: 640px) { .doctype-grid { grid-template-columns: 1fr; } }
+  .doctype-option {
+    display: flex; align-items: flex-start; gap: 10px; padding: 13px 14px;
+    background: rgba(5,4,10,.7); border: 1px solid var(--border); border-radius: 11px;
+    cursor: pointer; transition: border-color .2s, background .2s;
+  }
+  .doctype-option:hover { border-color: var(--border-strong); }
+  .doctype-option:has(input:checked) { border-color: var(--violet); background: rgba(242,200,17,.1); }
+  .doctype-option input[type=checkbox] { margin-top: 3px; accent-color: var(--violet); width: 15px; height: 15px; flex: none; cursor: pointer; }
+  .doctype-option .doctype-text { display: flex; flex-direction: column; gap: 2px; }
+  .doctype-option .doctype-name { font-size: .88rem; font-weight: 600; color: var(--text); }
+  .doctype-option .doctype-desc { font-size: .76rem; color: var(--dim); line-height: 1.4; }
+  .link-btn {
+    background: none; border: none; color: var(--violet); font-family: inherit;
+    font-size: .8rem; font-weight: 600; cursor: pointer; padding: 2px 0;
+  }
+  .link-btn:hover { color: var(--gold-light); text-decoration: underline; }
+
+  .dl-group { margin-top: 14px; }
+  .dl-group-title { font-size: .78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; text-align: center; }
+  .dl-group-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 11px; margin-bottom: 6px; }
+
+  .form-group { margin-bottom: 18px; }
+  label { display: block; margin-bottom: 7px; font-weight: 600; font-size: .85rem; color: var(--text); }
+  label small { color: var(--dim); font-weight: 400; margin-left: 5px; }
+
+  input[type=text], select, textarea {
+    width: 100%; padding: 12px 15px; background: rgba(5,4,10,.7);
+    border: 1px solid var(--border); border-radius: 11px; color: var(--text);
+    font-family: inherit; font-size: .9rem; outline: none;
+    transition: border-color .2s, box-shadow .2s, background .2s;
+  }
+  input::placeholder, textarea::placeholder { color: #5a5a6a; }
+  input[type=text]:focus, select:focus, textarea:focus {
+    border-color: var(--violet); background: rgba(5,4,10,.95);
+    box-shadow: 0 0 0 3px rgba(242,200,17,.18);
+  }
+  select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%23b4b4c4' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 38px; }
+  textarea { resize: vertical; min-height: 92px; }
+
+  .file-dropzone {
+    border: 2px dashed var(--border); background: rgba(0,0,0,.28);
+    border-radius: 16px; padding: 34px 24px; text-align: center; cursor: pointer;
+    transition: border-color .25s, background .25s, transform .15s; position: relative; overflow: hidden;
+  }
+  .file-dropzone::before { content: ""; position: absolute; inset: 0; background: radial-gradient(300px circle at 50% 0%, rgba(242,200,17,.12), transparent 60%); opacity: 0; transition: opacity .3s; }
+  .file-dropzone:hover, .file-dropzone.drag { border-color: var(--violet); background: rgba(242,200,17,.05); }
+  .file-dropzone:hover::before, .file-dropzone.drag::before { opacity: 1; }
+  .file-dropzone .dz-ico { width: 54px; height: 54px; border-radius: 15px; margin: 0 auto 14px; display: grid; place-items: center; background: linear-gradient(150deg, rgba(242,200,17,.22), rgba(201,151,27,.13)); border: 1px solid rgba(242,200,17,.32); color: #ffe066; }
+  .file-dropzone .dz-ico svg { width: 26px; height: 26px; }
+  .file-dropzone .dz-main { font-size: .98rem; font-weight: 600; }
+  .file-dropzone .dz-sub { font-size: .78rem; color: var(--dim); margin-top: 4px; }
+  .file-dropzone input[type=file] { display: none; }
+  .file-name { font-size: .92rem; font-weight: 600; color: var(--gold-light); margin-top: 12px; display: none; align-items: center; gap: 8px; }
+  .file-name.show { display: flex; }
+  .file-name::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--success); flex: none; }
+
+  button[type=submit] {
+    width: 100%; padding: 16px; background: var(--grad); color: var(--ink); border: none;
+    border-radius: 13px; font-family: inherit; font-size: 1.02rem; font-weight: 700; cursor: pointer;
+    transition: transform .2s, box-shadow .2s; box-shadow: var(--primary-glow); margin-top: 14px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    position: relative; overflow: hidden;
+  }
+  button[type=submit]::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.5) 48%, transparent 66%);
+    transform: translateX(-120%); transition: transform .55s ease;
+  }
+  button[type=submit]:hover:not(:disabled)::after { transform: translateX(120%); }
+  button[type=submit]:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 0 0 1px rgba(242,200,17,.55), 0 22px 50px -14px rgba(201,151,27,.85); }
+  button[type=submit]:disabled { opacity: .55; cursor: not-allowed; }
+  button[type=submit] .spin { width: 17px; height: 17px; border: 2px solid rgba(23,18,4,.3); border-top-color: var(--ink); border-radius: 50%; animation: spin .7s linear infinite; display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #status { margin-top: 22px; text-align: center; font-weight: 600; font-size: .94rem; min-height: 22px; transition: color .2s; }
+  #status.err { color: var(--danger); }
+  #status.ok { color: var(--success); }
+  #status.warn { color: var(--amber); }
+  #job-warnings {
+    margin-top: 10px; padding: 12px 14px; border-radius: 10px;
+    background: rgba(245, 166, 35, 0.1); border: 1px solid rgba(245, 166, 35, 0.35);
+    color: var(--amber); font-size: .85rem; line-height: 1.5; text-align: left; display: none;
+  }
+  #job-warnings.show { display: block; }
+  #job-warnings ul { margin: 6px 0 0 18px; }
+
+  .progress-track { margin-top: 14px; height: 8px; border-radius: 100px; background: rgba(255,255,255,.08); overflow: hidden; }
+  .progress-fill { height: 100%; width: 0%; border-radius: 100px; background: var(--grad); transition: width .4s ease; }
+  .progress-fill.done { background: var(--success); }
+  .progress-text { margin-top: 8px; text-align: center; font-size: .8rem; color: var(--dim); font-family: 'Poppins', sans-serif; font-weight: 500; }
+  #downloads { display: flex; flex-wrap: wrap; justify-content: center; gap: 11px; margin-top: 18px; }
+  .download-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--glass); border: 1px solid var(--border); color: var(--text);
+    padding: 11px 17px; border-radius: 11px; font-size: .86rem; font-weight: 600;
+    transition: transform .18s, border-color .2s, background .2s; animation: fadeUp .4s ease backwards;
+  }
+  .download-btn:hover { transform: translateY(-2px); border-color: var(--violet); background: rgba(242,200,17,.1); color: #fff; }
+  .download-btn svg { width: 15px; height: 15px; color: var(--violet); }
+
+  .app-foot { text-align: center; color: var(--dim); font-size: .8rem; border-top: 1px solid var(--border); padding: 18px 40px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .app-foot svg { width: 15px; height: 15px; color: var(--success); }
+
+  /* ===================== FOOTER ===================== */
+  footer.site { border-top: 1px solid var(--border); padding: 50px 0 40px; margin-top: 20px; }
+  .foot-grid { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 24px; }
+  .foot-grid .brand { font-size: 1.05rem; }
+  .foot-links { display: flex; gap: 22px; flex-wrap: wrap; }
+  .foot-links a { color: var(--muted); font-size: .88rem; transition: color .2s; }
+  .foot-links a:hover { color: var(--text); }
+  .foot-copy { color: var(--dim); font-size: .82rem; margin-top: 28px; text-align: center; }
+
+  /* ===================== SCROLL REVEAL ===================== */
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1); }
+  .reveal.in { opacity: 1; transform: none; }
+  .reveal.d1 { transition-delay: .08s; } .reveal.d2 { transition-delay: .16s; } .reveal.d3 { transition-delay: .24s; } .reveal.d4 { transition-delay: .32s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .reveal { opacity: 1; transform: none; }
+  }
+
+  /* ===================== RESPONSIVE ===================== */
+  @media (max-width: 900px) {
+    .feat-grid { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: 1fr 1fr; }
+    .step .arrow { display: none; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .nav-links a:not(.nav-cta) { display: none; }
+  }
+  @media (max-width: 560px) {
+    .stat-grid, .steps { grid-template-columns: 1fr; }
+    .app-body, .app-head { padding-left: 22px; padding-right: 22px; }
+    .hero { padding-top: 50px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg"></div>
+<div class="grid-overlay"></div>
+<canvas id="stars"></canvas>
+<div class="noise"></div>
+
+<!-- ============ NAV ============ -->
+<nav id="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">
+      <span class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#171204" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/></svg>
+      </span>
+      <span class="name">PBI<b>Compass</b></span>
+    </div>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#security">Security</a>
+      <a href="#generate" class="nav-cta">Generate docs</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <span class="pill reveal"><span class="dot"></span>Zero-retention&nbsp;·&nbsp;<b>One parse, four documents</b>&nbsp;·&nbsp;AI-powered</span>
+      <h1 class="hero-title reveal d1">One report,<br><span class="shine">four AI-written docs</span><br>in seconds.</h1>
+      <p class="lead reveal d2">Drop a <b>.pbix</b> or <b>.pbip</b> and PBICompass parses the semantic model once, then writes a <b>Technical Documentation</b>, an <b>Audit &amp; Health Report</b>, an <b>Executive Summary</b>, and a <b>Business User Guide</b> — without your row-level data ever leaving the sandbox.</p>
+      <div class="hero-cta reveal d3">
+        <a href="#generate" class="btn btn-primary">Generate documentation
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a href="#features" class="btn btn-ghost">Explore capabilities</a>
+      </div>
+      <div class="hero-meta reveal d4">
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>No data retained</div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>4 documents, 1 parse</div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Claude Opus 4.8</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- marquee -->
+  <div class="wrap"><div class="marquee-wrap reveal">
+    <div class="marquee" id="marquee">
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>.pbix &amp; .pbip parsing</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg>DAX translation</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>Data model narrative</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>RLS &amp; security</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>Markdown · HTML · DOCX · PDF · JSON</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4M12 3l8 4v5c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V7z"/></svg>Audit &amp; Health scoring</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 8v8M12 8v8M8 8v8M3 3h18v18H3z"/></svg>Executive Summary</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Business User Guide</span>
+      <!-- duplicate for seamless loop -->
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>.pbix &amp; .pbip parsing</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg>DAX translation</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>Data model narrative</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>RLS &amp; security</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>Markdown · HTML · DOCX · PDF · JSON</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4M12 3l8 4v5c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V7z"/></svg>Audit &amp; Health scoring</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 8v8M12 8v8M8 8v8M3 3h18v18H3z"/></svg>Executive Summary</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Business User Guide</span>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============ STATS ============ -->
+<section class="stats">
+  <div class="wrap stat-grid">
+    <div class="stat reveal"><div class="num" data-count="4" data-suffix="">0</div><div class="lbl">Document types</div></div>
+    <div class="stat reveal d1"><div class="num" data-count="5" data-suffix="">0</div><div class="lbl">Export formats</div></div>
+    <div class="stat reveal d2"><div class="num" data-count="0" data-suffix="%">0</div><div class="lbl">Row data retained</div></div>
+    <div class="stat reveal d3"><div class="num" data-count="1" data-suffix="">0</div><div class="lbl">Parse per report</div></div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section class="features" id="features">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Capabilities</div>
+      <h2 class="sec-title">Everything a BI team needs,<br>documented automatically</h2>
+      <p>From one parsed semantic model, PBICompass writes four audience-specific documents — developer reference, governance audit, executive brief, and business user guide — so your reports never go undocumented again.</p>
+    </div>
+
+    <div class="feat-grid">
+      <div class="card reveal" id="security">
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <h3>Zero-retention by design</h3>
+        <p>Every upload is processed inside a per-job sandbox that is shredded the moment rendering finishes. Only metadata is read — never the VertiPaq row data — and nothing is logged or persisted.</p>
+        <span class="tag">finally → shred()</span>
+      </div>
+
+      <div class="card reveal d1">
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 014 4 4 4 0 01-1 2.6A5 5 0 0117 13a5 5 0 01-5 5 5 5 0 01-5-5 5 5 0 012-3.4A4 4 0 018 6a4 4 0 014-4z"/><path d="M12 18v3M9 21h6"/></svg></div>
+        <h3>One parse, four documents</h3>
+        <p>From the same parsed model, PBICompass writes a Technical Doc for developers, an Audit &amp; Health Report for governance, an Executive Summary for leadership, and a Business User Guide for everyone else — pick one or generate all four.</p>
+        <span class="tag">1 parse → 4 docs</span>
+      </div>
+
+      <div class="card reveal d2 amber">
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg></div>
+        <h3>Five export formats</h3>
+        <p>One run, every format you need: styled <b>HTML</b>, hand-written <b>DOCX</b>, clean <b>Markdown</b>, structured <b>JSON</b>, and <b>PDF</b> — no Word, no LaTeX, no external tooling required.</p>
+        <span class="tag">md · html · docx · pdf · json</span>
+      </div>
+
+      <div class="card reveal cyan">
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
+        <h3>Plain-English DAX</h3>
+        <p>Multi-line measures are preserved and translated, with format strings, home tables and display folders intact — so anyone can read what a calculation actually does.</p>
+        <span class="tag">DIVIDE · CALCULATE · …</span>
+      </div>
+
+      <div class="card reveal d1">
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+        <h3>Full model coverage</h3>
+        <p>Tables, columns, relationships, RLS roles, M / Power Query, data sources and report layout — the parser maps the common ~95% of real exports and never aborts on the odd construct.</p>
+        <span class="tag">TMDL · TMSL · PBIR</span>
+      </div>
+
+      <div class="card reveal d2">
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+        <h3>Audit &amp; Health Report</h3>
+        <p>A dedicated document with a 0–100 health score, best-practice checks, performance-risk heuristics, and prioritized recommendations — fully deterministic, so it works offline with no API key and never guesses.</p>
+        <span class="tag">health score · best practices · risks</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HOW IT WORKS ============ -->
+<section class="how" id="how">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Pipeline</div>
+      <h2 class="sec-title">From upload to handover<br>in four steps</h2>
+      <p>parse → agents → render → download. The whole journey runs in an ephemeral sandbox.</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="n">1</div>
+        <h4>Upload</h4>
+        <p>Drop a <b>.pbix</b> or a zipped <b>.pbip</b> project. A zip-slip guard isolates every file inside its own per-job directory.</p>
+        <svg class="arrow" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="step reveal d1">
+        <div class="n">2</div>
+        <h4>Parse</h4>
+        <p>The stdlib-only parser extracts the semantic model and report layout into a canonical <b>model.json</b> — metadata only.</p>
+        <svg class="arrow" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="step reveal d2">
+        <div class="n">3</div>
+        <h4>Generate</h4>
+        <p>AI agents (or the offline engine) assemble whichever document types you chose — Technical, Audit, Executive, User Guide — from that one parsed model.</p>
+        <svg class="arrow" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="step reveal d3">
+        <div class="n">4</div>
+        <h4>Download</h4>
+        <p>Grab your docs in any format. The sandbox is shredded; only the rendered files survive, for a short TTL.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GENERATOR (APP) ============ -->
+<section class="generator" id="generate">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Live generator</div>
+      <h2 class="sec-title">Document your report now</h2>
+      <p>Upload a file, choose which document(s) to generate, add optional governance metadata, and download enterprise-grade docs in seconds.</p>
+    </div>
+
+    <div class="app-shell reveal d1" id="container">
+      <div class="app-glow"></div>
+      <div class="app-head">
+        <span class="pill"><span class="dot"></span>Secure sandbox · shredded after render</span>
+        <h3>Power BI Knowledge Platform</h3>
+        <p>Metadata-only · choose one document or generate all four</p>
+      </div>
+
+      <div class="app-body">
+        <form id="form">
+          <div class="tabs">
+            <button type="button" class="tab-btn active" data-tab="tab-config"><span class="tn">1</span><span class="txt">Source &amp; Engine</span></button>
+            <button type="button" class="tab-btn" data-tab="tab-control"><span class="tn">2</span><span class="txt">Document Control</span></button>
+            <button type="button" class="tab-btn" data-tab="tab-details"><span class="tn">3</span><span class="txt">Details &amp; Notes</span></button>
+          </div>
+
+          <!-- Tab 1 -->
+          <div class="tab-content active" id="tab-config">
+            <div class="form-group">
+              <label>Power BI Report File</label>
+              <div class="file-dropzone" onclick="document.getElementById('file').click()">
+                <div class="dz-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></div>
+                <p class="dz-main">Click to upload or drag &amp; drop</p>
+                <p class="dz-sub">Accepts .pbix, or a .zip of a .pbip project folder</p>
+                <input type="file" id="file" accept=".pbix,.zip,.pbip">
+                <div class="file-name" id="file-name"></div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Documents to Generate</label>
+              <div class="doctype-grid">
+                <label class="doctype-option">
+                  <input type="checkbox" class="doctype-checkbox" value="technical" checked>
+                  <span class="doctype-text">
+                    <span class="doctype-name">Technical Documentation</span>
+                    <span class="doctype-desc">Full model, DAX &amp; architecture reference</span>
+                  </span>
+                </label>
+                <label class="doctype-option">
+                  <input type="checkbox" class="doctype-checkbox" value="audit">
+                  <span class="doctype-text">
+                    <span class="doctype-name">Audit &amp; Health Report</span>
+                    <span class="doctype-desc">Health score, best-practice checks, risks</span>
+                  </span>
+                </label>
+                <label class="doctype-option">
+                  <input type="checkbox" class="doctype-checkbox" value="executive">
+                  <span class="doctype-text">
+                    <span class="doctype-name">Executive Summary</span>
+                    <span class="doctype-desc">A 10-minute read for leaders &amp; stakeholders</span>
+                  </span>
+                </label>
+                <label class="doctype-option">
+                  <input type="checkbox" class="doctype-checkbox" value="user-guide">
+                  <span class="doctype-text">
+                    <span class="doctype-name">Business User Guide</span>
+                    <span class="doctype-desc">Plain-English walkthrough, zero jargon</span>
+                  </span>
+                </label>
+              </div>
+              <button type="button" class="link-btn" id="select-all-docs">Select all four</button>
+            </div>
+
+            <div class="grid-2">
+              <div class="form-group">
+                <label>Documentation Engine</label>
+                <select id="provider">
+                  <option value="none">Offline Engine (Deterministic Fallback)</option>
+                  <option value="anthropic">Claude (Opus 4.8 / Thinking)</option>
+                  <option value="gemini">Gemini (3.5 Flash)</option>
+                </select>
+              </div>
+              <div class="form-group" id="provider-key-row">
+                <label>Engine API Key <small>(your Claude/Gemini key — used for this job only, never stored)</small></label>
+                <input type="text" id="provider-apikey" autocomplete="off" placeholder="Enter Claude/Gemini API key...">
+              </div>
+            </div>
+
+            <div class="grid-2" id="effort-row">
+              <div class="form-group">
+                <label>AI Thinking Effort <small>(Claude only — higher takes longer, writes better prose)</small></label>
+                <select id="effort">
+                  <option value="low">Low — fastest, lighter reasoning</option>
+                  <option value="medium">Medium — balanced</option>
+                  <option value="high" selected>High — recommended</option>
+                  <option value="xhigh">X-High — deeper reasoning, slower</option>
+                  <option value="max">Max — best possible output, slowest</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Account API Key <small>(optional — only if your PBICompass account requires it; unrelated to the engine key above)</small></label>
+              <input type="text" id="apikey" autocomplete="off" placeholder="Enter your PBICompass account API key...">
+            </div>
+          </div>
+
+          <!-- Tab 2 -->
+          <div class="tab-content" id="tab-control">
+            <div class="grid-2">
+              <div class="form-group"><label>Report Owner <small>(e.g. Sales Team)</small></label><input type="text" id="owner" placeholder="Specify owner..."></div>
+              <div class="form-group"><label>Target Audience</label><input type="text" id="audience" placeholder="BI developers, sales executives..."></div>
+            </div>
+            <div class="grid-2">
+              <div class="form-group"><label>Document Author</label><input type="text" id="author" placeholder="John Doe"></div>
+              <div class="form-group"><label>Document Reviewer / Approver</label><input type="text" id="reviewer" placeholder="Jane Smith"></div>
+            </div>
+            <div class="grid-2">
+              <div class="form-group"><label>Version</label><input type="text" id="version" placeholder="v1.0"></div>
+              <div class="form-group"><label>Status</label><input type="text" id="status-field" placeholder="Draft / Approved"></div>
+            </div>
+            <div class="grid-2">
+              <div class="form-group"><label>Refresh Schedule</label><input type="text" id="refresh" placeholder="Daily 8 AM EST"></div>
+              <div class="form-group"><label>Data Classification</label><input type="text" id="classification" placeholder="Internal Only / Restricted"></div>
+            </div>
+          </div>
+
+          <!-- Tab 3 -->
+          <div class="tab-content" id="tab-details">
+            <div class="form-group"><label>Primary Business Decision / Impact</label><textarea id="business_decision" placeholder="What key business decision or operational process does this report drive? (e.g. weekly inventory restocking checks)"></textarea></div>
+            <div class="form-group"><label>Business Requirements</label><textarea id="requirements" placeholder="Enter the business requirements/KPI definitions traceabilities (one per line)..."></textarea></div>
+            <div class="form-group"><label>Security &amp; RLS Validation Notes</label><textarea id="security_notes" placeholder="Notes on RLS/OLS validation methods, tested roles, active rules..."></textarea></div>
+            <div class="form-group"><label>Gateway, Latency &amp; Refresh Details</label><textarea id="refresh_notes" placeholder="Describe the gateway configuration, scheduled refresh intervals, typical runtime, and performance optimizations..."></textarea></div>
+            <div class="form-group"><label>Workspaces &amp; App Deployment</label><textarea id="deployment_notes" placeholder="Specify the environments (Dev, Test, Prod), app workspace links, deployment pipelines..."></textarea></div>
+            <div class="form-group"><label>Permissions &amp; Workspace Access Control</label><textarea id="access_notes" placeholder="Outline active user groups, workspace roles, app permissions..."></textarea></div>
+            <div class="form-group"><label>Glossary of Key Business Terms</label><textarea id="glossary" placeholder="Define any specific calculations, acronyms, or business rules used (e.g. Active Lead = contacted in last 30 days)..."></textarea></div>
+            <div class="form-group"><label>Business Assumptions &amp; Data Limitations</label><textarea id="assumptions" placeholder="Detail any constraints (e.g. data latency of 24h, currency conversion rates, excluded divisions)..."></textarea></div>
+            <div class="form-group"><label>Support Escalation &amp; Maintenance Policy</label><textarea id="support_notes" placeholder="First line support contacts, SLA policies, code backups, decommissioning plan..."></textarea></div>
+          </div>
+
+          <button type="submit" id="submit"><span class="spin" id="spin"></span><span id="submit-label">Generate documentation</span></button>
+        </form>
+
+        <div id="status"></div>
+        <div id="job-warnings"></div>
+        <div id="progress-wrap" style="display:none">
+          <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+          <div id="progress-text" class="progress-text"></div>
+        </div>
+        <div id="downloads"></div>
+      </div>
+
+      <div class="app-foot">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Files are processed in a secure sandbox. Uploaded metadata is shredded immediately after rendering.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="site">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="brand">
+        <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/></svg></span>
+        <span class="name">PBI<b>Compass</b></span>
+      </div>
+      <div class="foot-links">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#security">Security</a>
+        <a href="#generate">Generate</a>
+      </div>
+    </div>
+    <div class="foot-copy">Power BI Knowledge Platform · Technical, Audit, Executive &amp; User docs · Metadata only, zero-retention · © 2026 PBICompass</div>
+  </div>
+</footer>
+
+<script>
+/* ============ AMBIENT EFFECTS ============ */
+// nav shadow on scroll
+const navEl = document.getElementById("nav");
+addEventListener("scroll", () => navEl.classList.toggle("scrolled", scrollY > 12), { passive: true });
+
+// starfield canvas
+(function () {
+  const c = document.getElementById("stars"), x = c.getContext("2d");
+  let w, h, stars;
+  function resize() {
+    w = c.width = innerWidth; h = c.height = innerHeight;
+    stars = Array.from({ length: Math.min(120, (w * h) / 14000) }, () => ({
+      x: Math.random() * w, y: Math.random() * h, r: Math.random() * 1.3 + .3,
+      a: Math.random(), s: Math.random() * .02 + .004
+    }));
+  }
+  function tick() {
+    x.clearRect(0, 0, w, h);
+    for (const st of stars) {
+      st.a += st.s; const o = (Math.sin(st.a) + 1) / 2 * .6 + .1;
+      x.fillStyle = "rgba(255,224,102," + o + ")";
+      x.beginPath(); x.arc(st.x, st.y, st.r, 0, 7); x.fill();
+    }
+    requestAnimationFrame(tick);
+  }
+  addEventListener("resize", resize); resize(); tick();
+})();
+
+// feature card cursor spotlight
+document.querySelectorAll(".card").forEach(card => {
+  card.addEventListener("pointermove", e => {
+    const r = card.getBoundingClientRect();
+    card.style.setProperty("--mx", (e.clientX - r.left) + "px");
+    card.style.setProperty("--my", (e.clientY - r.top) + "px");
+  });
+});
+
+// scroll reveal
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(en => { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+
+// animated counters
+const cio = new IntersectionObserver((entries) => {
+  entries.forEach(en => {
+    if (!en.isIntersecting) return;
+    const el = en.target, target = +el.dataset.count, suffix = el.dataset.suffix || "";
+    let n = 0; const dur = 1100, t0 = performance.now();
+    (function step(t) {
+      const p = Math.min((t - t0) / dur, 1), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(e * target) + suffix;
+      if (p < 1) requestAnimationFrame(step);
+    })(t0);
+    cio.unobserve(el);
+  });
+}, { threshold: 0.6 });
+document.querySelectorAll("[data-count]").forEach(el => cio.observe(el));
+
+/* ============ APP LOGIC (functional — talks to the backend) ============ */
+const $ = (id) => document.getElementById(id);
+
+// File selection handler
+$("file").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  const fn = $("file-name");
+  fn.textContent = f ? f.name : "";
+  fn.classList.toggle("show", !!f);
+});
+
+// Drag and drop
+const dropzone = document.querySelector(".file-dropzone");
+dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag"); });
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
+dropzone.addEventListener("drop", (e) => {
+  e.preventDefault(); dropzone.classList.remove("drag");
+  if (e.dataTransfer.files.length) {
+    $("file").files = e.dataTransfer.files;
+    const fn = $("file-name");
+    fn.textContent = e.dataTransfer.files[0].name; fn.classList.add("show");
+  }
+});
+
+// Tabs
+const tabs = document.querySelectorAll(".tab-btn");
+tabs.forEach(tab => {
+  tab.addEventListener("click", () => {
+    tabs.forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(tc => tc.classList.remove("active"));
+    tab.classList.add("active");
+    $(tab.dataset.tab).classList.add("active");
+  });
+});
+
+// Account API key persistence (hosted accounts/quotas — unrelated to the LLM engine key)
+const apikey = $("apikey");
+apikey.value = localStorage.getItem("pbidoc_key") || "";
+apikey.addEventListener("change", () => localStorage.setItem("pbidoc_key", apikey.value.trim()));
+const authHeaders = () => { const k = (apikey.value || "").trim(); return k ? { "Authorization": "Bearer " + k } : {}; };
+
+// Engine (Claude/Gemini) API key persistence — sent as a form field per job,
+// never as an auth header, never stored server-side.
+const providerApikey = $("provider-apikey");
+providerApikey.value = localStorage.getItem("pbidoc_provider_key") || "";
+providerApikey.addEventListener("change", () => localStorage.setItem("pbidoc_provider_key", providerApikey.value.trim()));
+
+// Effort only applies to the Claude engine — hide it otherwise; the engine
+// key field only makes sense once an LLM engine is selected.
+function syncEffortVisibility() {
+  const isOffline = $("provider").value === "none";
+  $("effort-row").style.display = $("provider").value === "anthropic" ? "" : "none";
+  $("provider-key-row").style.display = isOffline ? "none" : "";
+}
+$("provider").addEventListener("change", syncEffortVisibility);
+syncEffortVisibility();
+
+// Document-type selection ("Select all four" toggle)
+const doctypeBoxes = () => [...document.querySelectorAll(".doctype-checkbox")];
+$("select-all-docs").addEventListener("click", () => {
+  const boxes = doctypeBoxes();
+  const allChecked = boxes.every(b => b.checked);
+  boxes.forEach(b => b.checked = !allChecked);
+  $("select-all-docs").textContent = allChecked ? "Select all four" : "Reset to Technical only";
+});
+
+// Elapsed time / estimated-completion progress bar.
+// The backend doesn't report per-agent progress, so this is a best-effort
+// estimate based on typical durations for the chosen engine/effort — it
+// approaches but never reaches 100% until the job actually completes.
+const ESTIMATED_SECONDS = {
+  none: 4,
+  gemini: 25,
+  anthropic: { low: 18, medium: 35, high: 60, xhigh: 100, max: 150 },
+};
+let progressTimer = null;
+
+function estimatedSeconds() {
+  const provider = $("provider").value;
+  if (provider === "anthropic") return ESTIMATED_SECONDS.anthropic[$("effort").value] || 60;
+  return ESTIMATED_SECONDS[provider] || 10;
+}
+
+function startProgress() {
+  const startedAt = Date.now();
+  const estimate = estimatedSeconds();
+  const wrap = $("progress-wrap"), fill = $("progress-fill"), text = $("progress-text");
+  fill.classList.remove("done");
+  wrap.style.display = "";
+  function tick() {
+    const elapsed = (Date.now() - startedAt) / 1000;
+    const pct = Math.min(96, (elapsed / estimate) * 100);
+    fill.style.width = pct + "%";
+    text.textContent = `Elapsed ${elapsed.toFixed(0)}s · estimated ~${estimate}s total (${$("provider").value === "anthropic" ? $("effort").value + " effort" : $("provider").options[$("provider").selectedIndex].text})`;
+  }
+  tick();
+  progressTimer = setInterval(tick, 500);
+}
+
+function finishProgress(success) {
+  if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  const fill = $("progress-fill"), text = $("progress-text");
+  fill.style.width = "100%";
+  fill.classList.toggle("done", success);
+  const elapsed = text.textContent.match(/Elapsed (\d+)s/);
+  if (elapsed) text.textContent = `Finished in ${elapsed[1]}s`;
+}
+
+const FORMATS = { html: "HTML Document", docx: "Word Document", pdf: "PDF Report", md: "Markdown", json: "Raw JSON Schema" };
+const DOC_TYPE_LABELS = {
+  technical: "Technical Documentation", audit: "Audit & Health Report",
+  executive: "Executive Summary", "user-guide": "Business User Guide",
+};
+const DL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>';
+
+function setStatus(msg, cls) {
+  const s = $("status"); s.textContent = msg; s.className = cls || "";
+  const c = $("container");
+  if (cls === "err") c.style.borderColor = "var(--danger)";
+  else if (cls === "ok") c.style.borderColor = "var(--success)";
+  else if (cls === "warn") c.style.borderColor = "var(--amber)";
+  else c.style.borderColor = "var(--border-strong)";
+}
+function renderWarnings(warnings) {
+  const box = $("job-warnings");
+  if (!Array.isArray(warnings) || !warnings.length) {
+    box.classList.remove("show");
+    box.innerHTML = "";
+    return;
+  }
+  const items = warnings.map(w => `<li>${w.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}</li>`).join("");
+  box.innerHTML = `<strong>Some sections used the offline engine instead of the selected AI engine:</strong><ul>${items}</ul>`;
+  box.classList.add("show");
+}
+function setBusy(busy) {
+  $("submit").disabled = busy;
+  $("spin").style.display = busy ? "inline-block" : "none";
+  $("submit-label").textContent = busy ? "Working…" : "Generate documentation";
+}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = $("file").files[0];
+  if (!f) { setStatus("Please select a Power BI report file.", "err"); return; }
+  const selectedDocs = doctypeBoxes().filter(b => b.checked).map(b => b.value);
+  if (!selectedDocs.length) { setStatus("Select at least one document to generate.", "err"); return; }
+  setBusy(true);
+  $("downloads").innerHTML = "";
+  renderWarnings(null);
+  setStatus("Uploading and analyzing report structure...");
+
+  const fd = new FormData();
+  fd.append("file", f);
+  fd.append("provider", $("provider").value);
+  if ($("provider").value === "anthropic") fd.append("effort", $("effort").value);
+  if ($("provider").value !== "none") {
+    const engineKey = providerApikey.value.trim();
+    if (engineKey) fd.append("provider_api_key", engineKey);
+  }
+  // Omit when it's just the default ["technical"] so single-document jobs stay
+  // on the exact same code path (flat "html"/"md" keys) as before this feature.
+  if (!(selectedDocs.length === 1 && selectedDocs[0] === "technical")) {
+    fd.append("document_types", selectedDocs.join(","));
+  }
+
+  const fields = [
+    "owner", "audience", "refresh", "author", "reviewer", "version",
+    "classification", "business_decision", "requirements", "security_notes",
+    "refresh_notes", "deployment_notes", "access_notes", "glossary",
+    "assumptions", "support_notes"
+  ];
+
+  const statusVal = $("status-field").value.trim();
+  if (statusVal) fd.append("status", statusVal);
+
+  fields.forEach(k => {
+    const el = $(k);
+    if (el) { const v = el.value.trim(); if (v) fd.append(k, v); }
+  });
+
+  let res;
+  try { res = await fetch("/jobs", { method: "POST", body: fd, headers: authHeaders() }); }
+  catch { setStatus("Connection failed. Is the backend service running?", "err"); setBusy(false); return; }
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    setStatus("Error: " + (j.detail || "Upload failed"), "err");
+    setBusy(false); return;
+  }
+  startProgress();
+  poll((await res.json()).job_id);
+});
+
+async function poll(jobId) {
+  setStatus("Generating your documents...");
+  for (;;) {
+    await new Promise(r => setTimeout(r, 1200));
+    let job;
+    try { job = await (await fetch("/jobs/" + jobId, { headers: authHeaders() })).json(); } catch { continue; }
+    if (job.status === "done") {
+      const hasWarnings = Array.isArray(job.warnings) && job.warnings.length > 0;
+      setStatus(
+        hasWarnings ? "Documentation compiled — with fallback notes below." : "Documentation compiled successfully!",
+        hasWarnings ? "warn" : "ok"
+      );
+      renderWarnings(job.warnings);
+      finishProgress(true);
+      renderDownloads(jobId, job.formats);
+      setBusy(false);
+      return;
+    }
+    if (job.status === "failed") {
+      setStatus("Generation failed: " + (job.error || "Execution error"), "err");
+      finishProgress(false);
+      setBusy(false);
+      return;
+    }
+  }
+}
+
+// ``formats`` is either flat keys ("html", "md", ...) when a single document
+// type was requested, or composite "type.format" keys ("audit.html") when
+// more than one was — group the download buttons by document type so
+// multi-document jobs read clearly.
+function renderDownloads(jobId, formats) {
+  const container = $("downloads");
+  container.innerHTML = "";
+  const groups = {};
+  formats.forEach(fmt => {
+    const dot = fmt.indexOf(".");
+    const type = dot === -1 ? null : fmt.slice(0, dot);
+    const shortFmt = dot === -1 ? fmt : fmt.slice(dot + 1);
+    (groups[type || "_single"] ||= { type, fmts: [] }).fmts.push(shortFmt);
+  });
+  let delay = 0;
+  Object.values(groups).forEach(({ type, fmts }) => {
+    const wrap = document.createElement("div");
+    wrap.className = "dl-group";
+    if (type) {
+      const h = document.createElement("div");
+      h.className = "dl-group-title";
+      h.textContent = DOC_TYPE_LABELS[type] || type;
+      wrap.appendChild(h);
+    }
+    const row = document.createElement("div");
+    row.className = "dl-group-row";
+    fmts.forEach(shortFmt => {
+      const key = type ? `${type}.${shortFmt}` : shortFmt;
+      const a = document.createElement("a");
+      a.href = "/jobs/" + jobId + "/download?format=" + key;
+      a.className = "download-btn";
+      a.style.animationDelay = (delay++ * 0.06) + "s";
+      a.innerHTML = DL_ICON + "<span>" + (FORMATS[shortFmt] || shortFmt.toUpperCase()) + "</span>";
+      a.addEventListener("click", (ev) => { ev.preventDefault(); downloadFile(a.href, key); });
+      row.appendChild(a);
+    });
+    wrap.appendChild(row);
+    container.appendChild(wrap);
+  });
+}
+
+async function downloadFile(url, fmt) {
+  try {
+    const r = await fetch(url, { headers: authHeaders() });
+    if (!r.ok) { alert("Download failed (" + r.status + ")."); return; }
+    const blob = await r.blob();
+    let name = "documentation." + fmt;
+    const cd = r.headers.get("content-disposition");
+    const mm = cd && cd.match(/filename="?([^"]+)"?/);
+    if (mm) name = mm[1];
+    const u = URL.createObjectURL(blob);
+    const t = document.createElement("a");
+    t.href = u; t.download = name; document.body.appendChild(t); t.click(); t.remove();
+    URL.revokeObjectURL(u);
+  } catch { alert("Download failed."); }
+}
+</script>
+</body>
+</html>

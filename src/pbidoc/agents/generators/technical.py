@@ -1,0 +1,525 @@
+"""Technical Documentation generator — ``SemanticModel`` -> ``Document``.
+
+This is the original (Phase-0-and-earlier) orchestrator body, moved here
+verbatim so it can sit alongside the other document generators. Fans out to
+the agents and assembles the seven-section document. The three prose agents
+(Business Analyst, DAX Translator, Data Modeler) use the LLM when a client is
+provided and fall back to the deterministic engine on any failure. Metadata,
+lineage, security, and the tech-debt audit are always deterministic — the
+orphaned-measure audit in particular is a set difference, never a guess.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Optional
+
+from ...schemas.document import (
+    Document,
+    DocumentMetadata,
+    ExecutiveSummary,
+    LineageArchitecture,
+    MeasureCatalog,
+    MeasureEntry,
+    PageSummary,
+    SecurityGovernance,
+    SemanticModelDoc,
+    TechDebtAudit,
+    VisualExplainer,
+)
+from ...schemas.model import SemanticModel
+from .. import io
+from ..deterministic import (
+    business_analyst_deterministic,
+    data_modeler_deterministic,
+    relationship_lines,
+    translate_dax,
+)
+from ..llm import LLMClient
+from ..report_facts import (
+    calc_columns,
+    data_source_summaries,
+    detect_hardcoded_years,
+    find_referenced_tables,
+    report_pages,
+    slicers,
+    table_priority_key,
+)
+from ..usage import measure_usage, used_measure_names
+from .base import Warn, call_llm
+
+_call = call_llm  # local alias — keeps the body below byte-for-byte identical
+
+
+# -- I. Document Metadata -----------------------------------------------------
+def _metadata(model: SemanticModel, owner, audience, refresh,
+              version=None, status=None, author=None, reviewer=None,
+              classification=None, business_decision=None, requirements=None,
+              security_notes=None, refresh_notes=None, deployment_notes=None,
+              access_notes=None, glossary=None, assumptions=None, support_notes=None) -> DocumentMetadata:
+    return DocumentMetadata(
+        report_name=model.report_name,
+        owner=owner,
+        refresh_schedule=refresh,
+        target_audience=audience or "BI developers and business stakeholders",
+        source_format=model.meta.source_format,
+        generated_at=model.meta.generated_at,
+        version=version,
+        status=status,
+        author=author,
+        reviewer=reviewer,
+        classification=classification,
+        business_decision=business_decision,
+        requirements=requirements,
+        security_notes=security_notes,
+        refresh_notes=refresh_notes,
+        deployment_notes=deployment_notes,
+        access_notes=access_notes,
+        glossary=glossary,
+        assumptions=assumptions,
+        support_notes=support_notes,
+    )
+
+
+# -- II. Executive Summary ----------------------------------------------------
+def _executive_summary(model: SemanticModel, client, warn) -> ExecutiveSummary:
+    if client is not None:
+        data = _call(client, io.BUSINESS_ANALYST_SYSTEM, io.business_analyst_input(model),
+                     io.BUSINESS_ANALYST_SCHEMA, warn, "Business Analyst")
+        if data:
+            try:
+                return ExecutiveSummary(
+                    core_purpose=data["core_purpose"],
+                    pages=[PageSummary(**p) for p in data["pages"]],
+                    navigation_guide=list(data["navigation_guide"]),
+                    complex_visual_explainers=[
+                        VisualExplainer(**e) for e in data["complex_visual_explainers"]
+                    ],
+                )
+            except (KeyError, TypeError) as exc:
+                warn(f"Business Analyst: malformed response, using deterministic fallback ({exc})")
+    return business_analyst_deterministic(model)
+
+
+# -- III. Lineage & Architecture ----------------------------------------------
+def _summarize_m(m: str) -> str:
+    conn = re.search(r"(\w+\.\w+)\s*\(", m)
+    item = re.search(r'Item\s*=\s*"([^"]+)"', m)
+    schema = re.search(r'Schema\s*=\s*"([^"]+)"', m)
+    parts = []
+    if item:
+        target = f"{schema.group(1)}.{item.group(1)}" if schema else item.group(1)
+        parts.append(f"loads {target}")
+    if conn:
+        parts.append(f"via {conn.group(1)}")
+    desc = " ".join(parts) or "custom Power Query transformation"
+    return desc[0].upper() + desc[1:] + "."
+
+
+def _lineage(model: SemanticModel) -> LineageArchitecture:
+    sources = data_source_summaries(model)
+
+    transforms: list[dict[str, str]] = []
+    for e in model.expressions:
+        if e.expression and e.kind == "expression":
+            transforms.append({"name": e.name, "description": _summarize_m(e.expression)})
+    for t in model.tables:
+        for p in t.partitions:
+            if p.source_kind == "m" and p.expression:
+                transforms.append({"name": t.name, "description": _summarize_m(p.expression)})
+            elif p.source_kind == "calculated" and p.expression:
+                transforms.append({"name": t.name, "description": "Calculated table defined in DAX."})
+    return LineageArchitecture(source_systems=sources, transformations=transforms)
+
+
+# -- IV. Semantic Model -------------------------------------------------------
+def _column_descriptions(model: SemanticModel, client, warn) -> dict[tuple[str, str], str]:
+    descriptions = {}
+    for t in model.tables:
+        for c in t.columns:
+            if c.is_hidden:
+                continue
+            if c.description:
+                desc = c.description
+            elif c.is_calculated:
+                desc = "Calculated column."
+            else:
+                c_lower = c.name.lower()
+                if c_lower.endswith("id") or c_lower.endswith("key"):
+                    desc = f"Unique key identifier linking {t.name} records."
+                else:
+                    desc = f"Stores the {c.name} attribute for the {t.name} table."
+            descriptions[(t.name, c.name)] = desc
+
+    if client is not None:
+        data = _call(client, io.COLUMN_DESCRIBER_SYSTEM, io.column_describer_input(model),
+                     io.COLUMN_DESCRIBER_SCHEMA, warn, "Column Describer")
+        if data:
+            for item in data.get("columns", []):
+                t_name = item.get("table")
+                c_name = item.get("column")
+                desc = item.get("description")
+                if t_name and c_name and desc:
+                    descriptions[(t_name, c_name)] = desc
+    return descriptions
+
+
+def _semantic_model(model: SemanticModel, client, warn, col_descs: dict) -> SemanticModelDoc:
+    data_dictionary = [
+        {
+            "table": t.name,
+            "column": c.name,
+            "data_type": c.data_type,
+            "description": col_descs.get((t.name, c.name), c.description or ("Calculated column" if c.is_calculated else "")),
+        }
+        for t in model.tables
+        for c in t.columns
+        if not c.is_hidden
+    ]
+    rels = relationship_lines(model)
+    summary, risks = data_modeler_deterministic(model)
+    if client is not None:
+        data = _call(client, io.DATA_MODELER_SYSTEM, io.data_modeler_input(model),
+                     io.DATA_MODELER_SCHEMA, warn, "Data Modeler")
+        if data and "summary" in data:
+            summary = data["summary"]
+            risks = list(data.get("risks", risks))
+
+    # Check for local path data sources
+    for ds in model.data_sources:
+        target = ds.server or ds.detail or ""
+        if ds.database:
+            target = f"{target}/{ds.database}" if target else ds.database
+        if re.search(r"^[A-Za-z]:[\\/]", target) or "Users/" in target or "Users\\" in target:
+            risks.append(f"Hardcoded local path detected — replace with a parameterized path or gateway source before production deployment. (Path: {target})")
+    tables = [
+        {"name": t.name, "kind": t.kind, "columns": len(t.columns), "measures": len(t.measures)}
+        for t in model.tables
+    ]
+    edges = [
+        {"from": r.from_table, "to": r.to_table, "from_card": r.from_cardinality,
+         "to_card": r.to_cardinality, "cross_filter": r.cross_filter, "is_active": r.is_active}
+        for r in model.relationships
+    ]
+    return SemanticModelDoc(summary=summary, data_dictionary=data_dictionary, relationships=rels,
+                            risks=risks, tables=tables, relationship_edges=edges)
+
+
+# -- V. Measure Catalog -------------------------------------------------------
+def _measure_catalog(model: SemanticModel, client, warn) -> MeasureCatalog:
+    measures = model.all_measures()
+    entries = [
+        MeasureEntry(name=m.name, table=m.table, dax=m.expression, format_string=m.format_string)
+        for m in measures
+    ]
+    usage = measure_usage(model)
+
+    translations = None
+    if client is not None:
+        data = _call(client, io.DAX_TRANSLATOR_SYSTEM, io.dax_translator_input(model),
+                     io.DAX_TRANSLATOR_SCHEMA, warn, "DAX Translator")
+        if data:
+            translations = {t["name"]: t for t in data.get("translations", [])}
+
+    for entry, measure in zip(entries, measures):
+        t = translations.get(entry.name) if translations else None
+        if t:
+            entry.plain_english = t.get("plain_english", "")
+            entry.caveats = t.get("caveats", "")
+            entry.category = t.get("category", "")
+        else:
+            entry.plain_english, entry.caveats, entry.category = translate_dax(
+                measure.name, measure.expression, measure.format_string
+            )
+        entry.used_on = usage.get(entry.name, [])
+
+        # Cross-check measure table attribution
+        referenced_tables = find_referenced_tables(measure.expression)
+        if referenced_tables:
+            referenced_tables.sort(key=table_priority_key)
+            true_table = referenced_tables[0]
+            # Mismatch if:
+            # - original table is not referenced at all, OR
+            # - original table is a low-priority container (>=50) and a higher-priority table is available
+            is_mismatch = (entry.table not in referenced_tables) or (
+                table_priority_key(entry.table) >= 50 and table_priority_key(true_table) < table_priority_key(entry.table)
+            )
+            if is_mismatch and entry.table != true_table:
+                orig_table = entry.table
+                entry.table = true_table
+                note = f"Housed in '{orig_table}' table but operates on '{true_table}' table."
+                if entry.caveats:
+                    entry.caveats = f"{entry.caveats}. {note}"
+                else:
+                    entry.caveats = note
+
+    return MeasureCatalog(measures=entries)
+
+
+# -- VI. Security & Governance ------------------------------------------------
+def _security(model: SemanticModel) -> SecurityGovernance:
+    roles = [
+        {
+            "name": r.name,
+            "model_permission": r.model_permission or "read",
+            "filters": [f"{p.table}: {p.filter_expression}" for p in r.table_permissions],
+            "members": r.members,
+        }
+        for r in model.roles
+    ]
+    if model.roles:
+        constraints = [
+            f"{len(model.roles)} row-level security role(s) are defined. Role membership "
+            "and workspace access are managed in the Power BI Service and should be "
+            "reviewed there against this catalog."
+        ]
+    else:
+        constraints = ["No row-level security roles are defined in this model."]
+    return SecurityGovernance(roles=roles, workspace_constraints=constraints)
+
+
+# -- VII. Tech Debt / Audit (always deterministic) ----------------------------
+def _audit(model: SemanticModel) -> TechDebtAudit:
+    measures = model.all_measures()
+    used = used_measure_names(model)
+    orphaned = [m.name for m in measures if m.name not in used]
+    hidden_used = [m.name for m in measures if m.is_hidden and m.name in used]
+
+    notes: list[str] = []
+    if measures:
+        pct = round(100 * len(orphaned) / len(measures))
+        notes.append(
+            f"{len(orphaned)} of {len(measures)} measures ({pct}%) are defined but not used "
+            f"on any report page (directly or via another measure)."
+        )
+    if hidden_used:
+        notes.append(f"{len(hidden_used)} hidden measure(s) are still referenced by report visuals.")
+    total_visuals = sum(len(p.visuals) for p in model.pages)
+    if measures and not used and total_visuals:
+        notes.append(
+            "Note: no measure references could be read from this report's visuals, so usage "
+            "could not be confirmed — measures below may in fact be in use."
+        )
+
+    # Check for hardcoded years in DAX
+    for m in measures:
+        years = detect_hardcoded_years(m.expression)
+        if years:
+            year_list = ", ".join(years)
+            notes.append(f"Measure '{m.name}' contains a hardcoded year value ({year_list}) in its DAX calculation.")
+
+    return TechDebtAudit(orphaned_measures=orphaned, hidden_but_used=hidden_used, notes=notes)
+
+
+def _infer_requirements(model: SemanticModel) -> list[dict[str, str]]:
+    requirements = []
+    req_id = 1
+
+    # 1. Page names
+    for p in model.pages:
+        if p.is_hidden:
+            continue
+        requirements.append({
+            "id": f"REQ-{req_id:02d}",
+            "requirement": f"Provide analytical view and tracking for report page '{p.display_name}'.",
+            "source": f"Page: {p.display_name}",
+            "priority": "TBC",
+            "status": "Draft"
+        })
+        req_id += 1
+        if len(requirements) >= 5:
+            break
+
+    # 2. Visual titles / types
+    if len(requirements) < 5:
+        for p in model.pages:
+            if p.is_hidden:
+                continue
+            for v in p.visuals:
+                if v.is_slicer or not v.title:
+                    continue
+                requirements.append({
+                    "id": f"REQ-{req_id:02d}",
+                    "requirement": f"Visualize and monitor '{v.title}' metric distribution and insights.",
+                    "source": f"Visual: {v.title} ({p.display_name})",
+                    "priority": "TBC",
+                    "status": "Draft"
+                })
+                req_id += 1
+                if len(requirements) >= 5:
+                    break
+            if len(requirements) >= 5:
+                break
+
+    # 3. Measures
+    if len(requirements) < 3:
+        for m in model.all_measures()[:5]:
+            requirements.append({
+                "id": f"REQ-{req_id:02d}",
+                "requirement": f"Calculate and track '{m.name}' to support business performance monitoring.",
+                "source": f"Measure: {m.name}",
+                "priority": "TBC",
+                "status": "Draft"
+            })
+            req_id += 1
+            if len(requirements) >= 5:
+                break
+
+    return requirements[:5]
+
+
+TYPOS = {
+    "gaint": "giant / gained",
+    "calender": "calendar",
+    "customer": "customer",
+    "revnue": "revenue",
+    "catagory": "category",
+    "requirment": "requirement",
+    "develeper": "developer",
+}
+
+
+def _check_typo(name: str) -> str:
+    name_lower = name.lower()
+    for typo, correction in TYPOS.items():
+        if typo in name_lower:
+            return f"Likely '{correction}'"
+    return ""
+
+
+def _infer_glossary(model: SemanticModel, measure_catalog: MeasureCatalog, col_descs: dict[tuple[str, str], str]) -> list[dict[str, str]]:
+    entries = []
+
+    # 1. Add all measures
+    for m in measure_catalog.measures:
+        typo_flag = _check_typo(m.name)
+        entries.append({
+            "term": m.name,
+            "type": "Measure",
+            "definition": m.plain_english or f"Custom measure evaluating metric '{m.name}'.",
+            "typo_flag": typo_flag
+        })
+
+    # 2. Add key dimension fields used in report visuals
+    measure_names = {m.name for m in model.all_measures()}
+    dimensions = set()
+    for p in model.pages:
+        for v in p.visuals:
+            for f in v.fields:
+                name = f.split(".")[-1]
+                if name and name not in measure_names:
+                    dimensions.add(name)
+
+    for dim in sorted(dimensions):
+        typo_flag = _check_typo(dim)
+
+        # Look up definition in data dictionary descriptions
+        definition = None
+        for (t_name, c_name), desc in col_descs.items():
+            if c_name == dim and desc:
+                definition = desc
+                break
+
+        if not definition:
+            definition = f"Dimension field representing '{dim}' for filtering and grouping."
+            dim_lower = dim.lower()
+            if "date" in dim_lower or "calendar" in dim_lower:
+                definition = "Time-dimension field used to filter, segment, and perform time-intelligence trends."
+            elif "customer" in dim_lower:
+                definition = "Represents unique customer attributes, identifiers, or segments."
+            elif "product" in dim_lower:
+                definition = "Represents product categories, items, or inventory attributes."
+            elif "region" in dim_lower or "country" in dim_lower or "city" in dim_lower:
+                definition = "Geographical dimension used to analyze regional breakdown and location-based performance."
+
+        entries.append({
+            "term": dim,
+            "type": "Dimension",
+            "definition": definition,
+            "typo_flag": typo_flag
+        })
+
+    return entries
+
+
+class TechnicalDocumentationGenerator:
+    """Assembles the 17-section :class:`Document` — the original pbidoc
+    documentation output, unchanged, for BI developers/data engineers/
+    consultants/support engineers."""
+
+    @staticmethod
+    def generate(
+        model: SemanticModel,
+        client: Optional[LLMClient] = None,
+        *,
+        owner: Optional[str] = None,
+        audience: Optional[str] = None,
+        refresh: Optional[str] = None,
+        on_warning: Optional[Warn] = None,
+        # Custom metadata fields
+        version: Optional[str] = None,
+        status: Optional[str] = None,
+        author: Optional[str] = None,
+        reviewer: Optional[str] = None,
+        classification: Optional[str] = None,
+        business_decision: Optional[str] = None,
+        requirements: Optional[str] = None,
+        security_notes: Optional[str] = None,
+        refresh_notes: Optional[str] = None,
+        deployment_notes: Optional[str] = None,
+        access_notes: Optional[str] = None,
+        glossary: Optional[str] = None,
+        assumptions: Optional[str] = None,
+        support_notes: Optional[str] = None,
+    ) -> Document:
+        """Assemble the seven-section :class:`Document` from a parsed model.
+
+        Pass an ``LLMClient`` to use Claude for the prose agents; omit it (or
+        pass ``None``) to run the fully deterministic offline pipeline.
+        """
+        warn = on_warning or (lambda _msg: None)
+        model.compute_counts()
+        col_descs = _column_descriptions(model, client, warn)
+        doc = Document(
+            metadata=_metadata(
+                model, owner, audience, refresh,
+                version=version, status=status, author=author, reviewer=reviewer,
+                classification=classification, business_decision=business_decision,
+                requirements=requirements, security_notes=security_notes,
+                refresh_notes=refresh_notes, deployment_notes=deployment_notes,
+                access_notes=access_notes, glossary=glossary,
+                assumptions=assumptions, support_notes=support_notes,
+            ),
+            executive_summary=_executive_summary(model, client, warn),
+            lineage=_lineage(model),
+            semantic_model=_semantic_model(model, client, warn, col_descs),
+            measure_catalog=_measure_catalog(model, client, warn),
+            security=_security(model),
+            tech_debt=_audit(model),
+            stats=dict(model.meta.counts),
+            report_pages=report_pages(model),
+            slicers=slicers(model),
+            calculated_columns=calc_columns(model),
+        )
+
+        # Check for hardcoded years for Executive Summary callout
+        hardcoded_measures = []
+        for m in model.all_measures():
+            years = detect_hardcoded_years(m.expression)
+            if years:
+                hardcoded_measures.append((m.name, years))
+
+        if hardcoded_measures:
+            callout_parts = []
+            for name, years in hardcoded_measures:
+                callout_parts.append(f"'{name}' (referencing {', '.join(years)})")
+            warning_msg = (
+                "\n\n**Warning:** This report contains metrics with hardcoded year values, including: "
+                f"{'; '.join(callout_parts)}. These calculations are not dynamic and will require "
+                "manual update each year."
+            )
+            doc.executive_summary.core_purpose += warning_msg
+
+        doc.inferred_requirements = _infer_requirements(model)
+        doc.glossary_entries = _infer_glossary(model, doc.measure_catalog, col_descs)
+        return doc

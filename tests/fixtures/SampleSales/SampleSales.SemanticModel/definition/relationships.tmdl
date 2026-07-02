@@ -1,0 +1,13 @@
+relationship sales-customer
+	fromColumn: Sales.CustomerKey
+	toColumn: Customer.CustomerKey
+
+relationship sales-date-order
+	fromColumn: Sales.OrderDateKey
+	toColumn: Date.DateKey
+	crossFilteringBehavior: bothDirections
+
+relationship sales-date-ship
+	fromColumn: Sales.ShipDateKey
+	toColumn: Date.DateKey
+	isActive: false

@@ -1,0 +1,21 @@
+{
+  "name": "v3",
+  "position": { "x": 640, "y": 80, "z": 2, "width": 600, "height": 400 },
+  "visual": {
+    "visualType": "decompositionTreeVisual",
+    "query": {
+      "queryState": {
+        "Analyze": { "projections": [ { "queryRef": "Total Revenue" } ] },
+        "Explain By": {
+          "projections": [
+            { "queryRef": "Customer.Region" },
+            { "queryRef": "Customer.Segment" }
+          ]
+        }
+      }
+    },
+    "objects": {
+      "title": [ { "properties": { "text": { "expr": { "Literal": { "Value": "'Revenue Breakdown'" } } } } } ]
+    }
+  }
+}

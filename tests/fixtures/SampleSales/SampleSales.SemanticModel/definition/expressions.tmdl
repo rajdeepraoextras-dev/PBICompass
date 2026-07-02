@@ -1,0 +1,9 @@
+expression ServerName = "prod-sql.contoso.com" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	mode: import
+
+expression 'Sales DW' =
+		let
+			Source = Sql.Database(ServerName, "SalesDW")
+		in
+			Source
+	mode: import

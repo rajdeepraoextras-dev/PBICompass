@@ -1,0 +1,7 @@
+{
+  "version": "1.0",
+  "artifacts": [
+    { "report": { "path": "SampleSales.Report" } }
+  ],
+  "settings": { "enableAutoRecovery": true }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "page2",
+  "displayName": "Region Detail",
+  "displayOption": "FitToPage",
+  "height": 720,
+  "width": 1280,
+  "visibility": "AlwaysVisible",
+  "pageBinding": { "name": "drillKey", "type": "Drillthrough" }
+}
