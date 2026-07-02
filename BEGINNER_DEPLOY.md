@@ -179,21 +179,28 @@ which on Render requires a **paid instance** (Starter, ~$7/mo).
    `/data`**, Size: `1 GB` → Save.
 3. **Add environment variables** (Environment tab):
    - `PBICOMPASS_DB` = `/data/pbicompass.db`
+   - `PBICOMPASS_ADMIN_TOKEN` = a long random string (e.g. generate one at
+     https://www.uuidgenerator.net/ or run `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+     on your own machine). This is your admin password — save it somewhere safe.
    - `PBICOMPASS_REQUIRE_AUTH` = `1`
    - `PBICOMPASS_SANDBOX_ROOT` = `/tmp/pbicompass`
    Save (Render redeploys).
-4. **Create your first account:** dashboard → your service → **Shell** tab
-   (available on paid instances) → type:
-   ```bash
-   pbicompass account create --tenant acme --name "Acme BI" --plan pro
-   ```
-   It prints an **API key** like `pbicompass_sk_...` **once** — copy it now.
-5. Give that key to a user. In the web UI they expand **"Add report details"**,
-   paste the key into the **API key** field, and generate as normal. Without a
-   valid key, requests are rejected.
+4. **Create your first account — no shell needed.** Open
+   `https://your-app.onrender.com/admin`, paste the admin token from step 3
+   into **Admin token** → **Unlock**. Fill in **Tenant** (e.g. `acme`),
+   **Name** (e.g. `Acme BI`), pick a **Plan**, click **Create account**.
+   It shows an **API key** like `pbicompass_sk_...` **once** — copy it now
+   (there's a **Copy** button).
+5. Give that key to a user. In the main web UI they expand **"Add report
+   details"**, paste the key into the **Account API Key** field, and generate
+   as normal. Without a valid key, requests are rejected.
+6. To revoke a key later (e.g. it leaked), go back to `/admin` and click
+   **Revoke** next to that account — it stops working immediately.
 
-Plans/limits: `free` 10/day, `pro` 200/day, `enterprise` 100,000/day.
-`pbicompass account list` shows accounts.
+Plans/limits: `free` 10/day, `pro` 200/day, `enterprise` 100,000/day. The
+`/admin` page also lists every account with today's usage against its limit.
+(The `pbicompass account create` / `list` / `revoke` CLI commands still work
+too, via the Shell tab, if you prefer.)
 
 ---
 

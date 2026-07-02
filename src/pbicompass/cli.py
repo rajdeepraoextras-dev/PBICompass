@@ -126,6 +126,9 @@ def main(argv: list[str] | None = None) -> int:
     p_ac.add_argument("--db", help="SQLite path (default: $PBICOMPASS_DB or pbicompass.db)")
     p_al = acct_sub.add_parser("list", help="List accounts")
     p_al.add_argument("--db", help="SQLite path (default: $PBICOMPASS_DB or pbicompass.db)")
+    p_ar = acct_sub.add_parser("revoke", help="Revoke an account (its API key stops working immediately)")
+    p_ar.add_argument("--id", required=True, help="Account id (see 'account list')")
+    p_ar.add_argument("--db", help="SQLite path (default: $PBICOMPASS_DB or pbicompass.db)")
 
     args = parser.parse_args(argv)
 
@@ -267,7 +270,13 @@ def main(argv: list[str] | None = None) -> int:
                     print("No accounts yet.")
                     return 0
                 for a in accts:
-                    print(f"{a.tenant:<22} {a.plan:<12} {a.name}")
+                    print(f"{a.id}  {a.tenant:<22} {a.plan:<12} {a.name}")
+                return 0
+            if args.account_cmd == "revoke":
+                if not accounts.revoke_account(args.id):
+                    print(f"error: no account with id '{args.id}'", file=sys.stderr)
+                    return 1
+                print(f"Revoked account '{args.id}'.")
                 return 0
         finally:
             accounts.close()

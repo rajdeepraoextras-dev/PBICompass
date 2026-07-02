@@ -26,6 +26,14 @@ report a problem.
 - **Accounts store the minimum.** When auth is enabled, the SQLite accounts
   database holds a hashed API key, tenant, plan, and per-day usage *counts*
   only (`service/accounts.py`) — never anything about a customer's report.
+- **Admin panel is a single shared secret, not a user system.** `/admin`
+  (`service/admin.py`) is gated by one operator-held token
+  (`PBICOMPASS_ADMIN_TOKEN`) compared in constant time, with a per-client
+  lockout (8 failures / 5 min window -> 15 min block) to blunt brute-forcing.
+  It is disabled entirely (503 on every `/admin/api/*` call) unless that
+  token is set — there's no default/blank-password state. It mints and
+  revokes tenant API keys but has no other privileges (no code execution, no
+  filesystem access, no visibility into report content).
 
 ## Deploying safely
 
@@ -33,9 +41,11 @@ report a problem.
   never touch a physical disk (see `DEPLOYMENT.md`).
 - Enable `PBICOMPASS_REQUIRE_AUTH=1` before exposing an instance beyond a private
   smoke test — the open `public` tenant has no rate limit.
-- Treat `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` like any other secret: set them
-  as platform environment variables, never commit them (see `.env.example`
-  and `.gitignore`).
+- Treat `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `PBICOMPASS_ADMIN_TOKEN` like
+  any other secret: set them as platform environment variables, never commit
+  them (see `.env.example` and `.gitignore`), and use a long random value for
+  the admin token specifically (it has no username/rate-limit-per-identity to
+  fall back on).
 - BYOK provider keys (pasted into the web UI or sent as `provider_api_key`)
   are used for a single job only and are never logged or persisted.
 

@@ -32,6 +32,7 @@ That's it. No managed database, no message broker, no third-party auth provider.
 | `PBICOMPASS_SANDBOX_ROOT` | system temp | Per-job working dir. Point at a tmpfs (RAM) for strict zero-retention. |
 | `PBICOMPASS_MAX_UPLOAD_MB` | `100` | Max upload size. |
 | `PBICOMPASS_JOB_TIMEOUT_SECONDS` | `600` | Watchdog: force-fail a job stuck in "processing" longer than this (hung LLM call, oversized file). |
+| `PBICOMPASS_ADMIN_TOKEN` | _(off)_ | Enables the `/admin` panel (create/list/revoke accounts from the browser). Unset = panel disabled. |
 | `ANTHROPIC_API_KEY` | — | Enables the Claude engine (install the `agents` extra too). |
 | `GEMINI_API_KEY` | — | Enables the Gemini engine (install the `agents` extra too; `GOOGLE_API_KEY` also works). |
 
@@ -47,12 +48,13 @@ repo already has a `Dockerfile`.
 3. Add a **persistent disk/volume** mounted at `/data` (1 GB is plenty).
 4. Set environment variables:
    - `PBICOMPASS_DB=/data/pbicompass.db`
+   - `PBICOMPASS_ADMIN_TOKEN=...` — a long random secret (`python -c "import secrets; print(secrets.token_urlsafe(32))"`). Enables `/admin`.
    - `PBICOMPASS_REQUIRE_AUTH=1` (for a hosted SaaS) — or leave unset to run open.
    - `ANTHROPIC_API_KEY=...` (optional, for Claude).
 5. The platform builds the image, runs the `CMD`, assigns a URL, and terminates
    TLS for you. Health check path: `/healthz`.
-6. Create your first account (see *Enabling auth* below) via the platform's
-   shell/exec, then hand out the API key.
+6. Open `https://<your-url>/admin`, paste the admin token, and create your
+   first account (see *Enabling auth* below) — no shell access needed.
 
 Fly.io example: ensure the service listens on `0.0.0.0:8000` (it does) and add a
 volume:
@@ -60,7 +62,7 @@ volume:
 fly launch --no-deploy            # detects the Dockerfile
 fly volumes create data --size 1
 # in fly.toml: [mounts] source="data" destination="/data"
-fly secrets set PBICOMPASS_REQUIRE_AUTH=1 ANTHROPIC_API_KEY=sk-...
+fly secrets set PBICOMPASS_REQUIRE_AUTH=1 PBICOMPASS_ADMIN_TOKEN=... ANTHROPIC_API_KEY=sk-...
 fly deploy
 ```
 
@@ -81,6 +83,7 @@ docker run -d --name pbicompass \
   -v pbicompass-data:/data \
   --tmpfs /tmp/pbicompass:rw,size=512m \
   -e PBICOMPASS_DB=/data/pbicompass.db \
+  -e PBICOMPASS_ADMIN_TOKEN=...  \
   -e PBICOMPASS_REQUIRE_AUTH=1 \
   -e ANTHROPIC_API_KEY=sk-...   `# optional` \
   --restart unless-stopped \
@@ -110,18 +113,36 @@ Caddy fetches and renews a Let's Encrypt certificate automatically. Done.
 ## Enabling auth & creating accounts
 
 With `PBICOMPASS_REQUIRE_AUTH=1`, every request needs `Authorization: Bearer <key>`.
-Create accounts with the CLI (runs inside the container/host, same `PBICOMPASS_DB`):
+
+**Admin panel (recommended):** set `PBICOMPASS_ADMIN_TOKEN`, then open
+`https://<your-url>/admin` in a browser. Paste the token to unlock, fill in
+tenant / name / plan, and **Create account** — the API key is shown once;
+copy it and hand it to the user. The same page lists every account with
+today's usage and lets you **Revoke** a key instantly (e.g. if one leaks).
+Setting `PBICOMPASS_ADMIN_TOKEN` alone (without `PBICOMPASS_REQUIRE_AUTH`)
+lets you provision accounts ahead of time — `/jobs` stays open until you also
+flip auth on.
+
+**CLI (alternative):** runs inside the container/host, same `PBICOMPASS_DB`:
 
 ```bash
 # inside the running container (e.g. `docker exec -it pbicompass bash`)
 pbicompass account create --tenant acme --name "Acme BI" --plan pro
 #   -> prints the API key ONCE — copy it and give it to the customer
-pbicompass account list
+pbicompass account list      # shows id, tenant, plan, name
+pbicompass account revoke --id <id>
 ```
 
 Plans and daily quotas: `free` 10, `pro` 200, `enterprise` 100k docs/day. Users
-paste their key into the web UI's "API key" field, or send it as a header to the
-API. Tenants only ever see their own jobs.
+paste their key into the web UI's "Account API Key" field, or send it as a
+header to the API. Tenants only ever see their own jobs.
+
+**Securing the admin token:** treat it like a root password — it's a single
+shared secret with no per-admin identity. Generate a long random value (32+
+bytes), set it only as a platform environment variable (never commit it),
+and rotate it (redeploy with a new value) if you suspect it leaked. Repeated
+wrong-token attempts from the same client are locked out for 15 minutes after
+8 failures, but that's a backstop, not a substitute for a strong token.
 
 ---
 
@@ -141,7 +162,8 @@ API. Tenants only ever see their own jobs.
 - [ ] `GET /healthz` returns `{"ok": true}` through your HTTPS domain.
 - [ ] `/data` is a **persistent** volume (accounts survive a restart/redeploy).
 - [ ] `PBICOMPASS_SANDBOX_ROOT` is a tmpfs (recommended) and has room for `PBICOMPASS_MAX_UPLOAD_MB`.
-- [ ] Auth: `PBICOMPASS_REQUIRE_AUTH=1` set, and at least one account created.
+- [ ] `PBICOMPASS_ADMIN_TOKEN` set to a long random value; `/admin` unlocks with it and `/admin/api/*` 401s without it.
+- [ ] Auth: `PBICOMPASS_REQUIRE_AUTH=1` set, and at least one account created via `/admin`.
 - [ ] Upload the bundled `tests/fixtures/SampleSales` (zipped) through the UI and
       download the HTML — confirms the full pipeline end-to-end.
 - [ ] Single instance / `--workers 1` (until the Celery/Redis swap).

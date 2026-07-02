@@ -22,7 +22,7 @@ $env:PYTHONPATH = "src"; python -m unittest discover -s tests -v
 PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
-All 164 tests should pass with `pip install -e ".[dev]"` alone (the LLM path
+All 182 tests should pass with `pip install -e ".[dev]"` alone (the LLM path
 is tested via an in-process fake client — no API key needed). Please add a
 test alongside any behavioral change; there's a synthetic fixture at
 `tests/fixtures/SampleSales` that exercises every parser code path.

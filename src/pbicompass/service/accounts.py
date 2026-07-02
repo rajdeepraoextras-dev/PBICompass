@@ -109,6 +109,14 @@ class AccountStore:
             ).fetchall()
         return [self._row_to_account(r) for r in rows]
 
+    def revoke_account(self, account_id: str) -> bool:
+        """Delete an account — its API key stops working immediately.
+        Returns True if an account was deleted, False if the id didn't exist."""
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
+
     @staticmethod
     def _row_to_account(row: sqlite3.Row) -> Account:
         return Account(id=row["id"], tenant=row["tenant"], name=row["name"],

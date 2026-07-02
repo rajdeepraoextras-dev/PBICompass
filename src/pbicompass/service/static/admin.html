@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>PBICompass — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #060606; --panel: #0e0c07; --glass: rgba(255,255,255,.035);
+    --border: rgba(255,255,255,.09); --border-strong: rgba(255,255,255,.16);
+    --gold: #f2c811; --gold-light: #ffe066; --ink: #171204;
+    --text: #f7f5ee; --muted: #bdb6a4; --dim: #8a8372;
+    --success: #34d399; --danger: #fb7185;
+    --grad: linear-gradient(120deg, #ffe066 0%, #f2c811 50%, #c9971b 100%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    padding: 32px 20px 80px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.15rem; }
+  .brand .dot { width: 10px; height: 10px; border-radius: 3px; background: var(--grad); }
+  a.back { color: var(--dim); text-decoration: none; font-size: .88rem; }
+  a.back:hover { color: var(--text); }
+  h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
+  p.sub { color: var(--muted); font-size: .92rem; margin-bottom: 24px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 22px; margin-bottom: 20px;
+  }
+  label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+  input, select {
+    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--glass); color: var(--text); font-family: inherit; font-size: .92rem;
+    outline: none;
+  }
+  input:focus, select:focus { border-color: var(--gold); }
+  .row { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 620px) { .row.cols-3 { grid-template-columns: 2fr 2fr 1fr; } }
+  .field { margin-bottom: 14px; }
+  button {
+    font-family: inherit; font-weight: 700; font-size: .9rem; border: none;
+    border-radius: 9px; padding: 11px 20px; cursor: pointer; transition: transform .15s, opacity .15s;
+  }
+  button:hover { transform: translateY(-1px); }
+  button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .btn-gold { background: var(--grad); color: var(--ink); }
+  .btn-ghost { background: var(--glass); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: rgba(251,113,133,.14); color: var(--danger); border: 1px solid rgba(251,113,133,.35); }
+  .btn-danger:hover { background: rgba(251,113,133,.22); }
+  .msg { font-size: .86rem; margin-top: 10px; padding: 10px 12px; border-radius: 8px; display: none; }
+  .msg.show { display: block; }
+  .msg.err { background: rgba(251,113,133,.1); color: var(--danger); border: 1px solid rgba(251,113,133,.3); }
+  .msg.ok { background: rgba(52,211,153,.1); color: var(--success); border: 1px solid rgba(52,211,153,.3); }
+  .key-box {
+    margin-top: 14px; padding: 14px; border-radius: 10px; background: rgba(242,200,17,.08);
+    border: 1px solid rgba(242,200,17,.35); display: none;
+  }
+  .key-box.show { display: block; }
+  .key-box .label { font-size: .78rem; color: var(--gold-light); font-weight: 700; margin-bottom: 6px; }
+  .key-box code {
+    display: block; font-family: 'Consolas', monospace; font-size: .88rem; word-break: break-all;
+    color: var(--text); background: rgba(0,0,0,.3); padding: 10px; border-radius: 6px; margin-bottom: 10px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--dim); font-weight: 600; font-size: .76rem; text-transform: uppercase; letter-spacing: .04em; }
+  td.plan { text-transform: capitalize; }
+  .empty { color: var(--dim); font-size: .88rem; padding: 20px 0; text-align: center; }
+  .gate { max-width: 420px; margin: 12vh auto 0; text-align: center; }
+  .gate h1 { font-size: 1.3rem; margin-bottom: 8px; }
+  .gate p { color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
+  .gate .card { text-align: left; }
+  #dash { display: none; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="dot"></span> PBICompass Admin</div>
+    <a class="back" href="/">‹ Back to app</a>
+  </header>
+
+  <div id="gate" class="gate">
+    <h1>Admin access</h1>
+    <p>Enter the operator token (<code>PBICOMPASS_ADMIN_TOKEN</code>) to manage accounts and API keys.</p>
+    <div class="card">
+      <div class="field">
+        <label for="token">Admin token</label>
+        <input type="password" id="token" autocomplete="off" placeholder="Paste the admin token...">
+      </div>
+      <button class="btn-gold" id="unlock" style="width:100%">Unlock</button>
+      <div class="msg err" id="gate-msg"></div>
+    </div>
+  </div>
+
+  <div id="dash">
+    <h1>Accounts</h1>
+    <p class="sub">Create and manage API keys tenants use to authenticate against PBICompass.</p>
+
+    <div class="card">
+      <div class="row cols-3">
+        <div class="field">
+          <label for="c-tenant">Tenant</label>
+          <input type="text" id="c-tenant" placeholder="e.g. acme">
+        </div>
+        <div class="field">
+          <label for="c-name">Name</label>
+          <input type="text" id="c-name" placeholder="e.g. Acme BI">
+        </div>
+        <div class="field">
+          <label for="c-plan">Plan</label>
+          <select id="c-plan">
+            <option value="free">Free (10/day)</option>
+            <option value="pro">Pro (200/day)</option>
+            <option value="enterprise">Enterprise (100k/day)</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-gold" id="create">Create account</button>
+      <div class="msg err" id="create-msg"></div>
+      <div class="key-box" id="key-box">
+        <div class="label">API key — shown once, copy it now</div>
+        <code id="key-value"></code>
+        <button class="btn-ghost" id="copy-key">Copy</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <strong>Existing accounts</strong>
+        <button class="btn-ghost" id="refresh">Refresh</button>
+      </div>
+      <div id="table-wrap"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let TOKEN = sessionStorage.getItem("pbicompass_admin_token") || "";
+
+function headers() { return { "X-Admin-Token": TOKEN, "Content-Type": "application/json" }; }
+
+function showGate() { $("gate").style.display = "block"; $("dash").style.display = "none"; }
+function showDash() { $("gate").style.display = "none"; $("dash").style.display = "block"; }
+
+async function tryUnlock(silent) {
+  if (!TOKEN) { if (!silent) flash("gate-msg", "Enter a token."); showGate(); return; }
+  let res;
+  try { res = await fetch("/admin/api/verify", { method: "POST", headers: headers() }); }
+  catch { showGate(); if (!silent) flash("gate-msg", "Connection failed."); return; }
+  if (res.ok) {
+    showDash();
+    loadAccounts();
+  } else {
+    sessionStorage.removeItem("pbicompass_admin_token");
+    TOKEN = "";
+    showGate();
+    if (!silent) {
+      const j = await res.json().catch(() => ({}));
+      flash("gate-msg", j.detail || ("Error " + res.status));
+    }
+  }
+}
+
+function flash(id, text) {
+  const el = $(id);
+  el.textContent = text;
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 6000);
+}
+
+$("unlock").addEventListener("click", () => {
+  TOKEN = $("token").value.trim();
+  sessionStorage.setItem("pbicompass_admin_token", TOKEN);
+  tryUnlock(false);
+});
+$("token").addEventListener("keydown", e => { if (e.key === "Enter") $("unlock").click(); });
+
+$("create").addEventListener("click", async () => {
+  const tenant = $("c-tenant").value.trim();
+  const name = $("c-name").value.trim();
+  const plan = $("c-plan").value;
+  if (!tenant) { flash("create-msg", "Tenant is required."); return; }
+  $("create").disabled = true;
+  let res;
+  try {
+    res = await fetch("/admin/api/accounts", {
+      method: "POST", headers: headers(),
+      body: JSON.stringify({ tenant, name, plan }),
+    });
+  } catch { flash("create-msg", "Connection failed."); $("create").disabled = false; return; }
+  $("create").disabled = false;
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    flash("create-msg", j.detail || ("Error " + res.status));
+    return;
+  }
+  const data = await res.json();
+  $("key-value").textContent = data.api_key;
+  $("key-box").classList.add("show");
+  $("c-tenant").value = ""; $("c-name").value = "";
+  loadAccounts();
+});
+
+$("copy-key").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("key-value").textContent); $("copy-key").textContent = "Copied!"; }
+  catch { $("copy-key").textContent = "Select & copy manually"; }
+  setTimeout(() => $("copy-key").textContent = "Copy", 2000);
+});
+
+$("refresh").addEventListener("click", loadAccounts);
+
+async function loadAccounts() {
+  const res = await fetch("/admin/api/accounts", { headers: headers() });
+  if (!res.ok) { if (res.status === 401) showGate(); return; }
+  const { accounts } = await res.json();
+  const wrap = $("table-wrap");
+  if (!accounts.length) { wrap.innerHTML = '<div class="empty">No accounts yet.</div>'; return; }
+  const rows = accounts.map(a => `
+    <tr>
+      <td>${escapeHtml(a.tenant)}</td>
+      <td>${escapeHtml(a.name || "—")}</td>
+      <td class="plan">${escapeHtml(a.plan)}</td>
+      <td>${new Date(a.created_at * 1000).toLocaleDateString()}</td>
+      <td>${a.used_today} / ${a.daily_limit}</td>
+      <td><button class="btn-danger" data-id="${a.id}">Revoke</button></td>
+    </tr>`).join("");
+  wrap.innerHTML = `<table>
+    <thead><tr><th>Tenant</th><th>Name</th><th>Plan</th><th>Created</th><th>Usage today</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  wrap.querySelectorAll("button[data-id]").forEach(btn => {
+    btn.addEventListener("click", () => revoke(btn.dataset.id));
+  });
+}
+
+async function revoke(id) {
+  if (!confirm("Revoke this account? Its API key stops working immediately.")) return;
+  const res = await fetch("/admin/api/accounts/" + id, { method: "DELETE", headers: headers() });
+  if (res.ok) loadAccounts();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+showGate();
+if (TOKEN) { tryUnlock(true); }
+</script>
+</body>
+</html>

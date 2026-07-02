@@ -11,7 +11,7 @@ architecture and phased roadmap.
 
 ## Status — Phases 0–5 complete
 
-The foundation is in place and tested (61 tests passing):
+The foundation is in place and tested (182 tests passing):
 
 - **Canonical schemas** — the `model.json` and `document.json` contracts that
   every parser and AI agent keys off ([src/pbicompass/schemas](src/pbicompass/schemas)).
@@ -42,6 +42,10 @@ The foundation is in place and tested (61 tests passing):
   quotas (HTTP 429 when exceeded). Off by default (self-hosted/local); enable
   with `PBICOMPASS_REQUIRE_AUTH=1`
   ([src/pbicompass/service/accounts.py](src/pbicompass/service/accounts.py)).
+- **Admin panel** — a token-gated `/admin` page to create, list, and revoke
+  API keys from the browser (no shell/CLI access needed); brute-force lockout
+  on the admin token itself. Enable with `PBICOMPASS_ADMIN_TOKEN`
+  ([src/pbicompass/service/admin.py](src/pbicompass/service/admin.py)).
 - **CLI** — `pbicompass parse`, `pbicompass generate`, `pbicompass serve`, and `pbicompass account`
   ([src/pbicompass/cli.py](src/pbicompass/cli.py)).
 - **Tests** — end-to-end + unit tests against synthetic fixtures
@@ -141,11 +145,22 @@ API: `POST /jobs` (multipart upload) → `GET /jobs/{id}` (status) →
 ### Hosted mode — API keys & multi-tenancy
 
 By default the service is open (the `public` tenant, no limits) — ideal for
-self-hosting. To run it as a multi-tenant SaaS, enable auth and mint keys:
+self-hosting. To run it as a multi-tenant SaaS, enable auth and mint keys —
+either from the browser via the admin panel:
+
+```bash
+export PBICOMPASS_ADMIN_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+export PBICOMPASS_REQUIRE_AUTH=1
+pbicompass serve
+# open http://127.0.0.1:8000/admin, paste the token, create an account
+```
+
+or from the CLI:
 
 ```bash
 export PBICOMPASS_DB=pbicompass.db
 pbicompass account create --tenant acme --name "Acme BI" --plan pro   # prints the API key once
+pbicompass account revoke --id <id>                                    # if a key leaks
 
 export PBICOMPASS_REQUIRE_AUTH=1
 pbicompass serve
@@ -155,8 +170,10 @@ Then every request needs `Authorization: Bearer <key>` (or `X-API-Key`). Jobs
 are isolated per tenant (another tenant's key gets `404`), and each plan has a
 daily quota (`free` 10, `pro` 200, `enterprise` 100k) that returns `429` when
 exhausted. `GET /me` reports the caller's plan and remaining quota. The web UI
-has an optional "API key" field (stored locally) for hosted use. Only account
-metadata and per-day usage **counts** are stored — never report metadata.
+has an optional "Account API Key" field (stored locally) for hosted use. Only
+account metadata and per-day usage **counts** are stored — never report
+metadata. The admin token is a single shared secret (not per-admin) — repeated
+wrong attempts from a client are locked out for 15 minutes after 8 failures.
 
 ### Run the tests
 
@@ -198,10 +215,12 @@ src/pbicompass/
     ingest.py     # upload -> SemanticModel (.pbix / zipped .pbip, zip-slip guard)
     worker.py     # queue-agnostic job worker (Celery-ready)
     accounts.py   # SQLite accounts, API keys, freemium quotas (stdlib)
-    app.py        # FastAPI routes (upload / status / download / auth / me)
+    admin.py      # admin-token auth + brute-force lockout (pure logic)
+    app.py        # FastAPI routes (upload / status / download / auth / me / admin)
     static/index.html   # single-page upload UI
+    static/admin.html   # token-gated admin panel (create/list/revoke accounts)
   cli.py
-tests/                  # 52 tests across parser, adapter, agents, renderers, service
+tests/                  # 182 tests across parser, adapter, agents, renderers, service
   fixtures/SampleSales/  # synthetic .pbip exercising every code path
 ```
 

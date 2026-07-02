@@ -22,6 +22,7 @@ from fastapi import (BackgroundTasks, FastAPI, File, Form, HTTPException, Query,
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from .accounts import AccountStore
+from .admin import AdminGuard, verify_admin_token
 from .jobs import JobStatus, JobStore
 from .sandbox import JobSandbox
 from .worker import process_job
@@ -64,11 +65,20 @@ def create_app(
     sandbox_root: str | None = None,
     account_store: AccountStore | None = None,
     require_auth: bool | None = None,
+    admin_token: str | None = None,
+    admin_guard: AdminGuard | None = None,
 ) -> FastAPI:
     app = FastAPI(title="PBICompass — Power BI Documentation Generator", version="0.1.0")
     if require_auth is None:
         require_auth = os.environ.get("PBICOMPASS_REQUIRE_AUTH", "").lower() in ("1", "true", "yes")
-    owns_account_store = account_store is None and require_auth
+    if admin_token is None:
+        admin_token = os.environ.get("PBICOMPASS_ADMIN_TOKEN") or None
+    admin_guard = admin_guard or AdminGuard()
+
+    # The account store backs both end-user auth (when require_auth is on)
+    # and the admin panel (which needs it to mint/list/revoke accounts even
+    # before auth is enforced, so an operator can set up keys first).
+    owns_account_store = account_store is None and (require_auth or bool(admin_token))
     if owns_account_store:
         account_store = AccountStore(os.environ.get("PBICOMPASS_DB", "pbicompass.db"))
 
@@ -76,11 +86,20 @@ def create_app(
     app.state.accounts = account_store
     app.state.require_auth = require_auth
     index_html = (_STATIC / "index.html").read_text(encoding="utf-8")
+    admin_html = (_STATIC / "admin.html").read_text(encoding="utf-8")
 
     if owns_account_store:
         @app.on_event("shutdown")
         def _close_account_store() -> None:
             account_store.close()
+
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
 
     def resolve_tenant(request: Request) -> tuple[str, str]:
         """Return (tenant, plan). Raises 401 when auth is required and absent."""
@@ -96,9 +115,83 @@ def create_app(
             )
         return "public", "free"
 
+    def _require_admin(request: Request) -> None:
+        """Gate an admin endpoint. 503 if the panel isn't configured at all,
+        429 if this client is locked out, 401 on a bad/missing token."""
+        if not admin_token:
+            raise HTTPException(
+                status_code=503,
+                detail="Admin panel is not configured. Set PBICOMPASS_ADMIN_TOKEN.",
+            )
+        client_id = request.client.host if request.client else "unknown"
+        if admin_guard.is_locked(client_id):
+            raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
+        supplied = request.headers.get("x-admin-token")
+        if not verify_admin_token(admin_token, supplied):
+            admin_guard.record_failure(client_id)
+            raise HTTPException(status_code=401, detail="Invalid admin token.")
+        admin_guard.record_success(client_id)
+
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return index_html
+
+    @app.get("/admin", response_class=HTMLResponse)
+    def admin_page() -> str:
+        return admin_html
+
+    @app.post("/admin/api/verify")
+    def admin_verify(request: Request) -> dict:
+        _require_admin(request)
+        return {"ok": True}
+
+    @app.get("/admin/api/accounts")
+    def admin_list_accounts(request: Request) -> dict:
+        _require_admin(request)
+        if not account_store:
+            raise HTTPException(status_code=503, detail="Accounts are not configured.")
+        accounts = []
+        for acct in account_store.list_accounts():
+            limit = account_store.limit_for(acct.plan)
+            used = account_store.usage_today(acct.tenant)
+            accounts.append({
+                "id": acct.id, "tenant": acct.tenant, "name": acct.name,
+                "plan": acct.plan, "created_at": acct.created_at,
+                "used_today": used, "daily_limit": limit,
+            })
+        return {"accounts": accounts}
+
+    @app.post("/admin/api/accounts")
+    async def admin_create_account(request: Request) -> dict:
+        _require_admin(request)
+        if not account_store:
+            raise HTTPException(status_code=503, detail="Accounts are not configured.")
+        body = await request.json()
+        tenant = (body.get("tenant") or "").strip()
+        if not tenant:
+            raise HTTPException(status_code=400, detail="'tenant' is required.")
+        name = (body.get("name") or "").strip()
+        plan = (body.get("plan") or "free").strip()
+        try:
+            acct, key = account_store.create_account(tenant, name=name, plan=plan)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "account": {
+                "id": acct.id, "tenant": acct.tenant, "name": acct.name,
+                "plan": acct.plan, "created_at": acct.created_at,
+            },
+            "api_key": key,
+        }
+
+    @app.delete("/admin/api/accounts/{account_id}")
+    def admin_revoke_account(account_id: str, request: Request) -> dict:
+        _require_admin(request)
+        if not account_store:
+            raise HTTPException(status_code=503, detail="Accounts are not configured.")
+        if not account_store.revoke_account(account_id):
+            raise HTTPException(status_code=404, detail="Account not found.")
+        return {"ok": True}
 
     @app.get("/healthz")
     def healthz() -> dict:

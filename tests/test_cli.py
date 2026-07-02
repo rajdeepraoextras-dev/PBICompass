@@ -191,5 +191,62 @@ class DocumentAllTest(unittest.TestCase):
             self.assertEqual(produced, expected)
 
 
+class AccountCommandTest(unittest.TestCase):
+    """``pbicompass account create/list/revoke`` — run in-process against a
+    temp SQLite file (mirrors what the CLI does against $PBICOMPASS_DB)."""
+
+    def _db(self, td: str) -> str:
+        return str(Path(td) / "accounts.db")
+
+    def test_create_then_list_then_revoke(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = self._db(td)
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                code = cli.main(["account", "create", "--tenant", "acme",
+                                 "--name", "Acme BI", "--plan", "pro", "--db", db])
+            self.assertEqual(code, 0)
+            created = buf.getvalue()
+            self.assertIn("tenant 'acme'", created)
+            key_match = re.search(r"(pbicompass_sk_\S+)", created)
+            self.assertIsNotNone(key_match)
+            key = key_match.group(1)
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cli.main(["account", "list", "--db", db])
+            listing = buf.getvalue()
+            self.assertIn("acme", listing)
+            self.assertIn("pro", listing)
+            account_id = listing.split()[0]
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                code = cli.main(["account", "revoke", "--id", account_id, "--db", db])
+            self.assertEqual(code, 0)
+            self.assertIn("Revoked", buf.getvalue())
+
+            # Close explicitly (not via addCleanup) so the file is unlocked
+            # before the TemporaryDirectory context tries to delete it —
+            # addCleanup callbacks run after this "with" block already exited.
+            from pbicompass.service.accounts import AccountStore
+            store = AccountStore(db)
+            try:
+                self.assertIsNone(store.verify(key))
+            finally:
+                store.close()
+
+    def test_revoke_unknown_id_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = self._db(td)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), \
+                 contextlib.redirect_stderr(buf):
+                code = cli.main(["account", "revoke", "--id", "nope", "--db", db])
+            self.assertEqual(code, 1)
+            self.assertIn("nope", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
