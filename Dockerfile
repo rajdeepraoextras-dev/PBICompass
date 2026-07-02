@@ -16,10 +16,13 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-# Web service deps. Add engines as needed:
-#   ".[service,agents]"  -> + Claude/Gemini (set ANTHROPIC_API_KEY / GEMINI_API_KEY)
-#   ".[service,pbix]"    -> + legacy .pbix parsing
-RUN pip install ".[service]"
+# Web service + both AI engines by default (the web UI lets a user pick
+# Claude or Gemini per job — ship both so that choice isn't silently a
+# no-op). Neither engine does anything without its API key set at runtime
+# (ANTHROPIC_API_KEY / GEMINI_API_KEY) or passed BYOK from the UI; the
+# offline engine still needs neither. Add ".[service,agents,pbix]" for
+# legacy .pbix parsing too.
+RUN pip install ".[service,agents]"
 
 # Run as a non-root user; /data holds the SQLite accounts DB (mount a volume here).
 RUN useradd --create-home app && mkdir -p /data && chown app /data

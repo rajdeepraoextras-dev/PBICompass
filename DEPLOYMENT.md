@@ -101,7 +101,7 @@ docker run -d --name caddy --restart unless-stopped \
 ```
 Caddy fetches and renews a Let's Encrypt certificate automatically. Done.
 
-> Prefer systemd over Docker? Install with `pip install ".[service]"` into a venv
+> Prefer systemd over Docker? Install with `pip install ".[service,agents]"` into a venv
 > and run `uvicorn pbicompass.service.app:app --host 127.0.0.1 --port 8000` under a
 > systemd unit, with Caddy/nginx in front. Same env vars apply.
 
