@@ -225,6 +225,26 @@ class ClientFactoryTest(unittest.TestCase):
             with self.assertRaises(ImportError):
                 get_client("cohere", model="claude-opus-4-8")
 
+    def test_cohere_skips_thinking_item_and_parses_text(self):
+        # Regression: reasoning models lead message.content with a 'thinking'
+        # item that has no .text — complete_json must skip to the 'text' item
+        # instead of blindly taking content[0].
+        try:
+            import cohere  # noqa: F401
+        except ImportError:
+            self.skipTest("cohere not installed")
+        from types import SimpleNamespace
+        from pbicompass.agents.llm import CohereClient
+
+        client = CohereClient(api_key="dummy")
+        thinking = SimpleNamespace(type="thinking", thinking="pondering...")
+        text = SimpleNamespace(type="text", text='{"ok": true}')
+        fake = SimpleNamespace(message=SimpleNamespace(content=[thinking, text]))
+        client._client = SimpleNamespace(chat=lambda **kw: fake)
+
+        out = client.complete_json("sys", "user", {"type": "object"})
+        self.assertEqual(out, {"ok": True})
+
     def test_gemini_schema_strips_additional_properties(self):
         from pbicompass.agents.llm import _gemini_schema
         schema = {

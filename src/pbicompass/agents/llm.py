@@ -152,15 +152,19 @@ class GeminiClient:
 class CohereClient:
     """Cohere-backed client using JSON structured output.
 
-    Defaults to Command A+ (``command-a-plus-05-2026``), Cohere's flagship. Reads
-    the API key from ``COHERE_API_KEY`` (or ``CO_API_KEY``) — never hardcode it.
-    Lazy-imports ``cohere`` so the rest of ``pbicompass`` works without the
-    dependency. Uses the v2 chat API with ``response_format={"type": "json_object",
-    "schema": ...}``; Cohere accepts ``additionalProperties``, so the schemas pass
-    through unmodified.
+    Defaults to Command A (``command-a-03-2025``), Cohere's text-only flagship —
+    it returns a plain answer without the reasoning/thinking token spend of the
+    ``command-a-plus``/``command-a-reasoning`` models, so it's markedly faster and
+    cheaper for schema-constrained JSON. (Reasoning models still work: their
+    content list leads with a ``thinking`` item, and ``complete_json`` skips past
+    it to the ``text`` item.) Reads the API key from ``COHERE_API_KEY`` (or
+    ``CO_API_KEY``) — never hardcode it. Lazy-imports ``cohere`` so the rest of
+    ``pbicompass`` works without the dependency. Uses the v2 chat API with
+    ``response_format={"type": "json_object", "schema": ...}``; Cohere accepts
+    ``additionalProperties``, so the schemas pass through unmodified.
     """
 
-    def __init__(self, model: str = "command-a-plus-05-2026", *, api_key: Optional[str] = None,
+    def __init__(self, model: str = "command-a-03-2025", *, api_key: Optional[str] = None,
                  max_tokens: int = 16000, timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> None:
         try:
             import cohere  # noqa: PLC0415 (intentional lazy import)
@@ -189,8 +193,15 @@ class CohereClient:
             ],
             response_format={"type": "json_object", "schema": schema},
         )
-        content = getattr(response.message, "content", None)
-        text = content[0].text if content else None
+        # message.content is a list of typed items; reasoning models lead with a
+        # 'thinking' item, so pick the 'text' one (mirrors the Anthropic client)
+        # rather than blindly taking content[0].
+        content = getattr(response.message, "content", None) or []
+        text = next(
+            (item.text for item in content
+             if getattr(item, "type", None) == "text" and getattr(item, "text", None)),
+            None,
+        )
         if not text:
             raise RuntimeError("Cohere returned no text content.")
         return json.loads(text)
@@ -199,7 +210,7 @@ class CohereClient:
 _DEFAULT_MODEL = {
     "anthropic": "claude-opus-4-8",
     "gemini": "gemini-3.5-flash",
-    "cohere": "command-a-plus-05-2026",
+    "cohere": "command-a-03-2025",
 }
 
 
