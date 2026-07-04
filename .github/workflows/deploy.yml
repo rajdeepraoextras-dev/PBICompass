@@ -1,0 +1,32 @@
+name: Deploy to production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/pbicompass
+            git pull origin main
+            sudo docker build -t pbicompass .
+            sudo docker rm -f pbicompass || true
+            sudo docker run -d --name pbicompass \
+              -p 80:8000 \
+              -v pbicompass-data:/data \
+              --tmpfs /tmp/pbicompass:rw,size=512m \
+              --env-file ~/pbicompass.env \
+              --restart unless-stopped \
+              pbicompass
+            sleep 3
+            curl -sf http://localhost/healthz

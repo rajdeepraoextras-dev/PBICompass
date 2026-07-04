@@ -145,7 +145,20 @@ docker run -d --name pbicompass \
   pbicompass
 ```
 
-Put **Caddy** in front for automatic HTTPS (one file, `Caddyfile`):
+**No domain yet?** DuckDNS gives a free subdomain (`yourname.duckdns.org`)
+in about 2 minutes at duckdns.org (sign in with GitHub/Google, add a
+subdomain, point its "current ip" at your VM's external IP) — Caddy's
+auto-HTTPS works with it identically to a paid domain.
+
+Put **Caddy** in front for automatic HTTPS. Quickest option, no config file
+needed (Caddy's "zero-config" mode) — good enough for most deployments:
+```bash
+docker run -d --name caddy --restart unless-stopped \
+  --network host \
+  caddy caddy reverse-proxy --from yourdomain.com --to localhost:8000
+```
+
+Or with a `Caddyfile` if you want more control (multiple sites, custom headers, etc.):
 ```
 docs.yourdomain.com {
     reverse_proxy 127.0.0.1:8000
@@ -157,7 +170,14 @@ docker run -d --name caddy --restart unless-stopped \
   -v $PWD/Caddyfile:/etc/caddy/Caddyfile \
   -v caddy-data:/data caddy
 ```
-Caddy fetches and renews a Let's Encrypt certificate automatically. Done.
+Either way Caddy fetches and renews a Let's Encrypt certificate automatically.
+
+> **Port conflict gotcha:** Caddy (run with `--network host`) binds host ports
+> 80 and 443 directly. If `pbicompass` is *also* bound to host port 80 (e.g.
+> from testing over plain HTTP before you had a domain), Caddy crash-loops
+> with `bind: address already in use`. Make sure `pbicompass` is bound to
+> `127.0.0.1:8000` only (as in the `docker run` above) before starting Caddy
+> — Caddy should be the only thing publicly bound to 80/443.
 
 > Prefer systemd over Docker? Install with `pip install ".[service,agents]"` into a venv
 > and run `uvicorn pbicompass.service.app:app --host 127.0.0.1 --port 8000` under a
