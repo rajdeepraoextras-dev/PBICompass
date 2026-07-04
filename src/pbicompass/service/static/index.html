@@ -37,7 +37,6 @@
     --success: #34d399;
     --danger: #fb7185;
 
-    --primary-glow: 0 0 0 1px rgba(242,200,17,.45), 0 16px 40px -12px rgba(180,140,10,.55);
     --shadow: 0 30px 70px -28px rgba(0, 0, 0, .85);
     --r: 18px;
   }
@@ -61,11 +60,7 @@
   /* ===================== ANIMATED BACKGROUND ===================== */
   .bg {
     position: fixed; inset: 0; z-index: -3;
-    background:
-      radial-gradient(1200px 700px at 80% -10%, rgba(242,200,17,.16), transparent 60%),
-      radial-gradient(900px 600px at 0% 10%, rgba(245,166,35,.11), transparent 55%),
-      radial-gradient(900px 800px at 50% 110%, rgba(201,151,27,.10), transparent 55%),
-      var(--bg);
+    background: var(--bg);
   }
   .grid-overlay {
     position: fixed; inset: -2px; z-index: -2; pointer-events: none;
@@ -102,7 +97,7 @@
   .brand { display: flex; align-items: center; gap: 11px; font-weight: 800; font-size: 1.16rem; letter-spacing: -.02em; }
   .logo {
     width: 34px; height: 34px; border-radius: 10px; position: relative; flex: none;
-    background: var(--grad); box-shadow: 0 8px 22px -6px rgba(242,200,17,.65);
+    background: var(--grad);
     display: grid; place-items: center;
   }
   .logo::before {
@@ -119,9 +114,9 @@
   .nav-cta {
     margin-left: 8px; padding: 9px 18px !important; color: var(--ink) !important;
     background: var(--grad); border-radius: 10px !important; font-weight: 700 !important;
-    box-shadow: 0 10px 24px -10px rgba(201,151,27,.7); transition: transform .2s, box-shadow .2s !important;
+    transition: transform .2s !important;
   }
-  .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 14px 30px -10px rgba(201,151,27,.85); background: var(--grad) !important; }
+  .nav-cta:hover { transform: translateY(-1px); background: var(--grad) !important; }
   .menu-toggle {
     display: none; width: 40px; height: 40px; place-items: center; flex: none;
     background: var(--glass); border: 1px solid var(--border); border-radius: 10px;
@@ -133,7 +128,6 @@
   .scroll-progress {
     position: fixed; top: 0; left: 0; height: 2px; width: 0%;
     background: var(--grad); z-index: 60; pointer-events: none;
-    box-shadow: 0 0 12px rgba(242,200,17,.5);
   }
 
   /* anchored sections land below the sticky nav instead of underneath it */
@@ -163,8 +157,7 @@
     font-size: .8rem; font-weight: 500; color: var(--muted);
     backdrop-filter: blur(8px); margin-bottom: 26px;
   }
-  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 0 rgba(52,211,153,.6); animation: pulse 2s infinite; }
-  @keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(52,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); } }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
   .pill b { color: var(--text); font-weight: 600; }
 
   h1.hero-title {
@@ -184,16 +177,16 @@
   .btn {
     display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
     font-family: inherit; font-weight: 600; font-size: .98rem; border: none;
-    padding: 14px 26px; border-radius: 13px; transition: transform .2s, box-shadow .2s, background .2s;
+    padding: 14px 26px; border-radius: 13px; transition: transform .2s, background .2s;
   }
-  .btn-primary { color: var(--ink); font-weight: 700; background: var(--grad); box-shadow: var(--primary-glow); position: relative; overflow: hidden; }
+  .btn-primary { color: var(--ink); font-weight: 700; background: var(--grad); position: relative; overflow: hidden; }
   .btn-primary::after {
     content: ""; position: absolute; inset: 0; pointer-events: none;
     background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.55) 48%, transparent 66%);
     transform: translateX(-120%); transition: transform .55s ease;
   }
   .btn-primary:hover::after { transform: translateX(120%); }
-  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px rgba(242,200,17,.55), 0 22px 50px -14px rgba(201,151,27,.8); }
+  .btn-primary:hover { transform: translateY(-2px); }
   .btn-primary svg { transition: transform .2s; position: relative; }
   .btn-primary:hover svg { transform: translateX(4px); }
   .btn-ghost { color: var(--text); background: var(--glass); border: 1px solid var(--border); }
@@ -236,14 +229,9 @@
   .card {
     position: relative; padding: 30px; border-radius: 20px; overflow: hidden;
     background: var(--panel); border: 1px solid var(--border);
-    backdrop-filter: blur(12px); transition: transform .3s, border-color .3s, box-shadow .3s;
+    backdrop-filter: blur(12px); transition: transform .3s, border-color .3s;
   }
-  .card::before {
-    content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity .35s; pointer-events: none;
-    background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(242,200,17,.16), transparent 42%);
-  }
-  .card:hover { transform: translateY(-6px) scale(1.012); border-color: var(--border-strong); box-shadow: 0 30px 60px -30px rgba(201,151,27,.5); }
-  .card:hover::before { opacity: 1; }
+  .card:hover { transform: translateY(-6px) scale(1.012); border-color: var(--border-strong); }
   .feat-ico {
     width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; margin-bottom: 20px;
     background: linear-gradient(150deg, rgba(242,200,17,.24), rgba(201,151,27,.14));
@@ -259,9 +247,9 @@
   /* ===================== HOW IT WORKS ===================== */
   .how { padding: 30px 0 100px; }
   .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; position: relative; }
-  .step { position: relative; padding: 28px 22px; border-radius: 18px; background: var(--panel); border: 1px solid var(--border); transition: transform .3s, border-color .3s, box-shadow .3s; }
-  .step:hover { transform: translateY(-4px); border-color: var(--border-strong); box-shadow: 0 22px 44px -26px rgba(201,151,27,.45); }
-  .step .n { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-weight: 800; font-size: 1.05rem; color: var(--ink); background: var(--grad); margin-bottom: 18px; box-shadow: 0 10px 24px -10px rgba(201,151,27,.75); }
+  .step { position: relative; padding: 28px 22px; border-radius: 18px; background: var(--panel); border: 1px solid var(--border); transition: transform .3s, border-color .3s; }
+  .step:hover { transform: translateY(-4px); border-color: var(--border-strong); }
+  .step .n { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-weight: 800; font-size: 1.05rem; color: var(--ink); background: var(--grad); margin-bottom: 18px; }
   .step h4 { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
   .step p { color: var(--muted); font-size: .88rem; }
   .step .arrow { position: absolute; right: -13px; top: 42px; color: var(--violet); z-index: 2; }
@@ -275,15 +263,6 @@
     border: 1px solid var(--border-strong);
     box-shadow: var(--shadow); overflow: hidden;
   }
-  .app-glow {
-    position: absolute; inset: 0; pointer-events: none; border-radius: 26px; padding: 1px;
-    background: conic-gradient(from var(--ang, 0deg), rgba(242,200,17,.75), transparent 22%, transparent 55%, rgba(201,151,27,.55), transparent 78%, rgba(242,200,17,.75));
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor; mask-composite: exclude;
-    animation: rotateGlow 7s linear infinite;
-  }
-  @keyframes rotateGlow { to { --ang: 360deg; } }
-  @property --ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
   .app-head { padding: 34px 40px 0; text-align: center; }
   .app-head .pill { margin-bottom: 16px; }
   .app-head h3 { font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 8px; }
@@ -299,7 +278,7 @@
   }
   .tab-btn .tn { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: .72rem; font-weight: 700; background: var(--glass); color: var(--dim); transition: all .2s; }
   .tab-btn:hover { color: var(--text); }
-  .tab-btn.active { color: var(--ink); background: var(--grad); box-shadow: 0 10px 24px -12px rgba(201,151,27,.85); }
+  .tab-btn.active { color: var(--ink); background: var(--grad); }
   .tab-btn.active .tn { background: rgba(0,0,0,.16); color: var(--ink); }
   @media (max-width: 600px) { .tab-btn span.txt { display: none; } }
 
@@ -342,12 +321,11 @@
     width: 100%; padding: 12px 15px; background: rgba(5,4,10,.7);
     border: 1px solid var(--border); border-radius: 11px; color: var(--text);
     font-family: inherit; font-size: .9rem; outline: none;
-    transition: border-color .2s, box-shadow .2s, background .2s;
+    transition: border-color .2s, background .2s;
   }
   input::placeholder, textarea::placeholder { color: #5a5a6a; }
   input[type=text]:focus, select:focus, textarea:focus {
     border-color: var(--violet); background: rgba(5,4,10,.95);
-    box-shadow: 0 0 0 3px rgba(242,200,17,.18);
   }
   select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%23b4b4c4' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 38px; }
   textarea { resize: vertical; min-height: 92px; }
@@ -357,9 +335,7 @@
     border-radius: 16px; padding: 34px 24px; text-align: center; cursor: pointer;
     transition: border-color .25s, background .25s, transform .15s; position: relative; overflow: hidden;
   }
-  .file-dropzone::before { content: ""; position: absolute; inset: 0; background: radial-gradient(300px circle at 50% 0%, rgba(242,200,17,.12), transparent 60%); opacity: 0; transition: opacity .3s; }
   .file-dropzone:hover, .file-dropzone.drag { border-color: var(--violet); background: rgba(242,200,17,.05); }
-  .file-dropzone:hover::before, .file-dropzone.drag::before { opacity: 1; }
   .file-dropzone .dz-ico { width: 54px; height: 54px; border-radius: 15px; margin: 0 auto 14px; display: grid; place-items: center; background: linear-gradient(150deg, rgba(242,200,17,.22), rgba(201,151,27,.13)); border: 1px solid rgba(242,200,17,.32); color: #ffe066; }
   .file-dropzone .dz-ico svg { width: 26px; height: 26px; }
   .file-dropzone .dz-main { font-size: .98rem; font-weight: 600; }
@@ -372,7 +348,7 @@
   button[type=submit] {
     width: 100%; padding: 16px; background: var(--grad); color: var(--ink); border: none;
     border-radius: 13px; font-family: inherit; font-size: 1.02rem; font-weight: 700; cursor: pointer;
-    transition: transform .2s, box-shadow .2s; box-shadow: var(--primary-glow); margin-top: 14px;
+    transition: transform .2s; margin-top: 14px;
     display: flex; align-items: center; justify-content: center; gap: 10px;
     position: relative; overflow: hidden;
   }
@@ -382,7 +358,7 @@
     transform: translateX(-120%); transition: transform .55s ease;
   }
   button[type=submit]:hover:not(:disabled)::after { transform: translateX(120%); }
-  button[type=submit]:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 0 0 1px rgba(242,200,17,.55), 0 22px 50px -14px rgba(201,151,27,.85); }
+  button[type=submit]:hover:not(:disabled) { transform: translateY(-2px); }
   button[type=submit]:disabled { opacity: .55; cursor: not-allowed; }
   button[type=submit] .spin { width: 17px; height: 17px; border: 2px solid rgba(23,18,4,.3); border-top-color: var(--ink); border-radius: 50%; animation: spin .7s linear infinite; display: none; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -647,7 +623,6 @@
     </div>
 
     <div class="app-shell reveal d1" id="container">
-      <div class="app-glow"></div>
       <div class="app-head">
         <span class="pill"><span class="dot"></span>Secure sandbox · shredded after render</span>
         <h3>Power BI Knowledge Platform</h3>
@@ -864,14 +839,6 @@ navLinks.querySelectorAll("a").forEach(a => a.addEventListener("click", () => se
   addEventListener("resize", resize); resize(); tick();
 })();
 
-// feature card cursor spotlight
-document.querySelectorAll(".card").forEach(card => {
-  card.addEventListener("pointermove", e => {
-    const r = card.getBoundingClientRect();
-    card.style.setProperty("--mx", (e.clientX - r.left) + "px");
-    card.style.setProperty("--my", (e.clientY - r.top) + "px");
-  });
-});
 
 // scroll reveal
 const io = new IntersectionObserver((entries) => {
