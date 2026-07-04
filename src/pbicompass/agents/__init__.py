@@ -7,6 +7,6 @@ so the whole pipeline runs and is testable without any API key. Provide an
 """
 
 from .orchestrator import generate_document
-from .llm import LLMClient, AnthropicClient, GeminiClient, get_client
+from .llm import LLMClient, AnthropicClient, GeminiClient, CohereClient, get_client
 
-__all__ = ["generate_document", "LLMClient", "AnthropicClient", "GeminiClient", "get_client"]
+__all__ = ["generate_document", "LLMClient", "AnthropicClient", "GeminiClient", "CohereClient", "get_client"]

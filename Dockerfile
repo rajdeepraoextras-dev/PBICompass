@@ -16,12 +16,12 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-# Web service + both AI engines by default (the web UI lets a user pick
-# Claude or Gemini per job — ship both so that choice isn't silently a
-# no-op). Neither engine does anything without its API key set at runtime
-# (ANTHROPIC_API_KEY / GEMINI_API_KEY) or passed BYOK from the UI; the
-# offline engine still needs neither. Add ".[service,agents,pbix]" for
-# legacy .pbix parsing too.
+# Web service + all AI engines by default (the web UI lets a user pick
+# Claude, Gemini, or Cohere per job — ship all so that choice isn't silently
+# a no-op). No engine does anything without its API key set at runtime
+# (ANTHROPIC_API_KEY / GEMINI_API_KEY / COHERE_API_KEY) or passed BYOK from
+# the UI; the offline engine still needs neither. Add ".[service,agents,pbix]"
+# for legacy .pbix parsing too.
 RUN pip install ".[service,agents]"
 
 # Run as a non-root user; /data holds the SQLite accounts DB (mount a volume here).

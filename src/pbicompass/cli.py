@@ -84,10 +84,10 @@ def main(argv: list[str] | None = None) -> int:
     p_gen.add_argument("path", type=Path, help=".pbip file, project directory, or .pbix")
     p_gen.add_argument("-o", "--out", type=Path, help="Output path (.md or .json by extension)")
     p_gen.add_argument("--provider", default="none",
-                       help="LLM provider: 'none' (deterministic, default), 'anthropic', or 'gemini'")
+                       help="LLM provider: 'none' (deterministic, default), 'anthropic', 'gemini', or 'cohere'")
     p_gen.add_argument("--model", default="claude-opus-4-8", help="Model id for the LLM provider")
     p_gen.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"],
-                       help="Anthropic thinking effort (quality vs. latency). Ignored for --provider gemini/none.")
+                       help="Anthropic thinking effort (quality vs. latency). Ignored for --provider gemini/cohere/none.")
     p_gen.add_argument("--document", default="technical", choices=[*DOCUMENT_TYPES, "all"],
                        help="Document type to generate (default: technical — the original documentation). "
                             "'all' generates every document type from a single parse.")

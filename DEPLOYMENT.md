@@ -35,6 +35,7 @@ That's it. No managed database, no message broker, no third-party auth provider.
 | `PBICOMPASS_ADMIN_TOKEN` | _(off)_ | Enables the `/admin` panel (create/list/revoke accounts from the browser). Unset = panel disabled. |
 | `ANTHROPIC_API_KEY` | — | Enables the Claude engine (install the `agents` extra too). |
 | `GEMINI_API_KEY` | — | Enables the Gemini engine (install the `agents` extra too; `GOOGLE_API_KEY` also works). |
+| `COHERE_API_KEY` | — | Enables the Cohere engine (install the `agents` extra too; `CO_API_KEY` also works). |
 
 ---
 

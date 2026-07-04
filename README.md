@@ -106,6 +106,7 @@ PYTHONPATH=src python -m pbicompass generate path/to/Project.pbip -o report.docu
 # AI-written prose (needs pip install -e ".[agents]" and the provider's key in the environment):
 PYTHONPATH=src python -m pbicompass generate path/to/Project.pbip --provider anthropic -o report.md   # ANTHROPIC_API_KEY
 PYTHONPATH=src python -m pbicompass generate path/to/Project.pbip --provider gemini    -o report.md   # GEMINI_API_KEY
+PYTHONPATH=src python -m pbicompass generate path/to/Project.pbip --provider cohere    -o report.md   # COHERE_API_KEY
 ```
 
 Output format is inferred from the `-o` extension (or forced with `--format`):
@@ -202,7 +203,7 @@ src/pbicompass/
   agents/
     io.py         # agent prompts + JSON-schema output contracts
     deterministic.py    # offline rule-based generators (DAX, model, business)
-    llm.py        # LLMClient protocol + Anthropic (Claude) client
+    llm.py        # LLMClient protocol + Anthropic (Claude) / Gemini / Cohere clients
     orchestrator.py     # model.json -> document.json (LLM or deterministic)
   render/
     markdown.py   # document.json -> Markdown

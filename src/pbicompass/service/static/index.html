@@ -717,11 +717,12 @@
                   <option value="none">Offline Engine (Deterministic Fallback)</option>
                   <option value="anthropic">Claude (Opus 4.8 / Thinking)</option>
                   <option value="gemini">Gemini (3.5 Flash)</option>
+                  <option value="cohere">Cohere (Command A+)</option>
                 </select>
               </div>
               <div class="form-group" id="provider-key-row">
-                <label>Engine API Key <small>(your Claude/Gemini key — used for this job only, never stored)</small></label>
-                <input type="text" id="provider-apikey" autocomplete="off" placeholder="Enter Claude/Gemini API key...">
+                <label>Engine API Key <small>(your Claude/Gemini/Cohere key — used for this job only, never stored)</small></label>
+                <input type="text" id="provider-apikey" autocomplete="off" placeholder="Enter Claude/Gemini/Cohere API key...">
               </div>
             </div>
 
@@ -967,6 +968,7 @@ $("select-all-docs").addEventListener("click", () => {
 const ESTIMATED_SECONDS = {
   none: 4,
   gemini: 25,
+  cohere: 30,
   anthropic: { low: 18, medium: 35, high: 60, xhigh: 100, max: 150 },
 };
 let progressTimer = null;

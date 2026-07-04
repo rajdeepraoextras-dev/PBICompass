@@ -20,7 +20,7 @@ dependencies = []
 # pbix: legacy .pbix semantic-model extraction. pbixray currently needs
 # Python <= 3.13 (its xpress9 decompressor has no 3.14 wheel yet).
 pbix = ["pbixray"]
-agents = ["anthropic", "google-genai"]  # Claude / Gemini providers (offline engine needs nothing)
+agents = ["anthropic", "google-genai", "cohere"]  # Claude / Gemini / Cohere providers (offline engine needs nothing)
 service = ["fastapi", "uvicorn", "python-multipart"]  # async web service + upload UI
 docs = ["jinja2"]
 dev = ["pytest", "httpx"]  # httpx backs FastAPI's TestClient

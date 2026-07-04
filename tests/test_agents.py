@@ -215,6 +215,16 @@ class ClientFactoryTest(unittest.TestCase):
             with self.assertRaises(ImportError):
                 get_client("gemini", model="claude-opus-4-8")
 
+    def test_cohere_routes_and_needs_package(self):
+        from pbicompass.agents.llm import get_client
+        try:
+            import cohere  # noqa: F401
+            self.skipTest("cohere installed; ImportError path not exercised")
+        except ImportError:
+            # Routes to Cohere (not ValueError) even when a Claude model id is passed.
+            with self.assertRaises(ImportError):
+                get_client("cohere", model="claude-opus-4-8")
+
     def test_gemini_schema_strips_additional_properties(self):
         from pbicompass.agents.llm import _gemini_schema
         schema = {

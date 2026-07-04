@@ -139,23 +139,24 @@ let's use that.
 
 ---
 
-## STAGE 2 — Turn on the Claude / Gemini AI engines (optional)
+## STAGE 2 — Turn on the Claude / Gemini / Cohere AI engines (optional)
 
 By default the **Offline** engine writes the whole document with templated,
 deterministic prose (no API key, free). The Docker image already ships with
-both the Claude and Gemini client libraries installed — you only need to add
-an API key for whichever engine you want:
+the Claude, Gemini, and Cohere client libraries installed — you only need to
+add an API key for whichever engine you want:
 
 1. **Get an API key:**
    - Claude: https://console.anthropic.com → sign up → add billing →
      **API Keys** → create one (looks like `sk-ant-...`).
    - Gemini: https://aistudio.google.com/apikey → create one (looks like
      `AQ....`).
-   Both are paid services billed per use.
+   - Cohere: https://dashboard.cohere.com/api-keys → create one.
+   All are paid services billed per use.
 2. **Add it to Render:** dashboard → your service → **Environment** tab →
-   **Add Environment Variable** → Key: `ANTHROPIC_API_KEY` (for Claude) or
-   `GEMINI_API_KEY` (for Gemini), Value: your key → **Save Changes** (Render
-   redeploys).
+   **Add Environment Variable** → Key: `ANTHROPIC_API_KEY` (for Claude),
+   `GEMINI_API_KEY` (for Gemini), or `COHERE_API_KEY` (for Cohere), Value:
+   your key → **Save Changes** (Render redeploys).
 3. In the web UI, choose the matching engine from the **Documentation
    Engine** dropdown. (If a key is missing or wrong, the job falls back to
    Offline and tells you why in the "fallback notes" — it can't break the

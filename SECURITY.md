@@ -41,7 +41,7 @@ report a problem.
   never touch a physical disk (see `DEPLOYMENT.md`).
 - Enable `PBICOMPASS_REQUIRE_AUTH=1` before exposing an instance beyond a private
   smoke test — the open `public` tenant has no rate limit.
-- Treat `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `PBICOMPASS_ADMIN_TOKEN` like
+- Treat `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `COHERE_API_KEY` / `PBICOMPASS_ADMIN_TOKEN` like
   any other secret: set them as platform environment variables, never commit
   them (see `.env.example` and `.gitignore`), and use a long random value for
   the admin token specifically (it has no username/rate-limit-per-identity to

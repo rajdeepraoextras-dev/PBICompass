@@ -149,7 +149,58 @@ class GeminiClient:
         return json.loads(text)
 
 
-_DEFAULT_MODEL = {"anthropic": "claude-opus-4-8", "gemini": "gemini-3.5-flash"}
+class CohereClient:
+    """Cohere-backed client using JSON structured output.
+
+    Defaults to Command A+ (``command-a-plus-05-2026``), Cohere's flagship. Reads
+    the API key from ``COHERE_API_KEY`` (or ``CO_API_KEY``) — never hardcode it.
+    Lazy-imports ``cohere`` so the rest of ``pbicompass`` works without the
+    dependency. Uses the v2 chat API with ``response_format={"type": "json_object",
+    "schema": ...}``; Cohere accepts ``additionalProperties``, so the schemas pass
+    through unmodified.
+    """
+
+    def __init__(self, model: str = "command-a-plus-05-2026", *, api_key: Optional[str] = None,
+                 max_tokens: int = 16000, timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> None:
+        try:
+            import cohere  # noqa: PLC0415 (intentional lazy import)
+        except ImportError as exc:  # pragma: no cover - depends on environment
+            raise ImportError(
+                "The 'cohere' package is required for the Cohere provider. "
+                "Install it with: pip install -e \".[agents]\""
+            ) from exc
+        self._cohere = cohere
+        key = api_key or os.environ.get("COHERE_API_KEY") or os.environ.get("CO_API_KEY")
+        # ClientV2 timeout is in seconds.
+        self._client = cohere.ClientV2(api_key=key, timeout=timeout)
+        self.model = model
+        self.max_tokens = max_tokens
+        self.timeout = timeout
+
+    def complete_json(self, system: str, user: str, schema: dict) -> dict:
+        response = self._client.chat(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                # Cohere's json_object mode wants the request to explicitly ask
+                # for JSON, on top of the enforced schema.
+                {"role": "user", "content": f"{user}\n\nRespond with a single JSON object."},
+            ],
+            response_format={"type": "json_object", "schema": schema},
+        )
+        content = getattr(response.message, "content", None)
+        text = content[0].text if content else None
+        if not text:
+            raise RuntimeError("Cohere returned no text content.")
+        return json.loads(text)
+
+
+_DEFAULT_MODEL = {
+    "anthropic": "claude-opus-4-8",
+    "gemini": "gemini-3.5-flash",
+    "cohere": "command-a-plus-05-2026",
+}
 
 
 def get_client(provider: Optional[str], **kwargs: Any) -> Optional[LLMClient]:
@@ -158,6 +209,7 @@ def get_client(provider: Optional[str], **kwargs: Any) -> Optional[LLMClient]:
     ``None`` / ``"none"`` / ``"offline"`` -> deterministic pipeline (no client).
     ``"anthropic"`` / ``"claude"``        -> :class:`AnthropicClient`.
     ``"gemini"`` / ``"google"``           -> :class:`GeminiClient`.
+    ``"cohere"`` / ``"command"``          -> :class:`CohereClient`.
     """
     if provider in (None, "none", "offline", "deterministic"):
         return None
@@ -170,4 +222,8 @@ def get_client(provider: Optional[str], **kwargs: Any) -> Optional[LLMClient]:
         if not model or "gemini" not in model:
             model = _DEFAULT_MODEL["gemini"]
         return GeminiClient(model=model, **kwargs)
+    if provider in ("cohere", "command"):
+        if not model or "command" not in model:
+            model = _DEFAULT_MODEL["cohere"]
+        return CohereClient(model=model, **kwargs)
     raise ValueError(f"Unknown LLM provider: {provider!r}")
