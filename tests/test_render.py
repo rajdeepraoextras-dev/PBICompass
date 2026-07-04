@@ -48,7 +48,8 @@ _SECTION_TITLES = [
     "8. Report Pages",
     "10. Row-Level Security",
     "15. Known Issues",
-    "17. Appendix",
+    "16. Model Health",
+    "18. Appendix",
 ]
 
 

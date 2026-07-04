@@ -11,8 +11,11 @@ orphaned-measure audit in particular is a set difference, never a guess.
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from typing import Optional
+
+from ...schemas.audit_document import Recommendation
 
 from ...schemas.document import (
     Document,
@@ -28,7 +31,7 @@ from ...schemas.document import (
     VisualExplainer,
 )
 from ...schemas.model import SemanticModel
-from .. import io
+from .. import audit_rules, io
 from ..deterministic import (
     business_analyst_deterministic,
     data_modeler_deterministic,
@@ -45,7 +48,7 @@ from ..report_facts import (
     slicers,
     table_priority_key,
 )
-from ..usage import measure_usage, used_measure_names
+from ..usage import measure_dependencies, measure_usage, used_measure_names
 from .base import Warn, call_llm
 
 _call = call_llm  # local alias — keeps the body below byte-for-byte identical
@@ -146,9 +149,11 @@ def _column_descriptions(model: SemanticModel, client, warn) -> dict[tuple[str, 
             else:
                 c_lower = c.name.lower()
                 if c_lower.endswith("id") or c_lower.endswith("key"):
-                    desc = f"Unique key identifier linking {t.name} records."
+                    desc = f"Key identifier; used to join {t.name} to related tables."
                 else:
-                    desc = f"Stores the {c.name} attribute for the {t.name} table."
+                    # Honest default — never fabricate business intent (the LLM
+                    # pass below overwrites this when it can actually infer one).
+                    desc = "Unknown — requires business confirmation."
             descriptions[(t.name, c.name)] = desc
 
     if client is not None:
@@ -224,16 +229,25 @@ def _measure_catalog(model: SemanticModel, client, warn) -> MeasureCatalog:
                 merged.update({t["name"]: t for t in data.get("translations", [])})
         translations = merged or None
 
+    measure_names = {m.name for m in measures}
     for entry, measure in zip(entries, measures):
         t = translations.get(entry.name) if translations else None
         if t:
             entry.plain_english = t.get("plain_english", "")
+            entry.calculation_logic = t.get("calculation_logic", "")
             entry.caveats = t.get("caveats", "")
             entry.category = t.get("category", "")
+            entry.confidence = t.get("confidence", "")
         else:
             entry.plain_english, entry.caveats, entry.category = translate_dax(
                 measure.name, measure.expression, measure.format_string
             )
+            # The deterministic line is derived from the DAX, so it doubles as
+            # the calculation logic; the business meaning behind it is
+            # unverified, hence the explicit Low confidence.
+            entry.calculation_logic = entry.plain_english
+            entry.confidence = "Low"
+        entry.dependencies = measure_dependencies(measure.expression, measure_names)
         entry.used_on = usage.get(entry.name, [])
 
         # Cross-check measure table attribution
@@ -324,7 +338,7 @@ def _infer_requirements(model: SemanticModel) -> list[dict[str, str]]:
             continue
         requirements.append({
             "id": f"REQ-{req_id:02d}",
-            "requirement": f"Provide analytical view and tracking for report page '{p.display_name}'.",
+            "requirement": f"Provide the '{p.display_name}' analysis view (inferred from the page; confirm scope with the business owner).",
             "source": f"Page: {p.display_name}",
             "priority": "TBC",
             "status": "Draft"
@@ -343,7 +357,7 @@ def _infer_requirements(model: SemanticModel) -> list[dict[str, str]]:
                     continue
                 requirements.append({
                     "id": f"REQ-{req_id:02d}",
-                    "requirement": f"Visualize and monitor '{v.title}' metric distribution and insights.",
+                    "requirement": f"Report '{v.title}' (inferred from the visual; confirm with the business owner).",
                     "source": f"Visual: {v.title} ({p.display_name})",
                     "priority": "TBC",
                     "status": "Draft"
@@ -359,7 +373,7 @@ def _infer_requirements(model: SemanticModel) -> list[dict[str, str]]:
         for m in model.all_measures()[:5]:
             requirements.append({
                 "id": f"REQ-{req_id:02d}",
-                "requirement": f"Calculate and track '{m.name}' to support business performance monitoring.",
+                "requirement": f"Calculate '{m.name}' (inferred from the measure; confirm with the business owner).",
                 "source": f"Measure: {m.name}",
                 "priority": "TBC",
                 "status": "Draft"
@@ -390,16 +404,25 @@ def _check_typo(name: str) -> str:
     return ""
 
 
+def _first_sentence(text: str) -> str:
+    """First sentence of a description — the glossary references the Measure
+    Catalog rather than repeating its full definition."""
+    text = (text or "").strip()
+    m = re.match(r"(.+?[.!?])(?:\s|$)", text)
+    return m.group(1) if m else text
+
+
 def _infer_glossary(model: SemanticModel, measure_catalog: MeasureCatalog, col_descs: dict[tuple[str, str], str]) -> list[dict[str, str]]:
     entries = []
 
-    # 1. Add all measures
+    # 1. Add all measures (first sentence only — full definition lives in the
+    # Measure Catalog; the glossary should not repeat it)
     for m in measure_catalog.measures:
         typo_flag = _check_typo(m.name)
         entries.append({
             "term": m.name,
             "type": "Measure",
-            "definition": m.plain_english or f"Custom measure evaluating metric '{m.name}'.",
+            "definition": _first_sentence(m.plain_english) or "See the Measure Catalog for the definition.",
             "typo_flag": typo_flag
         })
 
@@ -416,15 +439,16 @@ def _infer_glossary(model: SemanticModel, measure_catalog: MeasureCatalog, col_d
     for dim in sorted(dimensions):
         typo_flag = _check_typo(dim)
 
-        # Look up definition in data dictionary descriptions
+        # Look up definition in data dictionary descriptions ("Unknown" entries
+        # don't count — the keyword heuristics below may still identify the field)
         definition = None
         for (t_name, c_name), desc in col_descs.items():
-            if c_name == dim and desc:
+            if c_name == dim and desc and not desc.startswith("Unknown"):
                 definition = desc
                 break
 
         if not definition:
-            definition = f"Dimension field representing '{dim}' for filtering and grouping."
+            definition = "Unknown — requires business confirmation."
             dim_lower = dim.lower()
             if "date" in dim_lower or "calendar" in dim_lower:
                 definition = "Time-dimension field used to filter, segment, and perform time-intelligence trends."
@@ -443,6 +467,76 @@ def _infer_glossary(model: SemanticModel, measure_catalog: MeasureCatalog, col_d
         })
 
     return entries
+
+
+# -- Health Score & AI Recommendations ----------------------------------------
+_PRIORITY_ORDER = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+
+
+def _local_path_sources(model: SemanticModel) -> list[str]:
+    paths = []
+    for ds in model.data_sources:
+        target = ds.server or ds.detail or ""
+        if ds.database:
+            target = f"{target}/{ds.database}" if target else ds.database
+        if re.search(r"^[A-Za-z]:[\\/]", target) or "Users/" in target or "Users\\" in target:
+            paths.append(target)
+    return paths
+
+
+def _health_and_recommendations(
+    model: SemanticModel,
+    owner: Optional[str],
+    classification: Optional[str],
+    hardcoded_measures: list[tuple[str, list[str]]],
+) -> tuple[dict, list[dict]]:
+    """Run the deterministic audit rules over the model and return
+    ``(health_score, ai_recommendations)`` as plain dicts for the technical
+    document. Reuses :mod:`audit_rules` end-to-end — same scoring rubric and
+    templated fixes as the Audit & Health Report, never LLM output — and adds
+    two report-level findings the audit rules don't model (hardcoded years,
+    hardcoded local paths)."""
+    measures = model.all_measures()
+    dax_findings = audit_rules.find_dax_findings(measures)
+    best_practices = audit_rules.check_best_practices(model)
+    performance_risks = audit_rules.find_performance_risks(model)
+    governance = audit_rules.check_governance(model, owner=owner, classification=classification)
+    unused_assets = audit_rules.find_unused_assets(model)
+    health = audit_rules.compute_health_score(
+        dax_findings, best_practices, performance_risks, governance, unused_assets,
+    )
+    recommendations = audit_rules.build_recommendations(
+        dax_findings, best_practices, performance_risks, governance, unused_assets,
+    )
+
+    if hardcoded_measures:
+        detail = "; ".join(f"'{name}' ({', '.join(years)})" for name, years in hardcoded_measures)
+        recommendations.append(Recommendation(
+            priority="Critical",
+            issue=f"Hardcoded year value(s) in DAX: {detail}.",
+            why_it_matters="The affected measures stop reflecting current data at the next "
+                           "year boundary — the report silently shows stale results.",
+            suggested_fix="Replace the literal year with dynamic logic such as YEAR(TODAY()) "
+                          "or a relative-period filter on the date table.",
+            expected_benefit="Calculations stay correct every year without manual edits.",
+            effort="Low",
+        ))
+
+    local_paths = _local_path_sources(model)
+    if local_paths:
+        recommendations.append(Recommendation(
+            priority="High",
+            issue=f"Hardcoded local file path(s) in data sources: {'; '.join(local_paths)}.",
+            why_it_matters="Refresh fails as soon as the report runs on any machine or "
+                           "service other than the author's.",
+            suggested_fix="Replace the literal path with a Power Query parameter, or move "
+                          "the source behind a gateway/shared location.",
+            expected_benefit="Refresh works after deployment to the Power BI Service.",
+            effort="Low",
+        ))
+
+    recommendations.sort(key=lambda r: _PRIORITY_ORDER.get(r.priority, 4))
+    return dataclasses.asdict(health), [dataclasses.asdict(r) for r in recommendations]
 
 
 class TechnicalDocumentationGenerator:
@@ -525,4 +619,7 @@ class TechnicalDocumentationGenerator:
 
         doc.inferred_requirements = _infer_requirements(model)
         doc.glossary_entries = _infer_glossary(model, doc.measure_catalog, col_descs)
+        doc.health_score, doc.ai_recommendations = _health_and_recommendations(
+            model, owner, classification, hardcoded_measures,
+        )
         return doc

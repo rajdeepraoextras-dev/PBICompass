@@ -223,6 +223,29 @@ _COMPLEX_VISUALS = {
 }
 
 
+def _page_questions(visuals, measure_names: set[str]) -> list[str]:
+    """Up to three business questions grounded in the metric/dimension pairs
+    actually shown on the page — never invented beyond the fields present."""
+    metrics: list[str] = []
+    dims: list[str] = []
+    for v in visuals:
+        for f in v.fields:
+            leaf = f.split(".")[-1]
+            if not leaf:
+                continue
+            bucket = metrics if leaf in measure_names else dims
+            if leaf not in bucket:
+                bucket.append(leaf)
+    questions: list[str] = []
+    if metrics and dims:
+        questions.append(f"How does {metrics[0]} break down by {dims[0]}?")
+    if metrics and len(dims) > 1:
+        questions.append(f"Which {dims[1]} values drive {metrics[0]}?")
+    if len(metrics) > 1:
+        questions.append(f"How do {metrics[0]} and {metrics[1]} compare for the selected period?")
+    return questions[:3]
+
+
 def _page_theme(visuals) -> str:
     seen: list[str] = []
     for v in visuals:
@@ -238,18 +261,18 @@ def business_analyst_deterministic(model: SemanticModel) -> ExecutiveSummary:
     facts = [t.name for t in model.tables if t.kind == "fact"]
     dims = [t.name for t in model.tables if t.kind == "dimension"]
     key_measures = [m.name for m in model.all_measures() if not m.is_hidden][:6]
+    measure_names = {m.name for m in model.all_measures()}
 
     subject = facts[0] if facts else (model.tables[0].name if model.tables else "the data")
-    purpose = (
-        f"The '{model.report_name}' report helps stakeholders analyse {subject} "
-    )
+    purpose = f"'{model.report_name}' reports on {subject}"
     if key_measures:
-        purpose += f"using metrics such as {', '.join(key_measures[:4])}. "
+        purpose += f", tracking {', '.join(key_measures[:4])}"
     if dims:
-        purpose += f"It lets users explore these measures across dimensions including {', '.join(dims[:4])}. "
+        purpose += f" across {', '.join(dims[:4])}"
     purpose += (
-        f"Across {len(visible_pages)} report page(s), it answers questions about "
-        f"how these metrics trend and break down by category."
+        f". It spans {len(visible_pages)} report page(s), documented individually below. "
+        "This purpose statement is derived from the model contents alone — the business "
+        "context requires confirmation from the report owner."
     )
 
     pages: list[PageSummary] = []
@@ -257,15 +280,19 @@ def business_analyst_deterministic(model: SemanticModel) -> ExecutiveSummary:
         theme = _page_theme(p.visuals)
         counts = Counter(v.type for v in p.visuals)
         inv = ", ".join(f"{n} {_visual_name(vt, n)}" for vt, n in counts.most_common(5))
-        summary = f"The '{p.display_name}' page presents {len(p.visuals)} visual(s)"
+        summary = f"Presents {len(p.visuals)} visual(s)"
         if inv:
             summary += f" — {inv}"
         summary += "."
         if theme:
-            summary += f" Key fields shown: {theme}."
+            summary += f" Key fields: {theme}."
         if p.is_drillthrough:
-            summary += " It is a drill-through detail page reached from other pages."
-        pages.append(PageSummary(page_title=p.display_name, summary=summary))
+            summary += " Drill-through detail page reached from other pages."
+        pages.append(PageSummary(
+            page_title=p.display_name,
+            summary=summary,
+            business_questions=_page_questions(p.visuals, measure_names),
+        ))
 
     nav: list[str] = []
     for p in model.pages:

@@ -13,7 +13,9 @@ from pathlib import Path
 
 from ..schemas.document import Document
 from ._docx_writer import _Docx
+from ._shared import HEALTH_COMPONENT_LABELS
 from ._shared import is_local_path as _is_local_path
+from ._shared import non_data_note as _non_data_note
 
 
 def _add_para_with_md(d: _Docx, text: str, style_name: str | None = None):
@@ -141,10 +143,17 @@ def render_docx(doc: Document, out_path) -> Path:
         suffix = (f" · {m.table}" if m.table else "") + (f" · {m.category}" if m.category else "")
         d.heading(3, m.name + suffix)
         d.para(m.plain_english)
+        if m.calculation_logic and m.calculation_logic != m.plain_english:
+            d.para([d._run("Calculation: ", bold=True), d._run(m.calculation_logic)])
         if m.caveats:
-            d.para([d._run("Note: " + m.caveats, italic=True)])
+            d.para([d._run("Known caveats: " + m.caveats, italic=True)])
+        if m.dependencies:
+            d.para([d._run("Depends on: " + ", ".join(m.dependencies), italic=True)])
         used = ", ".join(m.used_on) if m.used_on else "not placed on a page"
         d.para([d._run("Used on: " + used, italic=True)])
+        if m.confidence and m.confidence != "High":
+            suffix_note = " — review with the business owner" if m.confidence == "Low" else ""
+            d.para([d._run(f"Confidence in inferred business meaning: {m.confidence}{suffix_note}.", italic=True)])
         d.code(m.dax)
     if doc.calculated_columns:
         d.heading(2, "Calculated columns")
@@ -154,17 +163,29 @@ def render_docx(doc: Document, out_path) -> Path:
 
     # 8. Report Pages & Visuals
     d.heading(1, "8. Report Pages & Visuals")
-    page_summaries = {p.page_title: p.summary for p in es.pages}
+    page_docs = {p.page_title: p for p in es.pages}
     for p in doc.report_pages:
         flags = [f for f, on in (("hidden", p.get("hidden")), ("drill-through", p.get("drillthrough"))) if on]
         d.heading(3, p["name"] + (f" ({', '.join(flags)})" if flags else ""))
-        if page_summaries.get(p["name"]):
-            d.para(page_summaries[p["name"]])
+        pd = page_docs.get(p["name"])
+        if pd:
+            if pd.summary:
+                d.para(pd.summary)
+            if pd.users:
+                d.para([d._run("Who uses it: ", bold=True), d._run(pd.users)])
+            if pd.business_questions:
+                d.para([d._run("Business questions answered:", bold=True)])
+                for q in pd.business_questions:
+                    d.bullet(q)
+            if pd.decisions:
+                d.para([d._run("Decision supported: ", bold=True), d._run(pd.decisions)])
+            if pd.confidence == "Low":
+                d.para([d._run("Purpose inferred with low confidence — requires business review.", italic=True)])
         d.table(["Visual", "Type", "Metric(s)", "Dimension(s)"],
                 _t([[v.get("label") or "—", v.get("type"), ", ".join(v.get("metrics", [])) or "—",
                      ", ".join(v.get("dimensions", [])) or "—"] for v in p.get("visuals", [])]) or [["—", "—", "—", "—"]])
         if p.get("decorative_count"):
-            d.para([d._run(f"Plus {p['decorative_count']} decorative element(s) — images, shapes, text boxes.", italic=True)])
+            d.para([d._run(_non_data_note(p["decorative_count"]), italic=True)])
 
     # 9. Filters, Slicers & Navigation
     d.heading(1, "9. Filters, Slicers & Navigation")
@@ -261,8 +282,33 @@ def render_docx(doc: Document, out_path) -> Path:
     if not md.assumptions:
         todo("Business assumptions and limitations with impact and workaround.")
         
-    # 16. Support & Maintenance
-    d.heading(1, "16. Support & Maintenance")
+    # 16. Model Health & AI Recommendations
+    d.heading(1, "16. Model Health & AI Recommendations")
+    hs = doc.health_score or {}
+    if hs:
+        d.heading(2, f"Health Score: {hs.get('overall', 0)} / 100 ({hs.get('band', '')})")
+        notes = hs.get("component_notes", {})
+        d.table(["Component", "Score", "Why"],
+                _t([[HEALTH_COMPONENT_LABELS.get(k, k), v, notes.get(k, "")]
+                    for k, v in hs.get("component_scores", {}).items()]))
+        d.para([d._run("Scored by deterministic rules over the model metadata — reproducible, not an AI guess.", italic=True)])
+    recs = doc.ai_recommendations or []
+    if recs:
+        d.heading(2, "Prioritized recommendations")
+        for i, r in enumerate(recs, 1):
+            d.heading(3, f"{i}. [{r.get('priority', 'Medium')}] {r.get('issue', '')}")
+            d.para([d._run("Impact: ", bold=True), d._run(r.get("why_it_matters", ""))])
+            d.para([d._run("Recommendation: ", bold=True), d._run(r.get("suggested_fix", ""))])
+            if r.get("expected_benefit"):
+                d.para([d._run("Expected benefit: ", bold=True), d._run(r.get("expected_benefit"))])
+            d.para([d._run("Estimated effort: ", bold=True), d._run(r.get("effort", "Medium"))])
+    elif hs:
+        d.para("No recommendations — no findings were raised against this model.")
+    if not hs and not recs:
+        d.para("Not computed for this document.")
+
+    # 17. Support & Maintenance
+    d.heading(1, "17. Support & Maintenance")
     if md.owner:
         d.label("First-line contact", md.owner)
     if md.support_notes:
@@ -272,8 +318,8 @@ def render_docx(doc: Document, out_path) -> Path:
     else:
         todo("Escalation contact, SLA, backup location, decommission criteria.")
         
-    # 17. Appendix & Sign-off
-    d.heading(1, "17. Appendix & Sign-off")
+    # 18. Appendix & Sign-off
+    d.heading(1, "18. Appendix & Sign-off")
     d.para("The model diagram is in the HTML / section 6.")
     developer_name = md.owner if md.owner else "TBC"
     generated_date = (md.generated_at or "")[:10]

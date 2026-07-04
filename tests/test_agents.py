@@ -35,18 +35,19 @@ class FakeLLMClient:
                     {"visual": "v", "page": "P1", "how_to_read": "hr"}
                 ],
             }
-        if "DAX measures" in system or "data dictionary" in system:
+        if "senior DAX developer" in system or "DAX measures" in system:
             payload = json.loads(user)
             return {
                 "translations": [
                     {"name": m["name"], "plain_english": "FAKE_TX",
-                     "caveats": "", "category": "Other"}
+                     "calculation_logic": "FAKE_CALC", "caveats": "",
+                     "category": "Other", "confidence": "High"}
                     for m in payload["measures"]
                 ]
             }
         if "data-modeling" in system:
             return {"summary": "FAKE_MODEL", "risks": ["FAKE_RISK"]}
-        if "database documenter" in system or "Column Describer" in system:
+        if "description for every column" in system or "Column Describer" in system:
             payload = json.loads(user)
             return {
                 "columns": [
@@ -142,7 +143,8 @@ class DeterministicOrchestratorTest(unittest.TestCase):
             "## 8. Report Pages & Visuals",
             "## 10. Row-Level Security (RLS)",
             "## 15. Known Issues, Assumptions & Limitations",
-            "## 17. Appendix & Sign-off",
+            "## 16. Model Health & AI Recommendations",
+            "## 18. Appendix & Sign-off",
         ]
         positions = [md.find(h) for h in headings]
         self.assertNotIn(-1, positions)

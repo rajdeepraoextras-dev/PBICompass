@@ -1,5 +1,5 @@
 """Render a :class:`Document` to Markdown, following the enterprise BI
-documentation template (the same 17 sections as the HTML renderer).
+documentation template (the same 18 sections as the HTML renderer).
 
 Extracted sections are auto-filled; human-only sections are populated from
 user metadata or emitted as placeholders.
@@ -10,9 +10,11 @@ Stdlib only.
 from __future__ import annotations
 
 from ..schemas.document import Document
+from ._shared import HEALTH_COMPONENT_LABELS
 from ._shared import is_local_path as _is_local_path
 from ._shared import md_table as _table
 from ._shared import md_todo as _todo
+from ._shared import non_data_note as _non_data_note
 
 
 def render_markdown(doc: Document) -> str:
@@ -129,10 +131,18 @@ def render_markdown(doc: Document) -> str:
         cat = f" · _{m.category}_" if m.category else ""
         out.append(f"### {m.name}{home}{cat}\n")
         out.append(m.plain_english)
+        if m.calculation_logic and m.calculation_logic != m.plain_english:
+            out.append(f"\n**Calculation:** {m.calculation_logic}")
         if m.caveats:
-            out.append(f"\n_Note: {m.caveats}_")
+            out.append(f"\n_Known caveats: {m.caveats}_")
+        if m.dependencies:
+            out.append(f"\n_Depends on: {', '.join(m.dependencies)}_")
         used = ", ".join(m.used_on) if m.used_on else "not placed on a page"
-        out.append(f"\n_Used on: {used}_\n")
+        out.append(f"\n_Used on: {used}_")
+        if m.confidence and m.confidence != "High":
+            out.append(f"\n_Confidence in inferred business meaning: {m.confidence}"
+                       + (" — review with the business owner._" if m.confidence == "Low" else "._"))
+        out.append("")
         out.append("```dax")
         out.append(m.dax)
         out.append("```\n")
@@ -149,19 +159,32 @@ def render_markdown(doc: Document) -> str:
         for ex in es.complex_visual_explainers:
             out.append(f"- **{ex.visual}** ({ex.page}): {ex.how_to_read}")
         out.append("")
-    page_summaries = {p.page_title: p.summary for p in es.pages}
+    page_docs = {p.page_title: p for p in es.pages}
     for p in doc.report_pages:
         flags = [f for f, on in (("hidden", p.get("hidden")), ("drill-through", p.get("drillthrough"))) if on]
         flag = f" ({', '.join(flags)})" if flags else ""
         out.append(f"### {p['name']}{flag}\n")
-        if page_summaries.get(p["name"]):
-            out.append(page_summaries[p["name"]] + "\n")
+        pd = page_docs.get(p["name"])
+        if pd:
+            if pd.summary:
+                out.append(pd.summary + "\n")
+            if pd.users:
+                out.append(f"**Who uses it:** {pd.users}\n")
+            if pd.business_questions:
+                out.append("**Business questions answered:**\n")
+                for q in pd.business_questions:
+                    out.append(f"- {q}")
+                out.append("")
+            if pd.decisions:
+                out.append(f"**Decision supported:** {pd.decisions}\n")
+            if pd.confidence == "Low":
+                out.append("_Purpose inferred with low confidence — requires business review._\n")
         out.append(_table(["Visual", "Type", "Metric(s)", "Dimension(s)"],
                           [[v.get("label") or "—", v.get("type"),
                             ", ".join(v.get("metrics", [])) or "—", ", ".join(v.get("dimensions", [])) or "—"]
                            for v in p.get("visuals", [])], "_No data visuals on this page._"))
         if p.get("decorative_count"):
-            out.append(f"_Plus {p['decorative_count']} decorative element(s) — images, shapes, text boxes._\n")
+            out.append(f"_{_non_data_note(p['decorative_count'])}_\n")
 
     # 9. Filters, Slicers & Navigation
     out.append("\n## 9. Filters, Slicers & Navigation\n")
@@ -252,17 +275,42 @@ def render_markdown(doc: Document) -> str:
     if not md.assumptions:
         out.append(_todo("Business assumptions and limitations with impact and workaround."))
         
-    # 16. Support & Maintenance
-    out.append("\n## 16. Support & Maintenance\n")
+    # 16. Model Health & AI Recommendations
+    out.append("\n## 16. Model Health & AI Recommendations\n")
+    hs = doc.health_score or {}
+    if hs:
+        out.append(f"**Health Score: {hs.get('overall', 0)} / 100 ({hs.get('band', '')})**\n")
+        notes = hs.get("component_notes", {})
+        out.append(_table(["Component", "Score", "Why"],
+                          [[HEALTH_COMPONENT_LABELS.get(k, k), v, notes.get(k, "")]
+                           for k, v in hs.get("component_scores", {}).items()]))
+        out.append("_Scored by deterministic rules over the model metadata — reproducible, not an AI guess._\n")
+    recs = doc.ai_recommendations or []
+    if recs:
+        out.append("\n### Prioritized recommendations\n")
+        for i, r in enumerate(recs, 1):
+            out.append(f"#### {i}. [{r.get('priority', 'Medium')}] {r.get('issue', '')}\n")
+            out.append(f"- **Impact:** {r.get('why_it_matters', '')}")
+            out.append(f"- **Recommendation:** {r.get('suggested_fix', '')}")
+            if r.get("expected_benefit"):
+                out.append(f"- **Expected benefit:** {r.get('expected_benefit')}")
+            out.append(f"- **Estimated effort:** {r.get('effort', 'Medium')}\n")
+    elif hs:
+        out.append("\n_No recommendations — no findings were raised against this model._\n")
+    if not hs and not recs:
+        out.append("_Not computed for this document._\n")
+
+    # 17. Support & Maintenance
+    out.append("\n## 17. Support & Maintenance\n")
     if md.owner:
         out.append(f"**First-line contact:** {md.owner}.\n")
     if md.support_notes:
         out.append(md.support_notes + "\n")
     else:
         out.append(_todo("Escalation contact, SLA, backup location, decommission criteria."))
-        
-    # 17. Appendix & Sign-off
-    out.append("\n## 17. Appendix & Sign-off\n")
+
+    # 18. Appendix & Sign-off
+    out.append("\n## 18. Appendix & Sign-off\n")
     out.append("The model diagram is in section 6.\n")
     developer_name = md.owner if md.owner else "TBC"
     generated_date = (md.generated_at or "")[:10]

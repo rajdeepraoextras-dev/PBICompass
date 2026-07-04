@@ -82,8 +82,9 @@ def render_markdown(doc: AuditDocument) -> str:
 
     out.append(f"\n## {_SECTION_TITLES[0]}\n")
     out.append(f"**{h.overall} / 100 — {h.band}**\n")
-    out.append(_table(["Component", "Score"],
-                      [[_component_label(k), v] for k, v in h.component_scores.items()]))
+    _notes = getattr(h, "component_notes", {}) or {}
+    out.append(_table(["Component", "Score", "Why"],
+                      [[_component_label(k), v, _notes.get(k, "")] for k, v in h.component_scores.items()]))
 
     out.append(f"\n## {_SECTION_TITLES[1]}\n")
     out.append(f"**{c.level}**\n")
@@ -136,6 +137,7 @@ def render_markdown(doc: AuditDocument) -> str:
             out.append(f"**Why it matters:** {r.why_it_matters}\n")
             out.append(f"**Suggested fix:** {r.suggested_fix}\n")
             out.append(f"**Expected benefit:** {r.expected_benefit}\n")
+            out.append(f"**Estimated effort:** {getattr(r, 'effort', 'Medium')}\n")
     else:
         out.append("_No recommendations — the model passed every deterministic check._\n")
 
@@ -167,8 +169,10 @@ def render_html(doc: AuditDocument) -> str:
     o.append(f'<div class="score-big">{_e(h.overall)}/100</div>')
     o.append(f'<div class="score-band">{_e(h.band)}</div>')
     o.append('</div>')
-    o.append(_html_table(["Component", "Score"],
-                         [[_e(_component_label(k)), _e(v)] for k, v in h.component_scores.items()]))
+    _notes = getattr(h, "component_notes", {}) or {}
+    o.append(_html_table(["Component", "Score", "Why"],
+                         [[_e(_component_label(k)), _e(v), _e(_notes.get(k, ""))]
+                          for k, v in h.component_scores.items()]))
 
     o.append(f'<h2 id="sec2">{_e(_SECTION_TITLES[1])}</h2>')
     o.append(f'<p><strong>{_e(c.level)}</strong></p>')
@@ -228,6 +232,7 @@ def render_html(doc: AuditDocument) -> str:
             o.append(f'<p><strong>Why it matters:</strong> {_e(r.why_it_matters)}</p>')
             o.append(f'<p><strong>Suggested fix:</strong> {_e(r.suggested_fix)}</p>')
             o.append(f'<p><strong>Expected benefit:</strong> {_e(r.expected_benefit)}</p>')
+            o.append(f'<p><strong>Estimated effort:</strong> {_e(getattr(r, "effort", "Medium"))}</p>')
             o.append('</div>')
     else:
         o.append('<p class="muted">No recommendations — the model passed every deterministic check.</p>')
@@ -258,7 +263,9 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
 
     d.heading(1, _SECTION_TITLES[0])
     d.para([d._run(f"{h.overall} / 100 — {h.band}", bold=True)])
-    d.table(["Component", "Score"], _t([[_component_label(k), v] for k, v in h.component_scores.items()]))
+    _notes = getattr(h, "component_notes", {}) or {}
+    d.table(["Component", "Score", "Why"],
+            _t([[_component_label(k), v, _notes.get(k, "")] for k, v in h.component_scores.items()]))
 
     d.heading(1, _SECTION_TITLES[1])
     d.para([d._run(c.level, bold=True)])
@@ -301,6 +308,7 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
             d.para([d._run("Why it matters: ", bold=True), d._run(r.why_it_matters)])
             d.para([d._run("Suggested fix: ", bold=True), d._run(r.suggested_fix)])
             d.para([d._run("Expected benefit: ", bold=True), d._run(r.expected_benefit)])
+            d.para([d._run("Estimated effort: ", bold=True), d._run(getattr(r, "effort", "Medium"))])
     else:
         d.para("No recommendations — the model passed every deterministic check.")
 

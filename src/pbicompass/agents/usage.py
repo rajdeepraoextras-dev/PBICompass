@@ -55,6 +55,25 @@ def measure_usage(model: SemanticModel) -> dict[str, list[str]]:
     return usage
 
 
+def measure_dependencies(expression: str, measure_names: set[str]) -> list[str]:
+    """The measures and ``Table[Column]`` references a DAX expression depends
+    on, in order of first appearance — the "Dependencies" line of a measure's
+    documentation. Bare ``[Name]`` references are kept only when they match a
+    known measure (anything else is a column in a row context we can't
+    attribute to a table)."""
+    from .deterministic import _column_refs, _measure_refs  # local import: avoids cycle at module load
+
+    expr = expression or ""
+    deps: list[str] = []
+    for ref in _measure_refs(expr):
+        if ref in measure_names and ref not in deps:
+            deps.append(ref)
+    for ref in _column_refs(expr):
+        if ref not in deps:
+            deps.append(ref)
+    return deps
+
+
 def used_column_names(model: SemanticModel) -> set[str]:
     """Non-measure column names referenced anywhere in report visuals.
 

@@ -11,6 +11,25 @@ import re
 from html import escape as _escape
 
 
+# Reader-facing names for the health-score components computed by
+# ``agents.audit_rules.compute_health_score`` — shared by every renderer so
+# the same component is never labelled two different ways.
+HEALTH_COMPONENT_LABELS = {
+    "modeling": "Model Design",
+    "dax": "DAX Quality",
+    "governance": "Governance & Security",
+    "performance": "Performance",
+    "unused_assets": "Maintainability",
+}
+
+
+def non_data_note(count: int) -> str:
+    """The standard line for non-data page objects (buttons, images, shapes,
+    text labels) — layout elements, not documented individually."""
+    return (f"{count} non-data object(s) on this page — buttons, images, shapes, "
+            "and text labels used for layout and navigation.")
+
+
 def is_local_path(path_str: str) -> bool:
     return bool(re.search(r"^[A-Za-z]:[\\/]", path_str) or "Users/" in path_str or "Users\\" in path_str)
 

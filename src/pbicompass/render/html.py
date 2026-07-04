@@ -13,10 +13,12 @@ import math
 import re
 
 from ..schemas.document import Document
+from ._shared import HEALTH_COMPONENT_LABELS
 from ._shared import html_e as _e
 from ._shared import html_table as _table
 from ._shared import html_todo as _todo
 from ._shared import is_local_path as _is_local_path
+from ._shared import non_data_note as _non_data_note
 
 _CSS = """
 :root {
@@ -559,8 +561,9 @@ def render_html(doc: Document) -> str:
         ("sec13", "Access & Permissions"),
         ("sec14", "Glossary"),
         ("sec15", "Issues & Assumptions"),
-        ("sec16", "Support & Maintenance"),
-        ("sec17", "Appendix & Sign-off"),
+        ("sec16", "Health & AI Recommendations"),
+        ("sec17", "Support & Maintenance"),
+        ("sec18", "Appendix & Sign-off"),
     ]
 
     o: list[str] = ["<!DOCTYPE html>", '<html lang="en"><head><meta charset="utf-8">']
@@ -717,11 +720,18 @@ def render_html(doc: Document) -> str:
         o.append('<div class="measure">')
         o.append(f"<h3>{_e(m.name)}{home}{cat}</h3>")
         o.append(f"<p>{_e(m.plain_english)}</p>")
+        if m.calculation_logic and m.calculation_logic != m.plain_english:
+            o.append(f"<p><strong>Calculation:</strong> {_e(m.calculation_logic)}</p>")
         if m.caveats:
-            o.append(f'<p class="caveat">Note: {_e(m.caveats)}</p>')
+            o.append(f'<p class="caveat">Known caveats: {_e(m.caveats)}</p>')
+        if m.dependencies:
+            o.append(f'<p class="usedon">Depends on: {_e(", ".join(m.dependencies))}</p>')
         used = ", ".join(m.used_on) if m.used_on else "not placed on a page"
         fmt = f" · format <code>{_e(m.format_string)}</code>" if m.format_string else ""
         o.append(f'<p class="usedon">Used on: {_e(used)}{fmt}</p>')
+        if m.confidence and m.confidence != "High":
+            suffix = " — review with the business owner" if m.confidence == "Low" else ""
+            o.append(f'<p class="caveat">Confidence in inferred business meaning: {_e(m.confidence)}{_e(suffix)}.</p>')
         o.append(f"<pre><code>{_e(m.dax)}</code></pre>")
         o.append("</div>")
     if doc.calculated_columns:
@@ -737,7 +747,7 @@ def render_html(doc: Document) -> str:
         for ex in es.complex_visual_explainers:
             o.append(f"<li><strong>{_e(ex.visual)}</strong> ({_e(ex.page)}): {_e(ex.how_to_read)}</li>")
         o.append("</ul>")
-    page_summaries = {p.page_title: p.summary for p in es.pages}
+    page_docs = {p.page_title: p for p in es.pages}
     for p in doc.report_pages:
         flags = []
         if p.get("hidden"):
@@ -746,14 +756,25 @@ def render_html(doc: Document) -> str:
             flags.append("drill-through")
         flag = f' <span class="muted">({", ".join(flags)})</span>' if flags else ""
         o.append(f"<h3>{_e(p['name'])}{flag}</h3>")
-        if page_summaries.get(p["name"]):
-            o.append(f"<p>{_e(page_summaries[p['name']])}</p>")
+        pd = page_docs.get(p["name"])
+        if pd:
+            if pd.summary:
+                o.append(f"<p>{_e(pd.summary)}</p>")
+            if pd.users:
+                o.append(f"<p><strong>Who uses it:</strong> {_e(pd.users)}</p>")
+            if pd.business_questions:
+                o.append("<p><strong>Business questions answered:</strong></p><ul>"
+                         + "".join(f"<li>{_e(q)}</li>" for q in pd.business_questions) + "</ul>")
+            if pd.decisions:
+                o.append(f"<p><strong>Decision supported:</strong> {_e(pd.decisions)}</p>")
+            if pd.confidence == "Low":
+                o.append('<p class="caveat">Purpose inferred with low confidence — requires business review.</p>')
         rows = [[_e(v.get("label") or "—"), _e(v.get("type")),
                  _e(", ".join(v.get("metrics", [])) or "—"),
                  _e(", ".join(v.get("dimensions", [])) or "—")] for v in p.get("visuals", [])]
         o.append(_table(["Visual", "Type", "Metric(s)", "Dimension(s)"], rows, "No data visuals on this page."))
         if p.get("decorative_count"):
-            o.append(f'<p class="muted">Plus {p["decorative_count"]} decorative element(s) — images, shapes, text boxes.</p>')
+            o.append(f'<p class="muted">{_e(_non_data_note(p["decorative_count"]))}</p>')
 
     # 9. Filters, Slicers & Navigation
     o.append('<h2 id="sec9">9. Filters, Slicers &amp; Navigation</h2>')
@@ -869,8 +890,36 @@ def render_html(doc: Document) -> str:
     if not md.assumptions:
         o.append(_todo("Business assumptions and limitations (e.g. \"returns lag source by 1 day\") with impact and workaround."))
 
-    # 16. Support & Maintenance
-    o.append('<h2 id="sec16">16. Support &amp; Maintenance</h2>')
+    # 16. Model Health & AI Recommendations
+    o.append('<h2 id="sec16">16. Model Health &amp; AI Recommendations</h2>')
+    hs = doc.health_score or {}
+    if hs:
+        o.append(f'<h3>Health Score: {_e(hs.get("overall", 0))} / 100 ({_e(hs.get("band", ""))})</h3>')
+        notes = hs.get("component_notes", {})
+        o.append(_table(["Component", "Score", "Why"],
+                        [[_e(HEALTH_COMPONENT_LABELS.get(k, k)), f'<span class="num">{_e(v)}</span>',
+                          _e(notes.get(k, ""))]
+                         for k, v in hs.get("component_scores", {}).items()]))
+        o.append('<p class="muted">Scored by deterministic rules over the model metadata — reproducible, not an AI guess.</p>')
+    recs = doc.ai_recommendations or []
+    if recs:
+        o.append("<h3>Prioritized recommendations</h3>")
+        for i, r in enumerate(recs, 1):
+            o.append('<div class="measure">')
+            o.append(f'<h3>{i}. <span class="pill">{_e(r.get("priority", "Medium"))}</span> {_e(r.get("issue", ""))}</h3>')
+            o.append(f'<p><strong>Impact:</strong> {_e(r.get("why_it_matters", ""))}</p>')
+            o.append(f'<p><strong>Recommendation:</strong> {_e(r.get("suggested_fix", ""))}</p>')
+            if r.get("expected_benefit"):
+                o.append(f'<p><strong>Expected benefit:</strong> {_e(r.get("expected_benefit"))}</p>')
+            o.append(f'<p><strong>Estimated effort:</strong> {_e(r.get("effort", "Medium"))}</p>')
+            o.append("</div>")
+    elif hs:
+        o.append('<p class="muted">No recommendations — no findings were raised against this model.</p>')
+    if not hs and not recs:
+        o.append('<p class="muted">Not computed for this document.</p>')
+
+    # 17. Support & Maintenance
+    o.append('<h2 id="sec17">17. Support &amp; Maintenance</h2>')
     if md.owner:
         o.append(f"<p><strong>First-line contact:</strong> {_e(md.owner)}.</p>")
     if md.support_notes:
@@ -882,8 +931,8 @@ def render_html(doc: Document) -> str:
     else:
         o.append(_todo("Escalation contact, SLA for fixes, .pbix/.pbip backup location, and decommission criteria."))
 
-    # 17. Appendix & Sign-off
-    o.append('<h2 id="sec17">17. Appendix &amp; Sign-off</h2>')
+    # 18. Appendix & Sign-off
+    o.append('<h2 id="sec18">18. Appendix &amp; Sign-off</h2>')
     o.append("<p>The model diagram is in section 6. Attach wireframes/mockups and any source-to-target mapping here.</p>")
     
     developer_name = _e(md.owner) if md.owner else "TBC"

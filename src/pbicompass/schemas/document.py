@@ -25,6 +25,12 @@ from typing import Any, Optional
 class PageSummary:
     page_title: str
     summary: str  # 2-3 sentences on this page's analytical focus
+    # Decision-focused documentation fields (empty when not inferable; defaults
+    # keep pre-existing document.json payloads loadable).
+    users: str = ""                    # role(s) who use this page
+    business_questions: list[str] = field(default_factory=list)
+    decisions: str = ""                # the decision/action this page informs
+    confidence: str = ""               # High | Medium | Low — inferred-purpose confidence
 
 
 @dataclass
@@ -96,11 +102,14 @@ class MeasureEntry:
     name: str
     table: Optional[str]
     dax: str
-    plain_english: str = ""
+    plain_english: str = ""    # business definition (what the number means)
     caveats: str = ""
     category: str = ""
     format_string: Optional[str] = None
     used_on: list[str] = field(default_factory=list)  # report pages that use it
+    calculation_logic: str = ""   # how it computes, distinct from the business definition
+    dependencies: list[str] = field(default_factory=list)  # measures/columns it references
+    confidence: str = ""          # High | Medium | Low — inferred business meaning
 
 
 @dataclass
@@ -140,6 +149,12 @@ class Document:
     calculated_columns: list[dict[str, Any]] = field(default_factory=list)
     inferred_requirements: list[dict[str, str]] = field(default_factory=list)
     glossary_entries: list[dict[str, str]] = field(default_factory=list)
+    # Model health score computed by the deterministic audit rules:
+    # {overall, band, component_scores: {...}, component_notes: {...}}
+    health_score: dict[str, Any] = field(default_factory=dict)
+    # Prioritized AI recommendations, each
+    # {priority, issue, why_it_matters, suggested_fix, expected_benefit, effort}
+    ai_recommendations: list[dict[str, str]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)

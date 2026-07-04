@@ -96,8 +96,25 @@ def compute_health_score(
         "performance": max(0, 100 - perf_cost),
         "unused_assets": max(0, 100 - unused_cost),
     }
+
+    def _count_note(findings: list, label: str) -> str:
+        if not findings:
+            return f"No {label} identified."
+        worst = min(findings, key=lambda f: _PRIORITY_ORDER.get(f.severity, 4))
+        return f"{len(findings)} {label} (worst severity: {worst.severity})."
+
+    component_notes = {
+        "modeling": (f"{len(failed_practices)} of {len(best_practices)} best-practice check(s) failed."
+                     if failed_practices else "All best-practice checks passed."),
+        "dax": _count_note(dax_findings, "DAX finding(s)"),
+        "governance": _count_note(governance, "governance finding(s)"),
+        "performance": _count_note(performance_risks, "performance risk signal(s)"),
+        "unused_assets": (f"{unused_count} unused asset(s) add size and maintenance load without analytical value."
+                          if unused_count else "Every measure, column, table, and page is in use."),
+    }
     overall = round(sum(component_scores.values()) / len(component_scores))
-    return HealthScore(overall=overall, band=_band(overall), component_scores=component_scores)
+    return HealthScore(overall=overall, band=_band(overall),
+                       component_scores=component_scores, component_notes=component_notes)
 
 
 def _relationship_graph_depth(model: SemanticModel) -> int:
@@ -725,9 +742,29 @@ _GOVERNANCE_TEMPLATES = {
 }
 
 
-def _recommendation(priority: str, issue: str, why: str, fix: str, benefit: str) -> Recommendation:
+# Estimated implementation effort per finding kind (defaults to "Medium").
+# Kept separate from the prose templates so effort can be tuned without
+# touching every tuple.
+_EFFORT_BY_KIND = {
+    # DAX findings
+    "missing_description": "Low", "naming_issue": "Low", "repeated_pattern": "Low",
+    # best-practice checks
+    "star_schema": "High", "fact_dimension_separation": "High",
+    "naming_conventions": "Low", "display_folder_usage": "Low",
+    "description_coverage": "Low", "hidden_technical_columns": "Low",
+    "unused_calculated_columns": "Low", "inactive_relationships": "Low",
+    # performance risks
+    "high_cardinality_signal": "Low", "large_text_column": "Low",
+    "slow_slicer_signal": "Low",
+    # governance
+    "descriptions": "Low", "ownership": "Low",
+}
+
+
+def _recommendation(priority: str, issue: str, why: str, fix: str, benefit: str,
+                    effort: str = "Medium") -> Recommendation:
     return Recommendation(priority=priority, issue=issue, why_it_matters=why,
-                          suggested_fix=fix, expected_benefit=benefit)
+                          suggested_fix=fix, expected_benefit=benefit, effort=effort)
 
 
 def build_recommendations(
@@ -745,21 +782,25 @@ def build_recommendations(
     seen_dax = {f.kind for f in dax_findings}
     for kind in seen_dax:
         if kind in _DAX_TEMPLATES:
-            recs.append(_recommendation(*_DAX_TEMPLATES[kind]))
+            recs.append(_recommendation(*_DAX_TEMPLATES[kind],
+                                        effort=_EFFORT_BY_KIND.get(kind, "Medium")))
 
     for check in best_practices:
         if not check.passed and check.id in _PRACTICE_TEMPLATES:
-            recs.append(_recommendation(*_PRACTICE_TEMPLATES[check.id]))
+            recs.append(_recommendation(*_PRACTICE_TEMPLATES[check.id],
+                                        effort=_EFFORT_BY_KIND.get(check.id, "Medium")))
 
     seen_perf = {f.kind for f in performance_risks}
     for kind in seen_perf:
         if kind in _PERF_TEMPLATES:
-            recs.append(_recommendation(*_PERF_TEMPLATES[kind]))
+            recs.append(_recommendation(*_PERF_TEMPLATES[kind],
+                                        effort=_EFFORT_BY_KIND.get(kind, "Medium")))
 
     seen_gov = {f.area for f in governance}
     for area in seen_gov:
         if area in _GOVERNANCE_TEMPLATES:
-            recs.append(_recommendation(*_GOVERNANCE_TEMPLATES[area]))
+            recs.append(_recommendation(*_GOVERNANCE_TEMPLATES[area],
+                                        effort=_EFFORT_BY_KIND.get(area, "Medium")))
 
     unused_total = (
         len(unused_assets.measures) + len(unused_assets.columns)
@@ -774,6 +815,7 @@ def build_recommendations(
             "Unused assets add to model size, refresh time, and cognitive load for anyone maintaining the report.",
             "Remove unused assets, or confirm they're intentionally kept for a documented reason (e.g. future use, RLS support).",
             "A leaner, easier-to-maintain model.",
+            effort="Low",
         ))
 
     recs.sort(key=lambda r: _PRIORITY_ORDER.get(r.priority, 4))

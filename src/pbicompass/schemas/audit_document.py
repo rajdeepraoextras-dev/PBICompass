@@ -30,6 +30,8 @@ class HealthScore:
     overall: int  # 0-100
     band: str  # "Excellent" | "Good" | "Fair" | "Poor"
     component_scores: dict[str, int] = field(default_factory=dict)  # modeling, dax, governance, performance, unused_assets
+    # one-sentence explanation per component score, keyed like component_scores
+    component_notes: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -94,6 +96,7 @@ class Recommendation:
     why_it_matters: str
     suggested_fix: str
     expected_benefit: str
+    effort: str = "Medium"  # estimated implementation effort: Low | Medium | High
 
 
 @dataclass
