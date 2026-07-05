@@ -22,11 +22,11 @@ jobs:
             sudo docker build -t pbicompass .
             sudo docker rm -f pbicompass || true
             sudo docker run -d --name pbicompass \
-              -p 80:8000 \
+              -p 127.0.0.1:8000:8000 \
               -v pbicompass-data:/data \
               --tmpfs /tmp/pbicompass:rw,size=512m \
               --env-file ~/pbicompass.env \
               --restart unless-stopped \
               pbicompass
             sleep 3
-            curl -sf http://localhost/healthz
+            curl -sf http://localhost:8000/healthz
