@@ -212,6 +212,7 @@ def create_app(
         request: Request,
         background_tasks: BackgroundTasks,
         file: UploadFile = File(...),
+        rules_file: UploadFile | None = File(None),
         provider: str = Form("none"),
         model: str = Form("claude-opus-4-8"),
         effort: str = Form("high"),
@@ -269,7 +270,18 @@ def create_app(
             app.state.store.mark_failed(job.id, "Upload exceeded the size limit.")
             raise
 
+        # Optional per-job rule-suppression/severity/threshold config (4.3 /
+        # J.A.3). Saved into this job's own sandbox — shredded with
+        # everything else in JobSandbox.cleanup(), never persisted.
+        rules_file_path: str | None = None
+        if rules_file is not None and rules_file.filename:
+            rules_path = sandbox.path("rules.toml")
+            with open(rules_path, "wb") as out:
+                out.write(await rules_file.read())
+            rules_file_path = str(rules_path)
+
         options = {
+            "rules_file_path": rules_file_path,
             "provider": provider, "model": model, "effort": effort,
             # BYOK: the caller's own provider key for this job only — never
             # logged, never persisted (the sandbox and job record hold no

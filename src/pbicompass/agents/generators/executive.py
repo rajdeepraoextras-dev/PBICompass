@@ -1,39 +1,37 @@
 """Executive Summary generator — ``SemanticModel`` -> ``ExecutiveDocument``.
 
-Reuses deterministic building blocks already computed elsewhere in the
-pipeline (model statistics, schema shape, data-source summaries, and the
-full audit rule engine for KPI selection, known risks, the maintenance note,
-and recommendations) rather than re-deriving them — the "Knowledge
-Generation Layer" fanning out from one parsed model. Known risks and future
-recommendations pull the *same* ``priority``/``issue``/``why_it_matters``
-text the Audit & Health Report and technical document show (never re-derived
-independently — that was the earlier source of the three documents
-disagreeing on risk counts and ordering), just filtered to drop the "dax"
-category, whose issue text names DAX constructs directly and belongs in the
-developer-facing documents, not here. ``business_purpose``, ``business_value``,
-and ``maintenance_overview`` optionally go through an LLM for polished prose;
-Key KPI meanings optionally go through the same DAX Translator agent the
-technical doc's Measure Catalog uses, so a KPI is described the same way
-everywhere instead of falling back to a mechanical DAX-to-English gloss
-whenever an LLM was available but never consulted for it. All with
-deterministic fallbacks so the document is always complete offline.
+Six sections (G.1): Purpose & Value, Key KPIs, Top Risks & Recommended
+Actions, Data & Refresh at a Glance, Ownership & Accountability, What's Next
+— reads in under ten minutes and prints to no more than two pages. Reuses
+deterministic building blocks already computed elsewhere in the pipeline
+(schema shape, data-source summaries, and the full audit rule engine for KPI
+selection and risks) rather than re-deriving them. Top risks pull the *same*
+``priority``/``issue``/``why_it_matters``/``rule_id`` the Audit & Health
+Report and technical document show (never re-derived independently — that
+was the earlier source of the three documents disagreeing on risk counts
+and ordering) — one merged, ranked list, not two that used to repeat each
+other (P6). ``purpose``, ``business_value``, and ``maintenance_note``
+optionally go through an LLM for polished prose; Key KPI meanings optionally
+go through the same DAX Translator agent the technical doc's Measure Catalog
+uses. All with deterministic fallbacks so the document is always complete
+offline.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
-from ...schemas.executive_document import ExecutiveDocument
+from ...schemas.executive_document import ExecutiveDocument, ExecutiveRisk
 from .. import audit_rules
 from .. import io
 from .. import usage
 from ..deterministic import business_analyst_deterministic, schema_shape, translate_dax
 from ..llm import LLMClient
-from ..report_facts import business_plain_english, data_source_summaries, first_sentence
+from ..report_facts import business_plain_english, data_source_type_counts, first_sentence
 from .base import Warn, build_core_metadata, call_llm
 
 
-def _deterministic_business_purpose(model) -> str:
+def _deterministic_purpose(model) -> str:
     # Reuses the same deterministic narrative the technical document's
     # Executive Summary section falls back to — already concise (2-3
     # sentences) and free of table/DAX jargon.
@@ -103,20 +101,19 @@ def _key_kpis(model, client: Optional[LLMClient], warn: Warn, limit: int = 5) ->
 _IMPLEMENTATION_JARGON = ("DAX", "CROSSFILTER", "USERELATIONSHIP", "VAR")
 
 
-def _known_risks(recommendations, limit: int = 5) -> tuple[list[str], set[int]]:
-    """Executive-safe known risks: the same deterministic recommendation
-    engine behind the Audit & Health Report and the technical document's
-    Model Health section (`audit_rules.build_recommendations`), filtered to
-    drop the "dax" category outright (its issue text names DAX constructs
-    directly) and, defensively, any other recommendation whose issue/
-    why-it-matters text happens to name a DAX construct (e.g. a governance
-    or modeling finding that explains itself in developer terms) — belongs
-    in the technical/audit documents, not here. Capped to the top
-    severities. Keeps the three documents' risk lists consistent — same
-    underlying findings, same severity order — without re-deriving risk
-    detection here. Also returns the ``id()`` of every recommendation shown
-    here, so ``_future_recommendations`` can skip them — otherwise the same
-    top-severity items surface twice (P6: §11 repeating §9)."""
+def _top_risks(recommendations, limit: int = 5) -> tuple[list[ExecutiveRisk], set[str]]:
+    """Executive-safe top risks (G.1): the same deterministic recommendation
+    engine behind the Audit & Health Report (``audit_rules.build_recommendations``),
+    filtered to drop the "dax" category outright (its issue text names DAX
+    constructs directly) and, defensively, any recommendation whose text
+    happens to name a DAX construct. Each risk is phrased as a consequence
+    (``issue`` + ``why_it_matters``) plus a specific ask (``suggested_fix``,
+    with any appended fix-snippet code block stripped — that detail belongs
+    in the audit/technical docs, not here) and carries its own ``rule_id``
+    so the rendered document can deep-link to the exact audit finding (I5).
+    One merged, ranked list — "Known Risks" and "Future Recommendations"
+    used to be two lists that repeated each other (P6); there's only one
+    now, so ``_next_steps`` can safely show whatever didn't make the cut."""
     safe = []
     for r in recommendations:
         if r.category == "dax":
@@ -126,39 +123,31 @@ def _known_risks(recommendations, limit: int = 5) -> tuple[list[str], set[int]]:
             continue
         safe.append(r)
     shown = safe[:limit]
-    return [f"[{r.priority}] {r.issue} {r.why_it_matters}" for r in shown], {id(r) for r in shown}
+    risks = [
+        ExecutiveRisk(
+            severity=r.priority,
+            consequence=f"{r.issue} {r.why_it_matters}".strip(),
+            ask=_business_safe_ask(r.suggested_fix),
+            rule_id=getattr(r, "rule_id", "") or "",
+        )
+        for r in shown
+    ]
+    shown_ids = {r.rule_id for r in risks if r.rule_id}
+    return risks, shown_ids
 
 
-def _report_statistics(model) -> dict[str, int]:
-    visible_pages = [p for p in model.pages if not p.is_hidden]
-    hidden_pages = [p for p in model.pages if p.is_hidden]
-    drillthrough_pages = [p for p in model.pages if p.is_drillthrough]
-    return {
-        "pages": len(model.pages),
-        "visible_pages": len(visible_pages),
-        "hidden_pages": len(hidden_pages),
-        "drillthrough_pages": len(drillthrough_pages),
-        "visuals": sum(len(p.visuals) for p in model.pages),
-    }
-
-
-def _security_overview(model) -> str:
-    if not model.roles:
-        return "No row-level security is configured; every user with report access sees the same data."
-    names = ", ".join(r.name for r in model.roles)
-    return f"{len(model.roles)} row-level security role(s) restrict access to this report: {names}."
-
-
-def _architecture_overview(model) -> str:
-    shape, facts, dims = schema_shape(model)
-    return (f"The data model uses {shape}, integrating {len(facts)} fact table(s) and "
-            f"{len(dims)} dimension table(s) via {len(model.relationships)} relationship(s).")
-
-
-def _dependencies(model) -> list[str]:
-    deps = list(data_source_summaries(model))
-    deps += [f"Parameter: {e.name}" for e in model.expressions if e.kind == "parameter"]
-    return deps
+def _business_safe_ask(suggested_fix: str) -> str:
+    """The audit engine's ``suggested_fix`` text is written for BI
+    developers and sometimes names DAX constructs directly (e.g.
+    "...use CROSSFILTER() in specific DAX measures...") even when the
+    ``issue``/``why_it_matters`` text stays business-safe — this document
+    excludes implementation detail entirely, so a fix that can't be
+    paraphrased safely degrades to a generic-but-true delegation instead of
+    ever showing DAX/CROSSFILTER/USERELATIONSHIP/VAR to an executive."""
+    fix = suggested_fix.split("\n\n```", 1)[0].strip()
+    if any(term in fix for term in _IMPLEMENTATION_JARGON):
+        return "Ask your Power BI developer or BI team to apply the technical fix documented in the audit report."
+    return fix
 
 
 def _business_value(key_kpis: list[str], audience: Optional[str]) -> str:
@@ -168,36 +157,40 @@ def _business_value(key_kpis: list[str], audience: Optional[str]) -> str:
             f"manual reporting and supporting faster, data-driven decisions.")
 
 
-def _maintenance_overview(
-    refresh: Optional[str], owner: Optional[str], failed_practice_count: int, governance_count: int,
-) -> str:
-    parts = [f"Refresh schedule: {refresh}." if refresh else "No refresh schedule has been documented yet."]
+def _maintenance_note(failed_practice_count: int, governance_count: int) -> str:
     if failed_practice_count or governance_count:
-        parts.append(
-            f"{failed_practice_count} modeling best-practice gap(s) and {governance_count} governance "
-            f"finding(s) from the latest audit should be reviewed periodically."
+        return (f"{failed_practice_count} modeling best-practice gap(s) and {governance_count} governance "
+                f"finding(s) from the latest audit should be reviewed periodically.")
+    return "No outstanding modeling or governance gaps were found in the latest audit."
+
+
+def _next_steps(recommendations, shown_rule_ids: set[str], metadata) -> list[str]:
+    """"What's next" (G.1): the top remediation not already covered by Top
+    Risks, plus a doc-completeness ask (reuses the same field-completeness
+    helper the audit/user-guide renderers already show — 5.5's full meter
+    isn't wired in yet, but "what's still missing" is answerable today)."""
+    from ...render._shared import compute_completeness
+
+    steps: list[str] = []
+    remaining = [r for r in recommendations if (getattr(r, "rule_id", "") or "") not in shown_rule_ids]
+    if remaining:
+        top = remaining[0]
+        steps.append(f"Next priority: {top.issue} — expected benefit: {top.expected_benefit}")
+    pct, missing_count, missing_fields = compute_completeness(metadata)
+    if missing_count:
+        steps.append(
+            f"This document is {pct}% complete — {missing_count} field(s) still need business "
+            f"input: {', '.join(missing_fields)}."
         )
     else:
-        parts.append("No outstanding modeling or governance gaps were found in the latest audit.")
-    parts.append(f"Owner of record: {owner}." if owner else "No owner has been assigned for ongoing accountability.")
-    return " ".join(parts)
-
-
-def _future_recommendations(recommendations, shown_as_risks: set[int], limit: int = 3) -> list[str]:
-    """Next-highest-priority items *not already listed* under Known Risks
-    (P6: §11 must not repeat §9) — the audit's suggested_fix text is written
-    for BI developers (VAR, CROSSFILTER(), DAX-level detail) and doesn't
-    belong in a document that explicitly excludes implementation detail, so
-    each item is phrased as ask + benefit on their own clause rather than run
-    together into one mashed sentence."""
-    remaining = [r for r in recommendations if id(r) not in shown_as_risks]
-    return [f"{r.issue} — expected benefit: {r.expected_benefit}" for r in remaining[:limit]]
+        steps.append("All available metadata fields have been filled in.")
+    return steps
 
 
 class ExecutiveSummaryGenerator:
     """Assembles a concise, non-technical summary for managers, executives,
     and project owners — readable in under ten minutes, no implementation
-    details."""
+    details, no raw file paths, no model statistics beyond the KPI strip."""
 
     @staticmethod
     def generate(
@@ -216,7 +209,7 @@ class ExecutiveSummaryGenerator:
         model.compute_counts()
 
         # Reuse the full deterministic audit engine (Phase 1) for the
-        # maintenance note, known risks, and recommendations, rather than
+        # maintenance note, top risks, and next steps, rather than
         # re-deriving best-practice/governance logic here.
         measures = model.all_measures()
         dax_findings = audit_rules.find_dax_findings(measures)
@@ -231,48 +224,48 @@ class ExecutiveSummaryGenerator:
 
         key_kpis = _key_kpis(model, client, warn)
         key_kpi_names = [k.split(" — ", 1)[0] for k in key_kpis]
-        model_risks, risk_ids = _known_risks(recommendations)
+        top_risks, shown_rule_ids = _top_risks(recommendations)
 
-        business_purpose = _deterministic_business_purpose(model)
+        purpose = _deterministic_purpose(model)
         business_value = _business_value(key_kpi_names, audience)
-        maintenance_overview = _maintenance_overview(
-            refresh, owner, failed_practice_count, len(governance),
-        )
+        maintenance_note = _maintenance_note(failed_practice_count, len(governance))
 
         if client is not None:
             data = call_llm(
                 client, io.EXECUTIVE_WRITER_SYSTEM,
                 io.executive_writer_input(
-                    business_purpose_draft=business_purpose,
+                    business_purpose_draft=purpose,
                     key_kpis=key_kpi_names,
                     model_statistics=dict(model.meta.counts),
-                    report_statistics=_report_statistics(model),
-                    known_risks=model_risks,
-                    maintenance_draft=maintenance_overview,
+                    report_statistics={
+                        "pages": len(model.pages),
+                        "visible_pages": sum(1 for p in model.pages if not p.is_hidden),
+                    },
+                    known_risks=[f"[{r.severity}] {r.consequence}" for r in top_risks],
+                    maintenance_draft=maintenance_note,
                 ),
                 io.EXECUTIVE_WRITER_SCHEMA, warn, "Executive Writer",
             )
             if data:
-                business_purpose = data.get("business_purpose") or business_purpose
+                purpose = data.get("business_purpose") or purpose
                 business_value = data.get("business_value") or business_value
-                maintenance_overview = data.get("maintenance_overview") or maintenance_overview
+                maintenance_note = data.get("maintenance_overview") or maintenance_note
+
+        metadata = build_core_metadata(
+            model, "executive", default_audience="Managers, executives, and project owners",
+            owner=owner, audience=audience, refresh=refresh, version=version, status=status,
+        )
 
         return ExecutiveDocument(
-            metadata=build_core_metadata(
-                model, "executive", default_audience="Managers, executives, and project owners",
-                owner=owner, audience=audience, refresh=refresh, version=version, status=status,
-            ),
-            business_purpose=business_purpose,
-            key_kpis=key_kpis,
-            data_sources_summary=data_source_summaries(model),
-            refresh_schedule=refresh,
-            security_overview=_security_overview(model),
-            architecture_overview=_architecture_overview(model),
-            model_statistics=dict(model.meta.counts),
-            report_statistics=_report_statistics(model),
+            metadata=metadata,
+            purpose=purpose,
             business_value=business_value,
-            known_risks=model_risks,
-            dependencies=_dependencies(model),
-            maintenance_overview=maintenance_overview,
-            future_recommendations=_future_recommendations(recommendations, risk_ids),
+            key_kpis=key_kpis,
+            top_risks=top_risks,
+            data_source_types=data_source_type_counts(model),
+            refresh_schedule=refresh,
+            maintenance_note=maintenance_note,
+            steward=None,  # sourced from the enrichment file (5.1) once wired in
+            classification=classification,
+            next_steps=_next_steps(recommendations, shown_rule_ids, metadata),
         )

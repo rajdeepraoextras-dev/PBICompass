@@ -223,14 +223,19 @@ _COMPLEX_VISUALS = {
 }
 
 
-def _page_questions(visuals, measure_names: set[str]) -> list[str]:
+def _page_questions(visuals, measure_names: set[str], field_param_tables: set[str] = frozenset()) -> list[str]:
     """Up to three business questions grounded in the metric/dimension pairs
-    actually shown on the page — never invented beyond the fields present."""
+    actually shown on the page — never invented beyond the fields present.
+    Fields from a field-parameter/disconnected helper table (I4) are
+    excluded — they're a UI selector, not a real dimension to ask about."""
     metrics: list[str] = []
     dims: list[str] = []
     for v in visuals:
         for f in v.fields:
-            leaf = f.split(".")[-1]
+            parts = f.split(".")
+            if len(parts) > 1 and parts[0] in field_param_tables:
+                continue
+            leaf = parts[-1]
             if not leaf:
                 continue
             bucket = metrics if leaf in measure_names else dims
@@ -257,11 +262,14 @@ def _page_theme(visuals) -> str:
 
 
 def business_analyst_deterministic(model: SemanticModel) -> ExecutiveSummary:
+    from .report_facts import field_parameter_table_names
+
     visible_pages = [p for p in model.pages if not p.is_hidden]
     facts = [t.name for t in model.tables if t.kind == "fact"]
     dims = [t.name for t in model.tables if t.kind == "dimension"]
     key_measures = [m.name for m in model.all_measures() if not m.is_hidden][:6]
     measure_names = {m.name for m in model.all_measures()}
+    field_param_tables = field_parameter_table_names(model)
 
     subject = facts[0] if facts else (model.tables[0].name if model.tables else "the data")
     purpose = f"'{model.report_name}' reports on {subject}"
@@ -291,7 +299,7 @@ def business_analyst_deterministic(model: SemanticModel) -> ExecutiveSummary:
         pages.append(PageSummary(
             page_title=p.display_name,
             summary=summary,
-            business_questions=_page_questions(p.visuals, measure_names),
+            business_questions=_page_questions(p.visuals, measure_names, field_param_tables),
         ))
 
     nav: list[str] = []

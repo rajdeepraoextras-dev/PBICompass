@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..agents.audit_rules import RULE_METADATA
 from ..schemas.audit_document import AuditDocument
 from ._docx_writer import _Docx
 from ._html_shell import page_shell
@@ -57,6 +58,39 @@ def _kind_label(kind: str) -> str:
     return kind.replace("_", " ").title()
 
 
+def _rule_name(rule_id: str) -> str:
+    meta = RULE_METADATA.get(rule_id)
+    return meta[2] if meta else rule_id
+
+
+def _component_checks_summary(doc: AuditDocument) -> dict[str, str]:
+    """Per-health-score-component "N/M passed" string, built from the rule
+    ledger's per-category counts (J.A.1). ``naming`` checks fold into
+    ``modeling`` — that's how they're already costed in the health score
+    (see ``compute_health_score``'s ``modeling_cost``); ``unused_assets``
+    has no rule-ID-backed checks, so it's always "—"."""
+    merged: dict[str, dict[str, int]] = {
+        "modeling": {"run": 0, "passed": 0}, "dax": {"run": 0, "passed": 0},
+        "performance": {"run": 0, "passed": 0}, "governance": {"run": 0, "passed": 0},
+    }
+    for category, counts in (getattr(doc, "checks_by_category", None) or {}).items():
+        target = "modeling" if category in ("modeling", "naming") else category
+        if target not in merged:
+            continue
+        merged[target]["run"] += counts.get("run", 0)
+        merged[target]["passed"] += counts.get("passed", 0)
+    summary = {k: (f"{v['passed']}/{v['run']} passed" if v["run"] else "—") for k, v in merged.items()}
+    summary["unused_assets"] = "—"
+    return summary
+
+
+def _checks_ledger_line(doc: AuditDocument) -> str:
+    return (f"Checks run: {getattr(doc, 'checks_run', 0)} · "
+            f"Passed: {getattr(doc, 'checks_passed', 0)} · "
+            f"Failed: {getattr(doc, 'checks_failed', 0)} · "
+            f"Suppressed: {getattr(doc, 'checks_suppressed', 0)}")
+
+
 def _severity_note() -> str:
     return ("All performance risks below are heuristics inferred from metadata only — no "
             "row-level data is ever extracted, so nothing here reflects a measured runtime.")
@@ -92,9 +126,18 @@ def render_markdown(doc: AuditDocument) -> str:
 
     out.append(f"\n## {_SECTION_TITLES[0]}\n")
     out.append(f"**{h.overall} / 100 — {h.band}**\n")
+    out.append(f"_{_checks_ledger_line(doc)}_\n")
     _notes = getattr(h, "component_notes", {}) or {}
-    out.append(_table(["Component", "Score", "Why"],
-                      [[_component_label(k), v, _notes.get(k, "")] for k, v in h.component_scores.items()]))
+    _checks = _component_checks_summary(doc)
+    out.append(_table(["Component", "Score", "Checks", "Why"],
+                      [[_component_label(k), v, _checks.get(k, "—"), _notes.get(k, "")]
+                       for k, v in h.component_scores.items()]))
+
+    if doc.suppressed_rules:
+        out.append("\n**Suppressed by configuration "
+                   f"({len(doc.suppressed_rules)}):**\n")
+        out.append(_table(["Rule", "Name"],
+                          [[rid, _rule_name(rid)] for rid in sorted(doc.suppressed_rules)]))
 
     out.append(f"\n## {_SECTION_TITLES[1]}\n")
     out.append(f"**{c.level}**\n")
@@ -107,31 +150,32 @@ def render_markdown(doc: AuditDocument) -> str:
 
     out.append(f"\n## {_SECTION_TITLES[2]}\n")
     out.append(_table(
-        ["Measure", "Table", "Finding", "Severity", "Detail"],
-        [[f.measure, f.table or "—", _kind_label(f.kind), f.severity, f.detail] for f in doc.dax_findings],
+        ["Rule", "Measure", "Table", "Finding", "Severity", "Detail"],
+        [[f.rule_id, f.measure, f.table or "—", _kind_label(f.kind), f.severity, f.detail]
+         for f in doc.dax_findings],
         "_No DAX findings — no duplicate logic, overly long expressions, missing descriptions, "
         "or naming issues detected._",
     ))
 
     out.append(f"\n## {_SECTION_TITLES[3]}\n")
     out.append(_table(
-        ["Check", "Result", "Detail"],
-        [[bp.name, "✅ Pass" if bp.passed else "❌ Fail", bp.detail] for bp in doc.best_practices],
+        ["Rule", "Check", "Result", "Detail"],
+        [[bp.rule_id, bp.name, "✅ Pass" if bp.passed else "❌ Fail", bp.detail] for bp in doc.best_practices],
     ))
 
     out.append(f"\n## {_SECTION_TITLES[4]}\n")
     out.append(f"_{_severity_note()}_\n")
     out.append(_table(
-        ["Kind", "Object", "Table", "Severity", "Detail"],
-        [[_kind_label(r.kind), r.object_name, r.table or "—", r.severity, r.detail]
+        ["Rule", "Kind", "Object", "Table", "Severity", "Detail"],
+        [[r.rule_id, _kind_label(r.kind), r.object_name, r.table or "—", r.severity, r.detail]
          for r in doc.performance_risks],
         "_No performance risk signals detected._",
     ))
 
     out.append(f"\n## {_SECTION_TITLES[5]}\n")
     out.append(_table(
-        ["Area", "Severity", "Detail"],
-        [[_area_label(g.area), g.severity, g.detail] for g in doc.governance],
+        ["Rule", "Area", "Severity", "Detail"],
+        [[g.rule_id, _area_label(g.area), g.severity, g.detail] for g in doc.governance],
         "_No governance gaps detected._",
     ))
 
@@ -143,7 +187,8 @@ def render_markdown(doc: AuditDocument) -> str:
     out.append(f"\n## {_SECTION_TITLES[7]}\n")
     if doc.recommendations:
         for r in doc.recommendations:
-            out.append(f"### [{r.priority}] {r.issue}\n")
+            rule_suffix = f" ({r.rule_id})" if getattr(r, "rule_id", "") else ""
+            out.append(f"### [{r.priority}] {r.issue}{rule_suffix}\n")
             out.append(f"**Why it matters:** {r.why_it_matters}\n")
             out.append(f"**Suggested fix:** {r.suggested_fix}\n")
             out.append(f"**Expected benefit:** {r.expected_benefit}\n")
@@ -157,6 +202,12 @@ def render_markdown(doc: AuditDocument) -> str:
 # -- HTML -------------------------------------------------------------------------
 def _severity_pill(severity: str) -> str:
     return f'<span class="pill {severity.lower()}">{_e(severity)}</span>'
+
+
+def _rule_pill(rule_id: str) -> str:
+    if not rule_id:
+        return ""
+    return f'<span class="pill rule-id" title="{_e(_rule_name(rule_id))}">{_e(rule_id)}</span>'
 
 
 def _measure_cell(name: str, technical_href: str | None) -> str:
@@ -193,10 +244,19 @@ def render_html(
     o.append(f'<div class="score-big">{_e(h.overall)}/100</div>')
     o.append(f'<div class="score-band">{_e(h.band)}</div>')
     o.append('</div>')
+    o.append(f'<p class="caveat">{_e(_checks_ledger_line(doc))}</p>')
     _notes = getattr(h, "component_notes", {}) or {}
-    o.append(_html_table(["Component", "Score", "Why"],
-                         [[_e(_component_label(k)), _e(v), _e(_notes.get(k, ""))]
+    _checks = _component_checks_summary(doc)
+    o.append(_html_table(["Component", "Score", "Checks", "Why"],
+                         [[_e(_component_label(k)), _e(v), _e(_checks.get(k, "—")), _e(_notes.get(k, ""))]
                           for k, v in h.component_scores.items()]))
+
+    if doc.suppressed_rules:
+        o.append(f'<details class="collapsible"><summary>Suppressed by configuration '
+                 f'({len(doc.suppressed_rules)})</summary><div class="collapsible-body">')
+        o.append(_html_table(["Rule", "Name"],
+                             [[_e(rid), _e(_rule_name(rid))] for rid in sorted(doc.suppressed_rules)]))
+        o.append('</div></details>')
 
     o.append(f'<h2 id="sec2">{_e(_SECTION_TITLES[1])}</h2>')
     o.append(f'<p><strong>{_e(c.level)}</strong></p>')
@@ -212,9 +272,9 @@ def render_html(
     dax_ids = [f"finding-dax-{i}" for i in range(len(doc.dax_findings))]
     o.append(f'<h2 id="sec3">{_e(_SECTION_TITLES[2])}</h2>')
     o.append(_html_table(
-        ["Measure", "Table", "Finding", "Severity", "Detail"],
-        [[_measure_cell(f.measure, technical_href), _e(f.table or "—"), _e(_kind_label(f.kind)),
-          _severity_pill(f.severity), _e(f.detail)]
+        ["Rule", "Measure", "Table", "Finding", "Severity", "Detail"],
+        [[_rule_pill(f.rule_id), _measure_cell(f.measure, technical_href), _e(f.table or "—"),
+          _e(_kind_label(f.kind)), _severity_pill(f.severity), _e(f.detail)]
          for f in doc.dax_findings],
         "No DAX findings — no duplicate logic, overly long expressions, missing descriptions, "
         "or naming issues detected.",
@@ -224,8 +284,8 @@ def render_html(
     check_ids = [f"check-{_e(bp.id)}" for bp in doc.best_practices]
     o.append(f'<h2 id="sec4">{_e(_SECTION_TITLES[3])}</h2>')
     o.append(_html_table(
-        ["Check", "Result", "Detail"],
-        [[_e(bp.name), f'<span class="pill {"pass" if bp.passed else "fail"}">'
+        ["Rule", "Check", "Result", "Detail"],
+        [[_rule_pill(bp.rule_id), _e(bp.name), f'<span class="pill {"pass" if bp.passed else "fail"}">'
                        f'{"Pass" if bp.passed else "Fail"}</span>', _e(bp.detail)]
          for bp in doc.best_practices],
         row_ids=check_ids,
@@ -235,9 +295,9 @@ def render_html(
     o.append(f'<h2 id="sec5">{_e(_SECTION_TITLES[4])}</h2>')
     o.append(f'<p class="caveat">{_e(_severity_note())}</p>')
     o.append(_html_table(
-        ["Kind", "Object", "Table", "Severity", "Detail"],
-        [[_e(_kind_label(r.kind)), _e(r.object_name), _e(r.table or "—"), _severity_pill(r.severity),
-          _e(r.detail)] for r in doc.performance_risks],
+        ["Rule", "Kind", "Object", "Table", "Severity", "Detail"],
+        [[_rule_pill(r.rule_id), _e(_kind_label(r.kind)), _e(r.object_name), _e(r.table or "—"),
+          _severity_pill(r.severity), _e(r.detail)] for r in doc.performance_risks],
         "No performance risk signals detected.",
         row_ids=perf_ids,
     ))
@@ -245,8 +305,9 @@ def render_html(
     gov_ids = [f"finding-gov-{i}" for i in range(len(doc.governance))]
     o.append(f'<h2 id="sec6">{_e(_SECTION_TITLES[5])}</h2>')
     o.append(_html_table(
-        ["Area", "Severity", "Detail"],
-        [[_e(_area_label(g.area)), _severity_pill(g.severity), _e(g.detail)] for g in doc.governance],
+        ["Rule", "Area", "Severity", "Detail"],
+        [[_rule_pill(g.rule_id), _e(_area_label(g.area)), _severity_pill(g.severity), _e(g.detail)]
+         for g in doc.governance],
         "No governance gaps detected.",
         row_ids=gov_ids,
     ))
@@ -257,11 +318,17 @@ def render_html(
     o.append('<p class="caveat">Hierarchies and calculation groups are not yet parsed by PBICompass, '
              'so they are excluded from this audit.</p>')
 
+    # Anchored by rule_id when present (stable across renders, and how the
+    # executive doc's per-risk deep links (I5) address a specific
+    # recommendation) — falls back to a positional id for the rare
+    # recommendation with no backing rule (e.g. "unused assets").
+    rec_ids = [f"rec-{r.rule_id}" if getattr(r, "rule_id", "") else f"rec-{i}"
+               for i, r in enumerate(doc.recommendations)]
     o.append(f'<h2 id="sec8">{_e(_SECTION_TITLES[7])}</h2>')
     if doc.recommendations:
-        for i, r in enumerate(doc.recommendations):
-            o.append(f'<div class="card-section" id="rec-{i}">')
-            o.append(f'<h3>{_severity_pill(r.priority)} {_e(r.issue)}</h3>')
+        for r, rec_id in zip(doc.recommendations, rec_ids):
+            o.append(f'<div class="card-section" id="{_e(rec_id)}">')
+            o.append(f'<h3>{_severity_pill(r.priority)} {_e(r.issue)}{_rule_pill(getattr(r, "rule_id", ""))}</h3>')
             o.append(f'<p><strong>Why it matters:</strong> {_e(r.why_it_matters)}</p>')
             o.append(f'<p><strong>Suggested fix:</strong> {format_prose_with_code(r.suggested_fix)}</p>')
             o.append(f'<p><strong>Expected benefit:</strong> {_e(r.expected_benefit)}</p>')
@@ -288,8 +355,8 @@ def render_html(
         for g, rid in zip(doc.governance, gov_ids)
     ]
     search_index += [
-        {"title": r.issue, "type": "recommendation", "anchor": f"rec-{i}"}
-        for i, r in enumerate(doc.recommendations)
+        {"title": r.issue, "type": "recommendation", "anchor": rid}
+        for r, rid in zip(doc.recommendations, rec_ids)
     ]
 
     subtitle_str = f"{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}"
@@ -334,9 +401,16 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
 
     d.heading(1, _SECTION_TITLES[0])
     d.para([d._run(f"{h.overall} / 100 — {h.band}", bold=True)])
+    d.para([d._run(_checks_ledger_line(doc), italic=True)])
     _notes = getattr(h, "component_notes", {}) or {}
-    d.table(["Component", "Score", "Why"],
-            _t([[_component_label(k), v, _notes.get(k, "")] for k, v in h.component_scores.items()]))
+    _checks = _component_checks_summary(doc)
+    d.table(["Component", "Score", "Checks", "Why"],
+            _t([[_component_label(k), v, _checks.get(k, "—"), _notes.get(k, "")]
+                for k, v in h.component_scores.items()]))
+
+    if doc.suppressed_rules:
+        d.para([d._run(f"Suppressed by configuration ({len(doc.suppressed_rules)}):", bold=True)])
+        d.table(["Rule", "Name"], _t([[rid, _rule_name(rid)] for rid in sorted(doc.suppressed_rules)]))
 
     d.heading(1, _SECTION_TITLES[1])
     d.para([d._run(c.level, bold=True)])
@@ -348,24 +422,25 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
     ]))
 
     d.heading(1, _SECTION_TITLES[2])
-    d.table(["Measure", "Table", "Finding", "Severity", "Detail"],
-            _t([[f.measure, f.table or "—", _kind_label(f.kind), f.severity, f.detail]
-                for f in doc.dax_findings]) or [["—", "—", "—", "—", "No DAX findings."]])
+    d.table(["Rule", "Measure", "Table", "Finding", "Severity", "Detail"],
+            _t([[f.rule_id, f.measure, f.table or "—", _kind_label(f.kind), f.severity, f.detail]
+                for f in doc.dax_findings]) or [["—", "—", "—", "—", "—", "No DAX findings."]])
 
     d.heading(1, _SECTION_TITLES[3])
-    d.table(["Check", "Result", "Detail"],
-            _t([[bp.name, "Pass" if bp.passed else "Fail", bp.detail] for bp in doc.best_practices]))
+    d.table(["Rule", "Check", "Result", "Detail"],
+            _t([[bp.rule_id, bp.name, "Pass" if bp.passed else "Fail", bp.detail]
+                for bp in doc.best_practices]))
 
     d.heading(1, _SECTION_TITLES[4])
     d.para([d._run(_severity_note(), italic=True)])
-    d.table(["Kind", "Object", "Table", "Severity", "Detail"],
-            _t([[_kind_label(r.kind), r.object_name, r.table or "—", r.severity, r.detail]
-                for r in doc.performance_risks]) or [["—", "—", "—", "—", "No performance risk signals."]])
+    d.table(["Rule", "Kind", "Object", "Table", "Severity", "Detail"],
+            _t([[r.rule_id, _kind_label(r.kind), r.object_name, r.table or "—", r.severity, r.detail]
+                for r in doc.performance_risks]) or [["—", "—", "—", "—", "—", "No performance risk signals."]])
 
     d.heading(1, _SECTION_TITLES[5])
-    d.table(["Area", "Severity", "Detail"],
-            _t([[_area_label(g.area), g.severity, g.detail] for g in doc.governance])
-            or [["—", "—", "No governance gaps detected."]])
+    d.table(["Rule", "Area", "Severity", "Detail"],
+            _t([[g.rule_id, _area_label(g.area), g.severity, g.detail] for g in doc.governance])
+            or [["—", "—", "—", "No governance gaps detected."]])
 
     d.heading(1, _SECTION_TITLES[6])
     d.table(["Asset Type", "Count", "Items"], _t(_unused_rows(doc.unused_assets)))
@@ -375,7 +450,8 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
     d.heading(1, _SECTION_TITLES[7])
     if doc.recommendations:
         for r in doc.recommendations:
-            d.heading(3, f"[{r.priority}] {r.issue}")
+            rule_suffix = f" ({r.rule_id})" if getattr(r, "rule_id", "") else ""
+            d.heading(3, f"[{r.priority}] {r.issue}{rule_suffix}")
             d.para([d._run("Why it matters: ", bold=True), d._run(r.why_it_matters)])
             d.para([d._run("Suggested fix: ", bold=True), d._run(r.suggested_fix)])
             d.para([d._run("Expected benefit: ", bold=True), d._run(r.expected_benefit)])

@@ -25,6 +25,7 @@ from ._dax_highlight import highlight_dax
 from ._html_shell import page_shell
 from ._shared import HEALTH_COMPONENT_LABELS
 from ._shared import anchor_slug
+from ._shared import dedupe_ids
 from ._shared import format_timestamp as _fmt_ts
 from ._shared import html_e as _e
 from ._shared import html_table as _table
@@ -379,13 +380,14 @@ def render_html(
         o.append("<h3>Model diagram</h3>")
         o.append(_diagram(sm.tables, sm.relationship_edges))
     o.append("<h3>Key tables</h3>")
+    table_ids = dedupe_ids([f"table-{anchor_slug(t['name'])}" for t in sm.tables])
     if sm.tables:
         head = "".join(f"<th>{h}</th>" for h in ("Table", "Type", "Columns", "Measures"))
         rows = "".join(
-            f'<tr id="table-{_e(anchor_slug(t["name"]))}"><td>{_e(t["name"])}</td><td>{_e(t.get("kind", ""))}</td>'
+            f'<tr id="{_e(tid)}"><td>{_e(t["name"])}</td><td>{_e(t.get("kind", ""))}</td>'
             f'<td><span class="num">{_e(t.get("columns", 0))}</span></td>'
             f'<td><span class="num">{_e(t.get("measures", 0))}</span></td></tr>'
-            for t in sm.tables
+            for t, tid in zip(sm.tables, table_ids)
         )
         o.append(f"<table><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table>")
     else:
@@ -397,7 +399,8 @@ def render_html(
                       _e(ed.get("cross_filter")), "Yes" if ed.get("is_active") else "No"]
                      for ed in sm.relationship_edges], "No relationships defined."))
     o.append("<h3>Data dictionary</h3>")
-    row_ids = [f"column-{anchor_slug(r.get('table', ''))}-{anchor_slug(r.get('column', ''))}" for r in sm.data_dictionary]
+    row_ids = dedupe_ids([f"column-{anchor_slug(r.get('table', ''))}-{anchor_slug(r.get('column', ''))}"
+                          for r in sm.data_dictionary])
     rows = [[_e(r.get("table", "")), _e(r.get("column", "")), _e(r.get("data_type", "")),
               _e(r.get("description", "")), _e(r.get("used_by", ""))] for r in sm.data_dictionary]
     o.append(_table(["Table", "Column", "Data Type", "Description", "Used by"], rows, row_ids=row_ids))
@@ -451,7 +454,13 @@ def render_html(
             o.append(f"<li><strong>{_e(ex.visual)}</strong> ({_e(ex.page)}): {_e(ex.how_to_read)}</li>")
         o.append("</ul>")
     page_docs = {p.page_title: p for p in es.pages}
-    for p in doc.report_pages:
+    # Matches user_guide.py's per-page card id (same formula) — the page
+    # wireframe SVG is computed once (report_facts.report_pages) and
+    # embedded verbatim in both documents, and its slicer boxes link here
+    # (I3), so both renderers need the identical anchor.
+    page_ids = dedupe_ids([f"page-{anchor_slug(p['name'])}" for p in doc.report_pages])
+    for p, page_id in zip(doc.report_pages, page_ids):
+        o.append(f'<div id="{_e(page_id)}">')
         flags = []
         if p.get("hidden"):
             flags.append("hidden")
@@ -474,13 +483,15 @@ def render_html(
                 o.append(f"<p><strong>Decision supported:</strong> {_e(pd.decisions)}</p>")
             if pd.confidence == "Low":
                 o.append('<p class="caveat">Purpose inferred with low confidence — requires business review.</p>')
-        row_ids = [f"visual-{anchor_slug(p['name'])}-{anchor_slug(v['label'])}" for v in p.get("visuals", [])]
+        row_ids = dedupe_ids([f"visual-{anchor_slug(p['name'])}-{anchor_slug(v['label'])}"
+                             for v in p.get("visuals", [])])
         rows = [[_e(v.get("label") or "—"), _e(v.get("type")),
                  _e(", ".join(v.get("metrics", [])) or "—"),
                  _e(", ".join(v.get("dimensions", [])) or "—")] for v in p.get("visuals", [])]
         o.append(_table(["Visual", "Type", "Metric(s)", "Dimension(s)"], rows, "No data visuals on this page.", row_ids=row_ids))
         if p.get("decorative_count"):
             o.append(f'<p class="muted">{_e(_non_data_note(p["decorative_count"]))}</p>')
+        o.append("</div>")
 
     # 9. Filters, Slicers & Navigation
     o.append('<h2 id="sec9">9. Filters, Slicers &amp; Navigation</h2>')
@@ -775,12 +786,15 @@ def render_html(
 
     search_index = [{"title": title, "type": "section", "anchor": sec_id} for sec_id, title in TOC]
     search_index += [
+        # Not deduped: measure names are unique model-wide in Power BI, and
+        # the audit doc's cross-links (render/audit.py's _measure_cell)
+        # independently compute this same slug — they must stay in sync.
         {"title": m.name, "type": "measure", "anchor": f"measure-{anchor_slug(m.name)}"}
         for m in doc.measure_catalog.measures
     ]
     search_index += [
-        {"title": t["name"], "type": "table", "anchor": f"table-{anchor_slug(t['name'])}"}
-        for t in sm.tables
+        {"title": t["name"], "type": "table", "anchor": tid}
+        for t, tid in zip(sm.tables, table_ids)
     ]
 
     subtitle_str = f'{md.target_audience or "BI developers and business stakeholders"} · generated {_fmt_ts(md.generated_at)}'

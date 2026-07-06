@@ -7,6 +7,7 @@ is installed, graceful ``PandocError`` if not.
 
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 import xml.dom.minidom as minidom
@@ -426,17 +427,12 @@ class RendererRegistryCompatibilityTest(unittest.TestCase):
 
 
 _EXECUTIVE_SECTION_TITLES = [
-    "1. Business Purpose",
+    "1. Purpose & Value",
     "2. Key KPIs",
-    "3. Data Sources",
-    "4. Refresh Schedule",
-    "5. Security Overview",
-    "6. High-Level Architecture",
-    "7. Model & Report Statistics",
-    "8. Business Value",
-    "9. Known Risks",
-    "10. Maintenance Overview",
-    "11. Future Recommendations",
+    "3. Top Risks & Recommended Actions",
+    "4. Data & Refresh at a Glance",
+    "5. Ownership & Accountability",
+    "6. What's Next",
 ]
 
 
@@ -451,8 +447,11 @@ class ExecutiveMarkdownRenderTest(unittest.TestCase):
         self.assertEqual(positions, sorted(positions))
 
     def test_no_technical_jargon(self):
-        for banned in ("DAX", "semantic model"):
+        for banned in ("DAX", "semantic model", "CROSSFILTER", "USERELATIONSHIP"):
             self.assertNotIn(banned, self.md)
+
+    def test_no_raw_file_paths(self):
+        self.assertNotRegex(self.md, r"[A-Za-z]:[\\/]")
 
     def test_contains_content(self):
         self.assertIn("SampleSales", self.md)
@@ -480,6 +479,14 @@ class ExecutiveHtmlRenderTest(unittest.TestCase):
         self.assertIn('class="sidebar"', self.html)
         self.assertIn('class="toc-link"', self.html)
 
+    def test_risk_deep_links_to_specific_audit_finding(self):
+        # I5: a risk with a rule_id must link to that exact recommendation
+        # anchor in the audit doc, not a generic section-level link.
+        doc = _executive_doc()
+        self.assertTrue(doc.top_risks and doc.top_risks[0].rule_id)
+        html = render_executive_html(doc, sibling_hrefs={"audit": "audit.html"})
+        self.assertIn(f'audit.html#rec-{doc.top_risks[0].rule_id}', html)
+
 
 class ExecutiveDocxRenderTest(unittest.TestCase):
     def test_valid_ooxml_package(self):
@@ -497,7 +504,7 @@ class ExecutiveDocxRenderTest(unittest.TestCase):
                 document = zf.read("word/document.xml").decode("utf-8")
             minidom.parseString(document)  # well-formed XML or raises
             self.assertIn("SampleSales", document)
-            self.assertIn("Business Purpose", document)
+            self.assertIn("Purpose", document)
 
 
 _USER_GUIDE_SECTION_TITLES = [
@@ -567,6 +574,86 @@ class UserGuideDocxRenderTest(unittest.TestCase):
             minidom.parseString(document)  # well-formed XML or raises
             self.assertIn("SampleSales", document)
             self.assertIn("Sales Overview", document)
+
+
+class IdUniquenessTest(unittest.TestCase):
+    """I2: two distinct object names (e.g. glossary terms "Var LE1" and
+    "Var LE1 %") can collapse to the same anchor slug once symbols are
+    stripped — a duplicate ``id="..."`` breaks in-page links and search.
+    Every id attribute in every rendered HTML document must be unique."""
+
+    _ID_RE = None
+
+    @classmethod
+    def setUpClass(cls):
+        import re
+        cls._ID_RE = re.compile(r'\bid="([^"]*)"')
+
+    def _assert_unique_ids(self, html: str, label: str) -> None:
+        ids = self._ID_RE.findall(html)
+        seen = set()
+        dupes = set()
+        for i in ids:
+            (dupes if i in seen else seen).add(i)
+        self.assertEqual(dupes, set(), f"{label}: duplicate id attribute(s): {sorted(dupes)}")
+
+    def test_technical_html_has_unique_ids(self):
+        self._assert_unique_ids(render_html(_doc()), "technical")
+
+    def test_audit_html_has_unique_ids(self):
+        self._assert_unique_ids(render_audit_html(_audit_doc()), "audit")
+
+    def test_executive_html_has_unique_ids(self):
+        self._assert_unique_ids(render_executive_html(_executive_doc()), "executive")
+
+    def test_user_guide_html_has_unique_ids(self):
+        self._assert_unique_ids(render_user_guide_html(_user_guide_doc()), "user_guide")
+
+    def test_glossary_terms_that_collapse_to_the_same_slug_get_unique_ids(self):
+        """The concrete I2 bug report: 'Var LE1' and 'Var LE1 %' both slug to
+        'var-le1' once the slugifier drops '%'."""
+        from pbicompass.schemas.user_guide_document import GlossaryTerm, UserGuideDocument
+        from pbicompass.render import render_user_guide_html as _render
+
+        base = _user_guide_doc()
+        doc = UserGuideDocument(
+            metadata=base.metadata, introduction=base.introduction,
+            getting_started=base.getting_started, pages=base.pages,
+            glossary=[
+                GlossaryTerm(term="Var LE1", plain_definition="First variance measure."),
+                GlossaryTerm(term="Var LE1 %", plain_definition="Variance as a percentage."),
+                GlossaryTerm(term="Var LE1 #", plain_definition="A third colliding term."),
+            ],
+        )
+        html = _render(doc)
+        self._assert_unique_ids(html, "user_guide (glossary collision fixture)")
+        self.assertIn('id="term-var-le1"', html)
+        self.assertIn('id="term-var-le1-2"', html)
+        self.assertIn('id="term-var-le1-3"', html)
+
+
+class WireframeHrefResolutionTest(unittest.TestCase):
+    """I3: every ``href="#..."`` a page wireframe emits must resolve to a
+    real id somewhere in the same document — the SampleSales fixture has
+    slicers, data visuals, and a decomposition-tree/map/card mix with real
+    layout coordinates, so its wireframes exercise every link category."""
+
+    _ID_RE = re.compile(r'\bid="([^"]*)"')
+    _HREF_RE = re.compile(r'href="#([^"]*)"')
+
+    def _assert_no_dead_hrefs(self, html: str, label: str) -> None:
+        ids = set(self._ID_RE.findall(html))
+        # exclude JS template-literal hrefs from the shell's scroll-spy
+        # script (e.g. href="#${sections[index].id}") — not real markup.
+        hrefs = {h for h in self._HREF_RE.findall(html) if h and "$" not in h}
+        dead = hrefs - ids
+        self.assertEqual(dead, set(), f"{label}: dead href(s) with no matching id: {sorted(dead)}")
+
+    def test_technical_html_wireframe_hrefs_all_resolve(self):
+        self._assert_no_dead_hrefs(render_html(_doc()), "technical")
+
+    def test_user_guide_html_wireframe_hrefs_all_resolve(self):
+        self._assert_no_dead_hrefs(render_user_guide_html(_user_guide_doc()), "user_guide")
 
 
 if __name__ == "__main__":

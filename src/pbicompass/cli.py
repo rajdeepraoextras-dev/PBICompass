@@ -116,6 +116,9 @@ def main(argv: list[str] | None = None) -> int:
     p_gen.add_argument("-o", "--out", type=Path, help="Output path (.md or .json by extension)")
     p_gen.add_argument("--stats", action="store_true",
                        help=".pbix only: also read VertiPaq aggregate stats (column cardinality/size). Opt-in — never row-level data.")
+    p_gen.add_argument("--rules", type=Path,
+                       help="Path to a pbicompass.rules.toml config: disable rule IDs, override "
+                            "severities, and set thresholds (audit document only).")
     p_gen.add_argument("--provider", default="none",
                        help="LLM provider: 'none' (deterministic, default), 'anthropic', 'gemini', or 'cohere'")
     p_gen.add_argument("--model", default="claude-opus-4-8", help="Model id for the LLM provider")
@@ -200,6 +203,18 @@ def main(argv: list[str] | None = None) -> int:
         def _warn(msg: str) -> None:
             if not args.quiet:
                 print(f"warning: {msg}", file=sys.stderr)
+
+        # Rule suppression/severity/threshold config (4.3 / J.A.3). Invalid
+        # TOML is a warning, not a fatal error — the job still runs, just
+        # without any overrides applied.
+        from .agents import audit_rules
+        audit_rules.set_rules_config_path(None)
+        if args.rules:
+            error = audit_rules.validate_rules_file(args.rules)
+            if error:
+                _warn(f"{error} — continuing without rule overrides.")
+            else:
+                audit_rules.set_rules_config_path(args.rules)
 
         client = None
         if args.provider not in ("none", "offline", "deterministic"):

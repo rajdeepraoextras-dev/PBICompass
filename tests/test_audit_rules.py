@@ -371,6 +371,241 @@ class RulesEngineTest(unittest.TestCase):
         must stay a no-op — the zero-retention guarantee for score trend."""
         self.assertIsNone(audit_rules.get_and_update_score_history("AnyReport", 80))
 
+    def test_get_threshold_returns_default_when_unset(self):
+        self.assertEqual(audit_rules.get_threshold("visual_density_limit", 12), 12)
+
+    def test_get_threshold_reads_from_rules_toml(self):
+        original_load = audit_rules.load_rules_config
+        try:
+            audit_rules.load_rules_config = lambda: {"thresholds": {"visual_density_limit": 5}}
+            self.assertEqual(audit_rules.get_threshold("visual_density_limit", 12), 5)
+        finally:
+            audit_rules.load_rules_config = original_load
+
+    def test_visual_density_threshold_is_configurable(self):
+        from pbicompass.schemas.model import Page, SemanticModel, Visual
+
+        model = SemanticModel(
+            report_name="R",
+            pages=[Page(id="p1", display_name="Overview",
+                       visuals=[Visual(id=str(i), type="card") for i in range(6)])],
+        )
+        # default threshold (12) — 6 visuals shouldn't trip it
+        self.assertFalse(any(r.kind == "visual_density" for r in audit_rules.find_performance_risks(model)))
+
+        original_load = audit_rules.load_rules_config
+        try:
+            audit_rules.load_rules_config = lambda: {"thresholds": {"visual_density_limit": 5}}
+            risks = audit_rules.find_performance_risks(model)
+            self.assertTrue(any(r.kind == "visual_density" for r in risks))
+        finally:
+            audit_rules.load_rules_config = original_load
+
+    def test_validate_rules_file_reports_missing_and_invalid(self):
+        import tempfile
+        from pathlib import Path
+
+        self.assertIsNotNone(audit_rules.validate_rules_file("/no/such/file.toml"))
+        with tempfile.TemporaryDirectory() as td:
+            bad = Path(td) / "bad.toml"
+            bad.write_text("not [ valid", encoding="utf-8")
+            self.assertIsNotNone(audit_rules.validate_rules_file(bad))
+
+            good = Path(td) / "good.toml"
+            good.write_text('[rules."PBIC-DAX-003"]\nenabled = false\n', encoding="utf-8")
+            self.assertIsNone(audit_rules.validate_rules_file(good))
+
+    def test_set_rules_config_path_is_used_by_load_rules_config(self):
+        import tempfile
+        from pathlib import Path
+
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                path = Path(td) / "custom.toml"
+                path.write_text('[thresholds]\nvisual_density_limit = 3\n', encoding="utf-8")
+                audit_rules.set_rules_config_path(path)
+                self.assertEqual(audit_rules.get_threshold("visual_density_limit", 12), 3)
+        finally:
+            audit_rules.set_rules_config_path(None)
+
+
+def _stress_model():
+    """A synthetic model that fires every High/Critical-severity rule at
+    once — bidirectional-on-a-fact-table, direct many-to-many, a
+    relationship cycle, a disconnected table, a sensitive column name, a
+    hardcoded local file path, and a hardcoded year — so Part J's fix-
+    snippet-coverage requirement (J.A.2) can be checked against more than
+    one rule at a time."""
+    from pbicompass.schemas.model import (
+        Column, DataSource, Measure, Relationship, SemanticModel, Table,
+    )
+
+    return SemanticModel(
+        report_name="StressTest",
+        tables=[
+            Table(name="Sales", kind="fact", columns=[
+                Column(name="SalesID", is_key=True),
+                Column(name="CustomerID"), Column(name="ProductID"),
+            ]),
+            Table(name="Customer", kind="dimension", columns=[
+                Column(name="CustomerID", is_key=True), Column(name="SSN"),
+            ]),
+            Table(name="Product", kind="dimension", columns=[
+                Column(name="ProductID", is_key=True), Column(name="CategoryID"),
+            ]),
+            Table(name="Category", kind="dimension", columns=[Column(name="CategoryID", is_key=True)]),
+            Table(name="Orphan", kind="dimension", columns=[Column(name="X")]),
+        ],
+        relationships=[
+            Relationship(from_table="Sales", from_column="CustomerID", to_table="Customer",
+                        to_column="CustomerID", cross_filter="both"),
+            Relationship(from_table="Sales", from_column="ProductID", to_table="Product",
+                        to_column="ProductID", from_cardinality="many", to_cardinality="many"),
+            Relationship(from_table="Product", from_column="CategoryID", to_table="Category",
+                        to_column="CategoryID"),
+            Relationship(from_table="Category", from_column="CategoryID", to_table="Sales",
+                        to_column="ProductID"),
+        ],
+        data_sources=[DataSource(type="Excel.Workbook", detail=r"C:\Users\alice\Desktop\sales.xlsx")],
+    )
+
+
+class BridgeAndFactChecksTest(unittest.TestCase):
+    """PBIC-MOD-014/015 (J.A.1b) were declared in FINDING_RULES/RULE_METADATA
+    but no check ever produced them — meaning the audit's "checks run" count
+    silently included two rules that could never fail. They must now be
+    real, independently-triggerable checks."""
+
+    def test_m2m_no_bridge_fires_for_direct_many_to_many(self):
+        checks = audit_rules.check_best_practices(_stress_model())
+        check = next(c for c in checks if c.id == "m2m_no_bridge")
+        self.assertFalse(check.passed)
+        self.assertEqual(check.rule_id, "PBIC-MOD-014")
+
+    def test_m2m_no_bridge_passes_when_one_side_is_bridge_shaped(self):
+        """A junction table (few key-only columns, no measures, unclassified
+        kind) sitting on one side of the M:N relationship is exactly the
+        "has a bridge" case — even without a bridge/junction/xref name."""
+        from pbicompass.schemas.model import Column, Relationship, SemanticModel, Table
+
+        model = SemanticModel(
+            report_name="R",
+            tables=[
+                Table(name="Sales", kind="fact", columns=[Column(name="AssignmentID")]),
+                Table(name="Assignment", columns=[Column(name="SalesID"), Column(name="ProductID")]),
+            ],
+            relationships=[
+                Relationship(from_table="Sales", from_column="AssignmentID", to_table="Assignment",
+                            to_column="SalesID", from_cardinality="many", to_cardinality="many"),
+            ],
+        )
+        check = next(c for c in audit_rules.check_best_practices(model) if c.id == "m2m_no_bridge")
+        self.assertTrue(check.passed)
+
+    def test_m2m_no_bridge_passes_when_bridge_named_table_present(self):
+        from pbicompass.schemas.model import Column, Relationship, SemanticModel, Table
+
+        model = SemanticModel(
+            report_name="R",
+            tables=[
+                Table(name="Sales", kind="fact", columns=[Column(name="BridgeID")]),
+                Table(name="SalesProductBridge", kind="dimension",
+                     columns=[Column(name="SalesID"), Column(name="ProductID"), Column(name="Qty")]),
+            ],
+            relationships=[
+                Relationship(from_table="Sales", from_column="BridgeID", to_table="SalesProductBridge",
+                            to_column="SalesID", from_cardinality="many", to_cardinality="many"),
+            ],
+        )
+        check = next(c for c in audit_rules.check_best_practices(model) if c.id == "m2m_no_bridge")
+        self.assertTrue(check.passed)
+
+    def test_bidirectional_fact_fires_when_bidi_touches_a_fact_table(self):
+        checks = audit_rules.check_best_practices(_stress_model())
+        check = next(c for c in checks if c.id == "bidirectional_fact")
+        self.assertFalse(check.passed)
+        self.assertEqual(check.rule_id, "PBIC-MOD-015")
+
+    def test_bidirectional_fact_passes_for_dimension_to_dimension_bidi(self):
+        from pbicompass.schemas.model import Column, Relationship, SemanticModel, Table
+
+        model = SemanticModel(
+            report_name="R",
+            tables=[
+                Table(name="Product", kind="dimension", columns=[Column(name="CategoryID")]),
+                Table(name="Category", kind="dimension", columns=[Column(name="CategoryID", is_key=True)]),
+            ],
+            relationships=[
+                Relationship(from_table="Product", from_column="CategoryID", to_table="Category",
+                            to_column="CategoryID", cross_filter="both"),
+            ],
+        )
+        check = next(c for c in audit_rules.check_best_practices(model) if c.id == "bidirectional_fact")
+        self.assertTrue(check.passed)
+
+
+class ChecksLedgerTest(unittest.TestCase):
+    """4.1 / J.A.1: 'Checks run' must count the full stable-ID rule
+    registry, not just findings that fired — a rule that never produced a
+    finding still has to show up as a passed check."""
+
+    def test_ledger_totals_add_up_and_match_total_rule_count(self):
+        model = _model()
+        dax = audit_rules.find_dax_findings(model.all_measures())
+        practices = audit_rules.check_best_practices(model)
+        perf = audit_rules.find_performance_risks(model)
+        gov = audit_rules.check_governance(model)
+        ledger = audit_rules.compute_checks_ledger(dax, practices, perf, gov, [])
+
+        self.assertEqual(ledger["run"], audit_rules.TOTAL_RULE_COUNT)
+        self.assertEqual(ledger["run"], ledger["passed"] + ledger["failed"] + ledger["suppressed"])
+        self.assertGreater(ledger["failed"], 0)  # SampleSales isn't a perfect model
+        self.assertGreater(ledger["passed"], 0)
+
+    def test_suppressed_rule_counted_as_suppressed_not_failed(self):
+        model = _model()
+        dax = audit_rules.find_dax_findings(model.all_measures())
+        practices = audit_rules.check_best_practices(model)
+        perf = audit_rules.find_performance_risks(model)
+        gov = audit_rules.check_governance(model)
+        ledger = audit_rules.compute_checks_ledger(dax, practices, perf, gov, ["PBIC-DAX-003"])
+
+        self.assertEqual(ledger["suppressed"], 1)
+        category = audit_rules.RULE_METADATA["PBIC-DAX-003"][0]
+        self.assertEqual(ledger["by_category"][category]["suppressed"], 1)
+
+
+class FixSnippetCoverageTest(unittest.TestCase):
+    """J.A.2: every High/Critical recommendation must carry a fix snippet
+    parameterized with the finding's actual objects, not generic advice."""
+
+    def test_every_high_or_critical_recommendation_has_a_code_fix(self):
+        model = _stress_model()
+        from pbicompass.schemas.model import Measure
+
+        for t in model.tables:
+            if t.name == "Sales":
+                t.measures.append(Measure(name="Revenue2020", expression="SUM(Sales[Amount]) + 2020",
+                                          table="Sales", description="x"))
+
+        dax = audit_rules.find_dax_findings(model.all_measures())
+        practices = audit_rules.check_best_practices(model)
+        perf = audit_rules.find_performance_risks(model)
+        gov = audit_rules.check_governance(model)
+        unused = audit_rules.find_unused_assets(model)
+        recs = audit_rules.build_recommendations(dax, practices, perf, gov, unused, model=model)
+
+        high_critical = [r for r in recs if r.priority in ("Critical", "High")]
+        self.assertGreaterEqual(len(high_critical), 5)  # the fixture is built to trip several
+        missing = [r for r in high_critical if "```" not in r.suggested_fix]
+        self.assertEqual(missing, [], f"missing fix snippets for: {[r.rule_id for r in missing]}")
+        # every fix snippet must name a real object from the fixture, not just generic prose
+        real_objects = {"Sales", "Product", "Customer", "Category", "Orphan", "SSN", "Revenue2020",
+                        "sales.xlsx"}
+        for r in high_critical:
+            self.assertTrue(any(obj in r.suggested_fix for obj in real_objects),
+                           f"{r.rule_id} fix snippet doesn't name a real object: {r.suggested_fix}")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

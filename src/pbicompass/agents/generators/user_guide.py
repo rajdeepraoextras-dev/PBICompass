@@ -25,7 +25,13 @@ from ...schemas.user_guide_document import GlossaryTerm, PageGuide, UserGuideDoc
 from .. import io
 from ..deterministic import business_analyst_deterministic
 from ..llm import LLMClient
-from ..report_facts import business_plain_english, first_sentence, report_pages, slicers
+from ..report_facts import (
+    business_plain_english,
+    field_parameter_table_names,
+    first_sentence,
+    report_pages,
+    slicers,
+)
 from .base import Warn, build_core_metadata, call_llm, call_llm_with_retry
 
 _DIMENSION_DEFINITIONS = [
@@ -88,14 +94,23 @@ def _build_glossary(model, client: Optional[LLMClient], warn: Warn) -> list[Glos
         terms.append(GlossaryTerm(term=m.name, plain_definition=definition))
 
     measure_names = {m.name for m in model.all_measures()}
+    field_param_tables = field_parameter_table_names(model)
     seen_dims: set[str] = set()
     for p in model.pages:
         for v in p.visuals:
             for f in v.fields:
-                leaf = f.split(".")[-1]
-                if leaf and leaf not in measure_names and leaf not in seen_dims:
-                    seen_dims.add(leaf)
-                    terms.append(GlossaryTerm(term=leaf, plain_definition=_dimension_definition(leaf)))
+                parts = f.split(".")
+                leaf = parts[-1]
+                if not leaf or leaf in measure_names or leaf in seen_dims:
+                    continue
+                seen_dims.add(leaf)
+                # I4: a field parameter is a UI selector, not a business
+                # dimension — label it as what it is instead of guessing a
+                # generic "grouping" definition for a name like "select".
+                is_field_param = len(parts) > 1 and parts[0] in field_param_tables
+                definition = ("A field selector that switches what the chart displays."
+                             if is_field_param else _dimension_definition(leaf))
+                terms.append(GlossaryTerm(term=leaf, plain_definition=definition))
     return terms
 
 

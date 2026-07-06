@@ -119,6 +119,9 @@ class AuditReportGenerator:
             model.report_name or "UnknownReport",
             health.overall
         )
+        ledger = audit_rules.compute_checks_ledger(
+            dax_findings, best_practices, performance_risks, governance, suppressed,
+        )
         return AuditDocument(
             metadata=meta,
             health=health,
@@ -131,4 +134,9 @@ class AuditReportGenerator:
             recommendations=recommendations,
             narrative_overview=narrative,
             suppressed_rules=suppressed,
+            checks_run=ledger["run"],
+            checks_passed=ledger["passed"],
+            checks_failed=ledger["failed"],
+            checks_suppressed=ledger["suppressed"],
+            checks_by_category=ledger["by_category"],
         )

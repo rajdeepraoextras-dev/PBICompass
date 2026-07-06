@@ -17,18 +17,67 @@ from .deterministic import translate_dax
 
 # decorative elements that aren't worth a documentation row when they carry no data
 DECORATIVE = {"image", "shape", "basicShape", "textbox", "actionButton", "visualGroup"}
+
+# Reader-facing name for a Power BI internal ``visualType`` string — the one
+# place this mapping lives (previously duplicated, slightly differently, in
+# render/_wireframe.py too); every renderer that shows a visual type name
+# (data dictionary/visual tables, the page-wireframe SVG) imports it from
+# here so a camelCase internal name never leaks into a rendered document,
+# e.g. "lineStackedColumnComboChart"/"decompositionTree"/"stackedAreaChart"
+# from the wireframe v2 bug report (J.C).
 FRIENDLY_VISUAL = {
     "card": "Card", "multiRowCard": "Multi-row card", "kpi": "KPI",
     "clusteredColumnChart": "Column chart", "columnChart": "Column chart",
-    "clusteredBarChart": "Bar chart", "barChart": "Bar chart", "lineChart": "Line chart",
-    "areaChart": "Area chart", "pieChart": "Pie chart", "donutChart": "Donut chart",
-    "tableEx": "Table", "pivotTable": "Matrix", "matrix": "Matrix", "treemap": "Treemap",
-    "map": "Map", "filledMap": "Map", "shapeMap": "Map", "gauge": "Gauge",
-    "scatterChart": "Scatter chart", "funnel": "Funnel", "waterfallChart": "Waterfall chart",
-    "ribbonChart": "Ribbon chart", "decompositionTreeVisual": "Decomposition tree",
-    "keyInfluencersVisual": "Key influencers", "image": "Image", "shape": "Shape",
+    "hundredPercentStackedColumnChart": "100% stacked column chart",
+    "stackedColumnChart": "Stacked column chart",
+    "clusteredBarChart": "Bar chart", "barChart": "Bar chart",
+    "hundredPercentStackedBarChart": "100% stacked bar chart",
+    "stackedBarChart": "Stacked bar chart",
+    "lineChart": "Line chart", "lineStackedColumnComboChart": "Combo chart",
+    "lineClusteredColumnComboChart": "Combo chart",
+    "areaChart": "Area chart", "stackedAreaChart": "Area chart",
+    "pieChart": "Pie chart", "donutChart": "Donut chart",
+    "tableEx": "Table", "table": "Table", "pivotTable": "Matrix", "matrix": "Matrix",
+    "treemap": "Treemap", "map": "Map", "filledMap": "Map", "shapeMap": "Map",
+    "gauge": "Gauge", "scatterChart": "Scatter chart", "funnel": "Funnel",
+    "waterfallChart": "Waterfall chart", "ribbonChart": "Ribbon chart",
+    "decompositionTreeVisual": "Decomposition tree", "decompositionTree": "Decomposition tree",
+    "keyInfluencersVisual": "Key influencers", "qnaVisual": "Q&A",
+    "slicer": "Slicer", "advancedSlicerVisual": "Slicer",
+    "image": "Image", "shape": "Shape", "basicShape": "Shape",
     "textbox": "Text box", "actionButton": "Button", "visualGroup": "Group",
 }
+
+
+def friendly_visual_type(raw_type: str | None) -> str:
+    """The reader-facing name for ``raw_type`` — falls back to the raw
+    string itself for an unrecognized type (never blank, never crashes on
+    ``None``)."""
+    if not raw_type:
+        return "Visual"
+    return FRIENDLY_VISUAL.get(raw_type, raw_type)
+
+
+_FIELD_PARAM_NAME_RE = re.compile(r"^(select\d*|range\d*|field\s*parameter\d*|fields?)$", re.IGNORECASE)
+
+
+def field_parameter_table_names(model: SemanticModel) -> set[str]:
+    """Recognize Power BI field parameters and similar disconnected helper
+    tables (I4): a calculated table, never joined to the model via any
+    relationship, that exists only to drive a slicer or chart axis — not a
+    real dimension. Heuristic: not related to anything, ``is_calculated``,
+    and either a handful of columns or a telltale name ('select', 'select1',
+    'Range', 'Field Parameter', ...). Left unrecognized, these leak into
+    generated business questions ("How is Actual distributed by select?")
+    and get documented as if they were real report data."""
+    related = {r.from_table for r in model.relationships} | {r.to_table for r in model.relationships}
+    names = set()
+    for t in model.tables:
+        if t.name in related or not t.is_calculated:
+            continue
+        if len(t.columns) <= 3 or _FIELD_PARAM_NAME_RE.match(t.name.strip()):
+            names.add(t.name)
+    return names
 
 
 def table_priority_key(table_name: str) -> int:
@@ -65,6 +114,7 @@ def visual_label(title: str | None, vtype: str, metrics: list[str], dims: list[s
 def report_pages(model: SemanticModel) -> list[dict]:
     from ..render._wireframe import render_wireframe
     measure_names = {m.name for m in model.all_measures()}
+    field_param_tables = field_parameter_table_names(model)
     out = []
     for p in model.pages:
         visuals_raw, decorative = [], 0
@@ -73,7 +123,11 @@ def report_pages(model: SemanticModel) -> list[dict]:
                 continue
             metrics, dims = [], []
             for f in v.fields:
-                (metrics if f.split(".")[-1] in measure_names else dims).append(f.split(".")[-1])
+                parts = f.split(".")
+                if len(parts) > 1 and parts[0] in field_param_tables:
+                    continue  # field selector, not a real dimension (I4)
+                leaf = parts[-1]
+                (metrics if leaf in measure_names else dims).append(leaf)
             if not (v.title or metrics or dims) and v.type in DECORATIVE:
                 decorative += 1
                 continue
@@ -105,7 +159,9 @@ def report_pages(model: SemanticModel) -> list[dict]:
                 vis["label"] = f"{vis['label']} — {vis['type']} ×{vis['count']}"
             visuals.append(vis)
 
-        wireframe_svg = render_wireframe(p) or None
+        wireframe_svg = render_wireframe(
+            p, measure_names=frozenset(measure_names), field_param_tables=frozenset(field_param_tables),
+        ) or None
         out.append({"name": p.display_name, "hidden": p.is_hidden, "drillthrough": p.is_drillthrough,
                     "visual_count": len(p.visuals), "visuals": visuals, "decorative_count": decorative,
                     "wireframe_svg": wireframe_svg})
@@ -236,6 +292,33 @@ def data_source_summaries(model: SemanticModel) -> list[str]:
             target = f"{target}/{ds.database}" if target else ds.database
         sources.append(f"{ds.type or 'Source'}: {target}".rstrip(": "))
     return sources
+
+
+_FRIENDLY_SOURCE_TYPE = {
+    "sql.database": "SQL database", "excel.workbook": "Excel workbook",
+    "web.contents": "Web/API source", "sharepoint.contents": "SharePoint source",
+    "odbc.datasource": "ODBC source", "folder.contents": "folder source",
+    "csv.document": "CSV file", "json.document": "JSON file",
+    "azuredatalake.contents": "Azure Data Lake source",
+}
+
+
+def _friendly_source_type(raw_type: str | None) -> str:
+    if not raw_type:
+        return "data source"
+    return _FRIENDLY_SOURCE_TYPE.get(raw_type.lower(), raw_type)
+
+
+def data_source_type_counts(model: SemanticModel) -> list[str]:
+    """Executive-safe data source summary (G.1): counts by source *type*
+    only — e.g. "3 Excel workbook(s)" — never a path, server, or database
+    name. The exec doc's "Data & refresh at a glance" section is
+    deliberately non-technical and must never leak a personal file path;
+    the hardcoded-path finding already covers that risk in the audit and
+    technical documents."""
+    from collections import Counter
+    counts = Counter(ds.type for ds in model.data_sources)
+    return [f"{n} {_friendly_source_type(t)}(s)" for t, n in counts.most_common()]
 
 
 _LOCAL_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")

@@ -114,6 +114,38 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(job["status"], "failed")
         self.assertIn("Could not read", job["error"])
 
+    def test_rules_file_upload_suppresses_a_rule(self):
+        # J.A.3: an optional second upload field lets a caller suppress/
+        # override audit rules for this job only — saved into the job's own
+        # sandbox and shredded with everything else.
+        rules_toml = b'[rules."PBIC-DAX-003"]\nenabled = false\n'
+        res = self.client.post(
+            "/jobs",
+            files={
+                "file": ("SampleSales.zip", _zip_fixture(), "application/zip"),
+                "rules_file": ("pbicompass.rules.toml", rules_toml, "application/octet-stream"),
+            },
+            data={"provider": "none", "document_types": "audit"},
+        )
+        job = self._wait(res.json()["job_id"])
+        self.assertEqual(job["status"], "done", job)
+        audit_json = self.client.get(f"/jobs/{job['job_id']}/download", params={"format": "json"}).json()
+        self.assertIn("PBIC-DAX-003", audit_json["suppressed_rules"])
+        self.assertNotIn("PBIC-DAX-003", [f["rule_id"] for f in audit_json["dax_findings"]])
+
+    def test_invalid_rules_file_warns_but_job_still_succeeds(self):
+        res = self.client.post(
+            "/jobs",
+            files={
+                "file": ("SampleSales.zip", _zip_fixture(), "application/zip"),
+                "rules_file": ("pbicompass.rules.toml", b"not [ valid toml", "application/octet-stream"),
+            },
+            data={"provider": "none", "document_types": "audit"},
+        )
+        job = self._wait(res.json()["job_id"])
+        self.assertEqual(job["status"], "done", job)
+        self.assertTrue(any("Invalid TOML" in w for w in job.get("warnings", [])), job)
+
     def test_omitted_document_types_yields_flat_keys(self):
         # Back-compat: no ``document_types`` field at all -> identical to today's
         # single-"technical"-document behavior, flat format keys.

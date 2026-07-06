@@ -62,6 +62,36 @@ data), stdlib-only parsers, graceful degradation, free-tier infra, and the
 > exist as complete modules but are not yet wired into `cli.py`,
 > `service/worker.py`, or any generator; they are dead code until that
 > wiring is done as part of Phase 5.
+>
+> **Part J (2026-07-06) implemented and test-verified.** J.A: every finding/
+> check/recommendation now carries a stable rule ID pill; audit §1 gained
+> the "Checks run/passed/failed/suppressed" ledger plus a per-component
+> checks column (backed by a new `compute_checks_ledger`); the two rule IDs
+> that were declared but never actually evaluated (`m2m_no_bridge`/
+> `bidirectional_fact`) are now real, independently-triggerable checks;
+> every High/Critical recommendation carries a fix snippet parameterized
+> with its actual objects (5 new dynamic-fix branches, test-enforced on a
+> multi-category stress fixture); rule suppression/severity/threshold
+> overrides now support an explicit path (CLI `--rules`, a service
+> `rules_file` upload field saved into the job's own sandbox) instead of
+> only a cwd scan, plus two new configurable thresholds
+> (`visual_density_limit`, `description_coverage_pct`); 4.5 score trend is
+> formally re-scoped to ship with Phase 5's enrichment file (see 4.5's own
+> note). J.B: I1 (hub/zip in the hosted service) was already fixed and is
+> now test-covered; I2's anchor-slug collisions are fixed everywhere ids are
+> generated from arbitrary names (a new `dedupe_ids` helper); I3's wireframe
+> dead links, I4's field-parameter leakage into generated questions/
+> glossary, I5's section-level (not per-finding) exec risk links, and I6/
+> G.1's executive-doc restructure are all fixed — see Part J below for the
+> full work order. J.C's wireframe v2
+> redesign (canvas, friendly type names, title-first labels, category
+> glyphs, tiny-object/decorative-overflow handling, native tooltips, clean
+> `.wf-node` markup, legend) is implemented, consolidating what had been
+> three separately-duplicated friendly-visual-type dictionaries into one
+> (`agents/report_facts.FRIENDLY_VISUAL`). The executive document's schema
+> changed shape (6 sections; `ExecutiveDocument.purpose`/`top_risks`/
+> `next_steps`/etc. replace the old 11-section field set) — a deliberate
+> breaking change to the JSON contract, not a bug.
 
 ---
 
@@ -588,12 +618,19 @@ Effort: S ≤ ½ day · M ≤ 2 days · L ≤ 1 week.
   measured numbers labeled "measured"; without it, output is byte-identical
   to today; adapter test proves no row-level API is ever called.
 
-### 4.5 Score trend — S
+### 4.5 Score trend — S — **formally deferred to Phase 5 (J.A.4, 2026-07-06)**
 - **Change:** persist component scores + date in the enrichment file (5.1);
   when present, audit header renders "77 → 82 since 12 Jun 2026" with
   per-component deltas.
 - **Done when:** two consecutive runs with the enrichment file round-tripped
   show the delta line.
+- **Status:** blocked on 5.1 (the enrichment file doesn't exist yet — see
+  Part I's own note). Do not count this against "Phase 4 complete"; it
+  ships alongside 5.1. The CLI's simpler env-var-keyed score history
+  (`agents/audit_rules.get_and_update_score_history`, opt-in, off in the
+  hosted service) is a different, already-shipped mechanism and doesn't
+  satisfy this item — it has no per-component deltas and isn't tied to the
+  enrichment file's round-trip.
 
 ## Phase 5 — Enterprise workflow: the moat (93 → 96+)
 
@@ -850,3 +887,167 @@ the rule set grew.
 
 Order: P1 → P2 → P3 (visible product gaps), then P4/P6 (small), P5
 (verification). Then Phase 3 as planned — 3.1 wireframes first.
+
+---
+
+# Part I — Phase 3–4 verification against the 2026-07-05 Corporate Spend output
+
+**Re-score: 82/100** (66 → 74 → 82). Plan targets: 88 post-Phase-3,
+93 post-Phase-4. Verdict: **on plan through Phase 3 (with 3 leftovers);
+Phase 4's core is NOT in the output** — the gap to 93 maps exactly to the
+missing items below.
+
+**Punch list P1–P5 from Part H: all fixed.** Hub/switcher/cross-links render
+in the output (P1), search indexes carry KPIs/risks/pages/terms/39 findings
+(P2), business language restored — "Var Plan % — Percentage difference
+between Actual and Plan" (P3), no filter dupes (P4), and *both* pages got
+LLM narrative with personas (P5).
+
+**Phase 3 verified:** 3.1 wireframes ✓ (clickable, aria-labelled, slicers
+tinted, on user guide + technical §8), 3.2 Data lineage section ✓,
+3.3 dep-chain audit signal ✓, 3.4 "Used by" impact column ✓, 3.5 partial
+(Full M in collapsibles, but no numbered step breakdown), 3.6 n/a (no roles),
+**3.7 bookmarks/nav map ✗ — the input project literally contains
+bookmarks.json, unparsed**, 3.8 ✗ (exec §3 still a raw Dropbox path list),
+3.9 unverified. Bonus: correctly identified the galaxy schema (2 fact
+tables), counted the hidden page, detected auto date/time artifacts
+(LocalDateTable_*), and shipped Phase-5 items early — provenance pills +
+technical §19 "Methodology & Guarantees".
+
+**Phase 4 status:** new rules exist (auto date/time, schema shape,
+text-length heuristic, dep-chain depth) and 9 fix-snippet code blocks appear
+in audit recommendations (4.2 partial). Missing entirely from the output:
+**4.1 rule IDs + "checks run / passed" ledger, 4.3 suppression config,
+4.5 score trend** (blocked on 5.1). Without IDs and the ledger it reads as
+"more recommendations", not a rule engine.
+
+## Punch list I (before Phase 5)
+
+| # | Finding | Detail |
+|---|---|---|
+| I1 | Hub `index.html` missing from the output folder | Switcher's "← Documentation hub" link is dead on disk. Verify the hub is emitted by this generation path and included in the download/zip. |
+| I2 | Glossary anchor collisions (duplicate HTML ids) | "Var LE1" and "Var LE1 %" both slug to `term-var-le1` (×4 pairs) — the slugifier drops `%`; search jumps to the wrong row. Add uniquing (`-2` suffix) or encode the symbol. |
+| I3 | Wireframe boxes link to nonexistent anchors | Non-data visuals (`#visual-…-basicshape`, `-button`, `-text-box`) have no table rows → dead intra-doc links. Only wrap data visuals in `<a>`, or anchor non-data objects to the page card. |
+| I4 | Field-parameter leakage into prose | Columns named `select`/`select1` yield "How is Actual distributed by select?" Recognize field-parameter/disconnected helper tables and use display names or suppress the question. |
+| I5 | Exec risk links are section-level | They point at `audit.html#sec8` while per-finding anchors exist — deep-link each risk to its finding. |
+| I6 | G.1 exec restructure still pending | Raw path in §3, statistics tables in §7, 11 sections. |
+
+Order: finish Phase 4 core (4.1 ledger + IDs, 4.3) → I1–I5 (small) → Phase 5
+(5.1 enrichment unblocks 4.5 trend and the completeness meter) → G.1/G.2.
+
+---
+
+# Part J — "Fix till Phase 4" work order (2026-07-06)
+
+Everything required to truthfully call Phases 0–4 done. Self-contained; each
+item has a done-when so any tool/agent can implement and verify.
+
+> **Status (2026-07-06): implemented and test-verified**, except 4.5 (J.A.4),
+> which is formally re-scoped to Phase 5 per its own note above — every
+> other J.A/J.B item, plus J.C, is done. New/changed test coverage:
+> `tests/test_audit_rules.py` (rule ledger, the two previously-dead checks,
+> fix-snippet coverage, threshold/rules-path config),
+> `tests/test_cli.py`/`tests/test_service.py` (`--rules`/`rules_file`),
+> `tests/test_report_facts.py` (field-parameter recognition),
+> `tests/test_generators.py`/`tests/test_render.py` (the executive-doc
+> restructure, per-finding deep links), and a new `tests/test_wireframe.py`
+> (wireframe v2 + I3's link-resolution fix).
+
+## J.A Finish Phase 4 core (the 82 → ~87 items)
+
+1. **Rule IDs + ledger (4.1).** Every audit finding and best-practice check
+   carries a stable ID (`PBIC-MOD-001`, `PBIC-DAX-003`, `PBIC-GOV-002`, …)
+   rendered as a small pill; audit §1 gains a one-line ledger under the score:
+   "Checks run: N · Passed: X · Failed: Y · Suppressed: Z" plus a per-category
+   row in the component table. IDs live in the rule registry
+   (`agents/audit_rules.py`), never renumbered once shipped.
+   *Done when:* every finding in the Corporate Spend audit shows an ID pill
+   and §1 shows the ledger; IDs are asserted stable by a unit test.
+2. **Fix-snippet coverage (4.2 finish).** 9 code blocks exist; require one for
+   *every* High/Critical finding, parameterized with the finding's actual
+   objects (the date-table snippet names the real fact tables; the path
+   snippet contains the real M step rewritten with a parameter).
+   *Done when:* count(High+Critical findings) == count(their fix snippets),
+   test-enforced on a fixture with all rule categories firing.
+3. **Suppression config (4.3).** `pbicompass.rules.toml`: `disable = [ids]`,
+   `[severity]` overrides, `[thresholds]` (visual density, description %).
+   CLI `--rules`, service upload field. Suppressed rules render in a
+   collapsed "Suppressed by configuration (n)" ledger — auditable, not hidden.
+   *Done when:* disabling a rule removes it from score + findings but shows
+   it in the suppressed ledger; invalid TOML → clear error, job not failed.
+4. **4.5 score trend: formally deferred to Phase 5** (needs the enrichment
+   file). Note it in the plan, stop counting it against Phase 4.
+
+## J.B Defect fixes (Punch list I, restated as a work order)
+
+5. **I1 — hub emission.** `index.html` must be produced and delivered by every
+   generation path (CLI multi-type, service multi-type, zip). *Done when:* the
+   output folder of a 4-doc run contains index.html and no switcher link 404s.
+6. **I2 — glossary slug collisions.** `Var LE1` vs `Var LE1 %` both →
+   `term-var-le1`. Make `anchor_slug` collision-safe (append `-2`, `-3` on
+   repeat within a doc). *Done when:* no duplicate `id=` attributes in any
+   rendered doc (add a renderer test that parses ids and asserts uniqueness).
+7. **I3 — wireframe dead links.** Only data visuals get `<a href>` to their
+   table row; slicers link to the page's filter list; buttons/shapes/text
+   boxes render unlinked. *Done when:* every `href="#…"` in a wireframe
+   resolves to an existing id (test: collect hrefs, assert ⊆ ids).
+8. **I4 — field-parameter recognition.** Tables/columns that are field
+   parameters or disconnected helper tables (heuristic: single-column
+   calculated table used only in slicers/axes, names like `select`,
+   `select1`, `Range`) are labeled "(field selector)" and excluded from
+   generated questions. *Done when:* "How is Actual distributed by select?"
+   can no longer be produced; glossary shows "select — a field selector that
+   switches what the chart displays".
+9. **I5 — deep-link exec risks.** Exec Known Risks link to the specific
+   finding anchor (per-finding ids exist in the audit index), not `#sec8`.
+10. **I6 / G.1 — exec restructure.** As specced in G.1: 6 sections, ≤2 print
+    pages, no file paths, no statistics tables, risks with asks.
+
+## J.C Wireframe v2 (design rework — replaces the current look)
+
+Current problems (from the 2026-07-06 screenshot): truncated internal type
+names ("lineStackedC…", "Decompositio…"), no visual titles, empty white
+canvas with no page frame, stray unreadable mini-rects, uniform washed-out
+blue, inline `style=`/`onmouseover=` attributes on every rect.
+
+Spec:
+
+1. **Canvas** — draw the page as a "slide": full-viewBox rect, `#f8fafc`
+   fill, 1px border, 8px inner margin; boxes sit *on* a page instead of
+   floating in white space. Canvas stays light in dark mode (same rule as
+   the model diagram).
+2. **Friendly type names** — map internal `visualType` to the display names
+   already used in the visual tables: `lineStackedColumnComboChart` →
+   "Combo chart", `decompositionTree` → "Decomposition tree",
+   `stackedAreaChart` → "Area chart", etc. Never render a camelCase
+   internal name; unknown types → "Visual".
+3. **Title-first labels** — large boxes (≥60×24 viewBox units): line 1 =
+   visual title, 600 weight, ellipsis-truncated to the box; line 2 =
+   friendly type, smaller + muted. Medium boxes: type only. Small: no text.
+4. **Type glyphs** — 12×12 hand-rolled icons in `<defs>` + `<use>`: bars,
+   line, combo, area, map pin, matrix grid, "123" card, funnel (slicer),
+   tree. Top-left of each data box.
+5. **Category styling** — data visuals: white fill, 1.5px indigo stroke
+   (pop); slicers: amber tint (keep); buttons/nav: green tint, thin stroke;
+   text/images/shapes: light-gray fill at 50% opacity, no stroke — visible
+   but receding.
+6. **Tiny-object handling** — any object smaller than 0.5% of page area
+   renders as a 3px dot, unlabeled, unlinked; ≥3 overlapping decorative
+   shapes collapse to one with a footer note "+n decorative shapes".
+7. **Native tooltips** — `<title>Visual title — Type (fields)</title>` inside
+   each data-visual link.
+8. **Clean markup** — replace per-rect `style="…"` + `onmouseover`/`onmouseout`
+   attributes with a `.wf-node` class and a CSS `:hover` rule in the shell
+   (smaller HTML, CSP-safe).
+9. **Legend** — one `.legend` row under each wireframe: Data visual · Slicer
+   · Navigation · Decorative.
+
+*Done when:* the IT Spend Trend wireframe shows boxes like
+"Var Plan % by Country/Region / Combo chart" with glyphs on a page-framed
+canvas; zero camelCase type names, zero dead hrefs, zero inline event
+handlers (grep-enforced in a renderer test); a reader can match the
+wireframe to the real report page at a glance.
+
+Estimated effort: J.A ≈ 2–3 days, J.B ≈ 1 day, J.C ≈ 1 day.
+Score projection once J is done: ~88–89 (Phase-4-complete territory),
+leaving Phase 5 + G.2 to reach 93–96.

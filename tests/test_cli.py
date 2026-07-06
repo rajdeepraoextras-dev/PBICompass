@@ -87,8 +87,8 @@ class DocumentFlagTest(unittest.TestCase):
             self.assertEqual(code, 0)
             text = out.read_text(encoding="utf-8")
             self.assertIn("Executive Summary", text)
-            self.assertIn("Business Purpose", text)
-            self.assertIn("Future Recommendations", text)
+            self.assertIn("Purpose & Value", text)
+            self.assertIn("What's Next", text)
 
     def test_document_executive_json(self):
         with tempfile.TemporaryDirectory() as td:
@@ -98,8 +98,9 @@ class DocumentFlagTest(unittest.TestCase):
             self.assertEqual(code, 0)
             data = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(data["metadata"]["document_type"], "executive")
-            self.assertIn("business_purpose", data)
-            self.assertIn("future_recommendations", data)
+            self.assertIn("purpose", data)
+            self.assertIn("top_risks", data)
+            self.assertIn("next_steps", data)
 
     def test_document_executive_docx(self):
         with tempfile.TemporaryDirectory() as td:
@@ -142,6 +143,55 @@ class DocumentFlagTest(unittest.TestCase):
     def test_invalid_document_choice_rejected(self):
         with self.assertRaises(SystemExit):
             cli.main(["generate", str(FIXTURE), "--document", "not-a-real-type"])
+
+
+class RulesFileFlagTest(unittest.TestCase):
+    """J.A.3: ``--rules`` suppresses/overrides audit findings via a
+    ``pbicompass.rules.toml`` file; invalid TOML warns but never fails the
+    job."""
+
+    def tearDown(self):
+        # This is process-wide module state (agents.audit_rules) — never
+        # leak one test's rules file into the next.
+        from pbicompass.agents import audit_rules
+        audit_rules.set_rules_config_path(None)
+
+    def test_disabling_a_rule_moves_it_to_the_suppressed_ledger(self):
+        with tempfile.TemporaryDirectory() as td:
+            rules_path = Path(td) / "pbicompass.rules.toml"
+            rules_path.write_text('[rules."PBIC-DAX-003"]\nenabled = false\n', encoding="utf-8")
+            out = Path(td) / "audit.json"
+            code = cli.main(["generate", str(FIXTURE), "--document", "audit",
+                            "--rules", str(rules_path), "-o", str(out), "--quiet"])
+            self.assertEqual(code, 0)
+            data = json.loads(out.read_text(encoding="utf-8"))
+            self.assertIn("PBIC-DAX-003", data["suppressed_rules"])
+            self.assertNotIn("PBIC-DAX-003", [f["rule_id"] for f in data["dax_findings"]])
+
+    def test_invalid_toml_warns_and_still_generates(self):
+        with tempfile.TemporaryDirectory() as td:
+            rules_path = Path(td) / "pbicompass.rules.toml"
+            rules_path.write_text("this is not [ valid toml", encoding="utf-8")
+            out = Path(td) / "audit.json"
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                code = cli.main(["generate", str(FIXTURE), "--document", "audit",
+                                "--rules", str(rules_path), "-o", str(out)])
+            self.assertEqual(code, 0)
+            self.assertIn("Invalid TOML", stderr.getvalue())
+            self.assertTrue(out.exists())
+
+    def test_missing_rules_file_warns_and_still_generates(self):
+        with tempfile.TemporaryDirectory() as td:
+            missing = Path(td) / "does-not-exist.toml"
+            out = Path(td) / "audit.json"
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                code = cli.main(["generate", str(FIXTURE), "--document", "audit",
+                                "--rules", str(missing), "-o", str(out)])
+            self.assertEqual(code, 0)
+            self.assertIn("not found", stderr.getvalue())
+            self.assertTrue(out.exists())
 
 
 class DocumentAllTest(unittest.TestCase):
@@ -194,9 +244,9 @@ class DocumentAllTest(unittest.TestCase):
 
     def test_cross_document_content_links_resolve_to_real_anchors(self):
         # 2.7: audit's DAX findings link to the technical doc's measure
-        # anchors, and the executive doc's known risks link to the audit
-        # doc's Recommendations section — both real anchors that exist in
-        # the sibling file, not dead links.
+        # anchors, and the executive doc's top risks deep-link to the exact
+        # audit recommendation card behind each one (I5) — both real anchors
+        # that exist in the sibling file, not dead links.
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "report.html"
             code = cli.main(["generate", str(FIXTURE), "--document", "all", "--format", "html",
@@ -210,8 +260,13 @@ class DocumentAllTest(unittest.TestCase):
             self.assertIn('id="measure-total-revenue"', technical_html)
             self.assertIn('href="report.technical.html#measure-total-revenue"', audit_html)
 
-            self.assertIn('id="sec8"', audit_html)
-            self.assertIn('href="report.audit.html#sec8"', executive_html)
+            from pbicompass.agents.generators import ExecutiveSummaryGenerator
+            from pbicompass.parsers import detect_and_parse
+
+            risk = next(r for r in ExecutiveSummaryGenerator.generate(detect_and_parse(FIXTURE)).top_risks
+                       if r.rule_id)
+            self.assertIn(f'id="rec-{risk.rule_id}"', audit_html)
+            self.assertIn(f'href="report.audit.html#rec-{risk.rule_id}"', executive_html)
 
     def test_single_document_html_has_no_dead_doc_switcher(self):
         # a single-document run has no siblings to link to — no doc-switcher

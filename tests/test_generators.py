@@ -181,98 +181,98 @@ class ExecutiveGeneratorDeterministicTest(unittest.TestCase):
         self.assertEqual(self.doc.metadata.target_audience,
                          "Managers, executives, and project owners")
 
-    def test_no_technical_jargon_in_business_purpose(self):
+    def test_no_technical_jargon_in_purpose(self):
         # concise and non-technical — no table names or "semantic model" talk
         for banned in ("DAX", "semantic model"):
-            self.assertNotIn(banned, self.doc.business_purpose)
+            self.assertNotIn(banned, self.doc.purpose)
 
-    def test_statistics_reuse_model_meta_counts(self):
-        self.assertEqual(self.doc.model_statistics["tables"], 4)
-        self.assertEqual(self.doc.model_statistics["measures"], 4)
-        self.assertEqual(self.doc.report_statistics["pages"], 3)
-        self.assertEqual(self.doc.report_statistics["visible_pages"], 2)
+    def test_no_model_statistics_or_paths_outside_kpi_strip(self):
+        # G.1: the exec doc no longer carries model/report statistics
+        # tables or raw file paths — those live in the technical document.
+        self.assertFalse(hasattr(self.doc, "model_statistics"))
+        self.assertFalse(hasattr(self.doc, "report_statistics"))
+        self.assertFalse(hasattr(self.doc, "architecture_overview"))
+        for s in self.doc.data_source_types:
+            self.assertNotRegex(s, r"[A-Za-z]:[\\/]")
 
-    def test_known_risks_are_business_framed(self):
+    def test_top_risks_are_business_framed_and_carry_an_ask(self):
         # SampleSales has a known bidirectional Sales<->Date relationship —
         # the same finding the Audit & Health Report and technical document
         # surface (1.10), minus the "dax"-category findings whose issue text
         # names DAX constructs directly.
-        self.assertTrue(any("bidirectional cross-filtering" in r for r in self.doc.known_risks))
-        for risk in self.doc.known_risks:
-            self.assertNotIn("DAX", risk)
-            self.assertNotIn("USERELATIONSHIP", risk)
+        self.assertTrue(any("bidirectional cross-filtering" in r.consequence for r in self.doc.top_risks))
+        for risk in self.doc.top_risks:
+            self.assertNotIn("DAX", risk.consequence)
+            self.assertNotIn("USERELATIONSHIP", risk.consequence)
+            self.assertNotIn("DAX", risk.ask)
+            self.assertNotIn("CROSSFILTER", risk.ask)
+            self.assertNotIn("VAR", risk.ask)
+            self.assertTrue(risk.ask)
 
-    def test_known_risks_match_audit_engine_severity_order(self):
-        # 1.10: exec known_risks are a filtered subset of the same
+    def test_top_risks_match_audit_engine_severity_order(self):
+        # 1.10: exec top_risks are a filtered subset of the same
         # recommendation list the audit/technical docs show, in the same
         # severity order — never independently re-derived.
         order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
-        severities = [r.split("]", 1)[0].lstrip("[") for r in self.doc.known_risks]
-        ranks = [order[s] for s in severities]
+        ranks = [order[r.severity] for r in self.doc.top_risks]
         self.assertEqual(ranks, sorted(ranks))
+
+    def test_top_risks_carry_a_rule_id_for_deep_linking(self):
+        # I5: every risk sourced from a rule-backed finding must carry the
+        # rule_id so the rendered doc can deep-link to the exact finding.
+        self.assertTrue(any(r.rule_id for r in self.doc.top_risks))
 
     def test_key_kpis_exclude_text_measures_and_carry_a_meaning(self):
         # Real usage-based selection (1.6): each KPI names its own meaning.
         for kpi in self.doc.key_kpis:
             self.assertIn(" — ", kpi)
 
-    def test_future_recommendations_have_no_implementation_detail(self):
-        for rec in self.doc.future_recommendations:
-            self.assertNotIn("DAX", rec)
-            self.assertNotIn("CROSSFILTER", rec)
-            self.assertNotIn("VAR", rec)
+    def test_data_source_types_include_sql_and_never_a_path(self):
+        self.assertTrue(any("SQL database" in d for d in self.doc.data_source_types))
 
-    def test_dependencies_include_data_sources_and_parameters(self):
-        self.assertTrue(any("Sql.Database" in d for d in self.doc.dependencies))
-        self.assertTrue(any(d.startswith("Parameter:") for d in self.doc.dependencies))
+    def test_next_steps_reuse_audit_engine_and_include_completeness(self):
+        self.assertTrue(self.doc.next_steps)
+        self.assertTrue(any("complete" in s for s in self.doc.next_steps))
 
-    def test_future_recommendations_reuse_audit_engine(self):
-        self.assertTrue(self.doc.future_recommendations)
-        self.assertLessEqual(len(self.doc.future_recommendations), 3)
-
-    def test_future_recommendations_do_not_repeat_known_risks(self):
+    def test_next_steps_do_not_repeat_top_risks(self):
         # P6: §11 Future Recommendations used to draw from the same
         # top-severity slice of the recommendation list as §9 Known Risks,
-        # so the same issue appeared under both headings.
-        risk_issue_fragments = [r.split("] ", 1)[1] for r in self.doc.known_risks]
-        for rec in self.doc.future_recommendations:
-            for fragment in risk_issue_fragments:
-                self.assertNotIn(fragment, rec)
+        # so the same issue appeared under both headings — now one merged,
+        # ranked list, so what's left for "next steps" is disjoint by
+        # construction.
+        risk_consequences = [r.consequence for r in self.doc.top_risks]
+        for step in self.doc.next_steps:
+            for consequence in risk_consequences:
+                self.assertNotIn(consequence, step)
 
-    def test_future_recommendations_keep_ask_and_benefit_distinct(self):
-        # P6: items used to read as one mashed sentence ("...in their DAX.
-        # Calculations stay correct...") with no visual separation between
-        # the problem and the recommended action.
-        for rec in self.doc.future_recommendations:
-            self.assertIn(" — expected benefit: ", rec)
-
-    def test_owner_reflected_in_maintenance_overview(self):
-        doc = ExecutiveSummaryGenerator.generate(_model(), owner="Jane Doe")
-        self.assertIn("Jane Doe", doc.maintenance_overview)
+    def test_ownership_fields_present(self):
+        doc = ExecutiveSummaryGenerator.generate(_model(), owner="Jane Doe", classification="Confidential")
+        self.assertEqual(doc.metadata.owner, "Jane Doe")
+        self.assertEqual(doc.classification, "Confidential")
 
     def test_to_json_round_trips(self):
         text = self.doc.to_json()
         self.assertIn('"document_type": "executive"', text)
-        self.assertIn('"business_purpose"', text)
-        self.assertIn('"future_recommendations"', text)
+        self.assertIn('"purpose"', text)
+        self.assertIn('"top_risks"', text)
+        self.assertIn('"next_steps"', text)
 
 
 class ExecutiveGeneratorLlmTest(unittest.TestCase):
     def test_llm_prose_is_used(self):
         client = FakeExecutiveWriterClient()
         doc = ExecutiveSummaryGenerator.generate(_model(), client)
-        self.assertEqual(doc.business_purpose, "FAKE_BUSINESS_PURPOSE")
+        self.assertEqual(doc.purpose, "FAKE_BUSINESS_PURPOSE")
         self.assertEqual(doc.business_value, "FAKE_BUSINESS_VALUE")
-        self.assertEqual(doc.maintenance_overview, "FAKE_MAINTENANCE_OVERVIEW")
+        self.assertEqual(doc.maintenance_note, "FAKE_MAINTENANCE_OVERVIEW")
         # 1 Executive Writer call + 1 DAX Translator batch call (P3: Key KPI
         # meanings reuse the same DAX Translator agent as the technical doc).
         self.assertEqual(client.calls, 2)
         self.assertTrue(any("FAKE_KPI_MEANING" in kpi for kpi in doc.key_kpis))
         # deterministic facts stay identical regardless of the LLM client
         deterministic_doc = ExecutiveSummaryGenerator.generate(_model())
-        self.assertEqual(doc.model_statistics, deterministic_doc.model_statistics)
-        self.assertEqual(doc.known_risks, deterministic_doc.known_risks)
-        self.assertEqual(doc.future_recommendations, deterministic_doc.future_recommendations)
+        self.assertEqual(doc.top_risks, deterministic_doc.top_risks)
+        self.assertEqual(doc.next_steps, deterministic_doc.next_steps)
 
     def test_failing_client_falls_back_to_deterministic_prose(self):
         warnings = []
@@ -280,8 +280,8 @@ class ExecutiveGeneratorLlmTest(unittest.TestCase):
             _model(), FailingClient(), on_warning=warnings.append,
         )
         self.assertTrue(warnings)
-        self.assertNotEqual(doc.business_purpose, "")
-        self.assertNotIn("FAKE", doc.business_purpose)
+        self.assertNotEqual(doc.purpose, "")
+        self.assertNotIn("FAKE", doc.purpose)
 
 
 class FakeUserGuideWriterClient:

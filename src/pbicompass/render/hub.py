@@ -14,10 +14,11 @@ per-job download names are fixed enough to link between).
 from __future__ import annotations
 
 from ._shared import html_e as _e
+from ._poppins_font import POPPINS_FONT_FACES_CSS, POPPINS_FONT_STACK
 
-_CSS = """
+_CSS = POPPINS_FONT_FACES_CSS + """
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-sans: """ + POPPINS_FONT_STACK + """;
   --bg-main: #f8fafc;
   --bg-card: #ffffff;
   --text-main: #0f172a;

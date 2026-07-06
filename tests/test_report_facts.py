@@ -10,13 +10,14 @@ import unittest
 from pbicompass.agents.report_facts import (
     business_plain_english,
     declassify,
+    field_parameter_table_names,
     first_sentence,
     local_path_sources,
     report_pages,
     simplify_dax_prose,
     slicers,
 )
-from pbicompass.schemas.model import DataSource, Measure, Page, SemanticModel, Table, Visual
+from pbicompass.schemas.model import Column, DataSource, Measure, Page, SemanticModel, Table, Visual
 
 
 def _model_with_duplicate_visuals() -> SemanticModel:
@@ -73,6 +74,70 @@ class SlicersDedupeTest(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["count"], 2)
         self.assertEqual(rows[0]["field"], "Sales.Type")
+
+
+def _model_with_field_parameter() -> SemanticModel:
+    """A disconnected, calculated 'select' table driving a chart's axis —
+    the exact I4 shape: field parameters are calculated tables, never
+    joined via a relationship, typically with a handful of columns."""
+    sales = Table(name="Sales", kind="fact", measures=[
+        Measure(name="Actual", expression="SUM(Sales[Amount])", table="Sales"),
+    ])
+    selector = Table(name="select", is_calculated=True, columns=[
+        Column(name="select"), Column(name="select Order"), Column(name="select Fields"),
+    ])
+    page = Page(
+        id="p1", display_name="Overview",
+        visuals=[Visual(id="v1", type="columnChart", fields=["Sales.Actual", "select.select"])],
+    )
+    return SemanticModel(report_name="R", tables=[sales, selector], pages=[page])
+
+
+class FieldParameterRecognitionTest(unittest.TestCase):
+    """I4: field parameters / disconnected helper tables must not leak into
+    generated dimensions, business questions, or the glossary as if they
+    were real report data."""
+
+    def test_field_parameter_table_is_recognized(self):
+        names = field_parameter_table_names(_model_with_field_parameter())
+        self.assertIn("select", names)
+
+    def test_related_calculated_table_is_not_flagged(self):
+        # A calculated table that *is* joined to the model is real content,
+        # not a field parameter — e.g. a calculated date table.
+        date_tbl = Table(name="Calendar", is_calculated=True,
+                         columns=[Column(name="Date"), Column(name="Year"), Column(name="Month")])
+        sales = Table(name="Sales", kind="fact", columns=[Column(name="Date")])
+        from pbicompass.schemas.model import Relationship
+        model = SemanticModel(
+            report_name="R", tables=[sales, date_tbl],
+            relationships=[Relationship(from_table="Sales", from_column="Date",
+                                        to_table="Calendar", to_column="Date")],
+        )
+        self.assertEqual(field_parameter_table_names(model), set())
+
+    def test_field_parameter_excluded_from_report_pages_dimensions(self):
+        pages = report_pages(_model_with_field_parameter())
+        visuals = pages[0]["visuals"]
+        all_dims = [d for v in visuals for d in v["dimensions"]]
+        self.assertNotIn("select", all_dims)
+        self.assertIn("Actual", [m for v in visuals for m in v["metrics"]])
+
+    def test_field_parameter_excluded_from_business_questions(self):
+        from pbicompass.agents.deterministic import business_analyst_deterministic
+
+        summary = business_analyst_deterministic(_model_with_field_parameter())
+        questions = summary.pages[0].business_questions
+        self.assertFalse(any("select" in q for q in questions),
+                         f"field parameter leaked into a question: {questions}")
+
+    def test_field_parameter_labeled_as_selector_in_glossary(self):
+        from pbicompass.agents.generators.user_guide import BusinessGuideGenerator
+
+        doc = BusinessGuideGenerator.generate(_model_with_field_parameter())
+        term = next((g for g in doc.glossary if g.term == "select"), None)
+        self.assertIsNotNone(term)
+        self.assertIn("field selector", term.plain_definition.lower())
 
 
 class LocalPathSourcesTest(unittest.TestCase):

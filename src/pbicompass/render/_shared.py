@@ -69,6 +69,23 @@ def anchor_slug(name: str) -> str:
     return slug or "x"
 
 
+def dedupe_ids(ids: list[str]) -> list[str]:
+    """Make a list of anchor ids collision-safe: repeats get a ``-2``,
+    ``-3``, ... suffix (the first occurrence keeps the bare id). Two
+    distinct names can collapse to the same slug once symbols are stripped
+    — e.g. ``"Var LE1"`` and ``"Var LE1 %"`` both become ``var-le1`` — and a
+    duplicate ``id="..."`` breaks in-page links and search (I2). Callers
+    must dedupe *once* and reuse the same list everywhere that id is
+    referenced (row markup and any search-index entry pointing at it), or
+    the two uses drift out of sync."""
+    seen: dict[str, int] = {}
+    out = []
+    for i in ids:
+        seen[i] = seen.get(i, 0) + 1
+        out.append(i if seen[i] == 1 else f"{i}-{seen[i]}")
+    return out
+
+
 def is_local_path(path_str: str) -> bool:
     return bool(re.search(r"^[A-Za-z]:[\\/]", path_str) or "Users/" in path_str or "Users\\" in path_str)
 

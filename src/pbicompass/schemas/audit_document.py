@@ -102,6 +102,7 @@ class Recommendation:
     expected_benefit: str
     effort: str = "Medium"  # estimated implementation effort: Low | Medium | High
     category: str = "modeling"  # dax | modeling | performance | governance | unused_assets
+    rule_id: str = ""
 
 
 @dataclass
@@ -119,6 +120,15 @@ class AuditDocument:
     narrative_overview: str = ""
     suppressed_rules: list[str] = field(default_factory=list)
     changelog: Optional[str] = None
+    # Rule-engine ledger (4.1 / J.A.1): counts over the full stable-ID rule
+    # registry (agents.audit_rules.FINDING_RULES), not just the findings that
+    # happened to fire — "checks run" must include rules that passed silently.
+    checks_run: int = 0
+    checks_passed: int = 0
+    checks_failed: int = 0
+    checks_suppressed: int = 0
+    # {category: {"run": n, "passed": n, "failed": n, "suppressed": n}}
+    checks_by_category: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)

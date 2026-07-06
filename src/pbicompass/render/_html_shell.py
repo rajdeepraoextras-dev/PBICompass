@@ -12,10 +12,11 @@ from __future__ import annotations
 import json
 
 from ._shared import html_e as _e
+from ._poppins_font import POPPINS_FONT_FACES_CSS, POPPINS_FONT_STACK
 
-_CSS = """
+_CSS = POPPINS_FONT_FACES_CSS + """
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-sans: """ + POPPINS_FONT_STACK + """;
   --bg-main: #f8fafc;
   --bg-card: #ffffff;
   --bg-hover: #fafbfd;
@@ -520,6 +521,15 @@ details.collapsible > .code-block pre {
 .pill.extracted { background: #e0f2fe; color: #0369a1; text-transform: none; }
 .pill.ai-inferred { background: #fae8ff; color: #a21caf; text-transform: none; }
 .pill.human-provided { background: #dcfce7; color: #15803d; text-transform: none; }
+.pill.rule-id {
+  background: var(--bg-code-inline);
+  color: var(--text-faint);
+  font-family: Consolas, "SF Mono", Menlo, monospace;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 8px;
+}
+.pill.suppressed { background: var(--bg-code-inline); color: var(--text-faint); text-transform: none; }
 
 /* Todo items */
 .todo {
@@ -614,6 +624,21 @@ details.collapsible > .code-block pre {
 .diagram-hint {
   width: 100%;
   margin-top: 4px;
+  font-style: italic;
+}
+/* Page wireframe (J.C) — hover feedback lives here instead of a per-rect
+   style=/onmouseover= attribute (cleaner markup, smaller HTML). */
+.wf-node {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+a:hover > .wf-node {
+  opacity: 0.82;
+}
+.wf-footer {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 6px;
   font-style: italic;
 }
 

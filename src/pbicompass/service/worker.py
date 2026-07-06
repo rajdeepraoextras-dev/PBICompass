@@ -32,7 +32,7 @@ import zipfile
 from pathlib import Path
 from typing import Callable
 
-from ..agents import generate_document, get_client
+from ..agents import audit_rules, generate_document, get_client
 from ..agents.generators import DOCUMENT_TYPES
 from ..render import pandoc, registry
 from ..render._shared import format_timestamp
@@ -146,6 +146,19 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
         client, client_warning = _make_client(options)
         if client_warning:
             warn(client_warning)
+
+        # Per-job rule-suppression/severity/threshold config (4.3 / J.A.3).
+        # Invalid TOML is a warning, not a failure — the job still runs,
+        # just without any overrides applied. Always reset afterward (see
+        # the outer finally) since this is process-wide module state.
+        rules_file_path = options.get("rules_file_path")
+        if rules_file_path:
+            error = audit_rules.validate_rules_file(rules_file_path)
+            if error:
+                warn(f"{error} — continuing without rule overrides.")
+            else:
+                audit_rules.set_rules_config_path(rules_file_path)
+
         document_types = _resolve_document_types(options.get("document_types"))
         multi = len(document_types) > 1
         # Fixed relative filenames, valid only inside the zip bundle built
@@ -220,4 +233,5 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
         log.exception("job %s failed unexpectedly", job_id)
         store.mark_failed(job_id, _FRIENDLY["generate"])
     finally:
+        audit_rules.set_rules_config_path(None)  # never leak one job's rules config into the next
         sandbox.cleanup()  # zero-retention: shred everything, success or failure

@@ -16,6 +16,7 @@ from ..schemas.user_guide_document import UserGuideDocument
 from ._docx_writer import _Docx
 from ._html_shell import page_shell
 from ._shared import anchor_slug
+from ._shared import dedupe_ids
 from ._shared import format_timestamp as _fmt_ts
 from ._shared import html_e as _e
 from ._shared import html_table as _html_table
@@ -138,8 +139,9 @@ def render_html(
     o.append(_bullet_list(doc.getting_started))
 
     o.append(f'<h2 id="sec3">{_e(_SECTION_TITLES[2])}</h2>')
-    for p in doc.pages:
-        o.append(f'<div class="card-section" id="page-{_e(anchor_slug(p.page_title))}">')
+    page_ids = dedupe_ids([f"page-{anchor_slug(p.page_title)}" for p in doc.pages])
+    for p, page_id in zip(doc.pages, page_ids):
+        o.append(f'<div class="card-section" id="{_e(page_id)}">')
         o.append(f"<h3>{_e(p.page_title)}</h3>")
         if p.wireframe_svg:
             o.append(p.wireframe_svg)
@@ -149,7 +151,8 @@ def render_html(
             o.append("<p><strong>What to look at:</strong> " + _e(", ".join(p.main_kpis)) + "</p>")
 
         if p.visual_descriptions:
-            row_ids = [f"visual-{anchor_slug(p.page_title)}-{anchor_slug(v['visual'])}" for v in p.visual_descriptions]
+            row_ids = dedupe_ids([f"visual-{anchor_slug(p.page_title)}-{anchor_slug(v['visual'])}"
+                                  for v in p.visual_descriptions])
             o.append(_html_table(["Visual", "What it shows"],
                                  [[_e(v["visual"]), _e(v["what_it_shows"])] for v in p.visual_descriptions],
                                  row_ids=row_ids))
@@ -183,7 +186,7 @@ def render_html(
 
         o.append("</div>")
 
-    term_ids = [f"term-{anchor_slug(g.term)}" for g in doc.glossary]
+    term_ids = dedupe_ids([f"term-{anchor_slug(g.term)}" for g in doc.glossary])
     o.append(f'<h2 id="sec4">{_e(_SECTION_TITLES[3])}</h2>')
     if doc.glossary:
         o.append(_html_table(
@@ -196,8 +199,8 @@ def render_html(
 
     search_index = [{"title": sec_title, "type": "section", "anchor": sec_id} for sec_id, sec_title in toc]
     search_index += [
-        {"title": p.page_title, "type": "page", "anchor": f"page-{anchor_slug(p.page_title)}"}
-        for p in doc.pages
+        {"title": p.page_title, "type": "page", "anchor": page_id}
+        for p, page_id in zip(doc.pages, page_ids)
     ]
     search_index += [
         {"title": g.term, "type": "term", "anchor": tid}

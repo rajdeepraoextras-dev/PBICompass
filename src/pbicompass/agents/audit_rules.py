@@ -284,10 +284,38 @@ RULE_METADATA = {
 
 _suppressed_rules_run = []
 _rules_override_config = {}
+# Explicit path set by the CLI's --rules flag or the service's per-job
+# rules-file upload (J.A.3). When unset, load_rules_config() falls back to
+# scanning the working directory, which only makes sense for the CLI.
+_rules_config_path: str | None = None
 
 def set_rules_override_config(config: dict):
     global _rules_override_config
     _rules_override_config = config
+
+def set_rules_config_path(path) -> None:
+    """Point ``load_rules_config()`` at an explicit ``pbicompass.rules.toml``
+    path (CLI ``--rules`` / service upload), instead of scanning the cwd.
+    Pass ``None`` to clear it back to the default cwd scan."""
+    global _rules_config_path
+    _rules_config_path = str(path) if path else None
+
+def validate_rules_file(path) -> Optional[str]:
+    """Parse ``path`` as a rules TOML file and return an error message if
+    it's invalid (missing file or bad TOML), else ``None``. Callers use this
+    to surface a clear, actionable error *without* failing the whole
+    generation job — an invalid rules file means "no suppression applied
+    this run", not "the job crashed" (J.A.3)."""
+    import tomllib
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return f"Rules file not found: {path}"
+    try:
+        tomllib.loads(p.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return f"Invalid TOML in rules file {path}: {exc}"
+    return None
 
 def get_suppressed_rules() -> list[str]:
     return sorted(list(set(_suppressed_rules_run)))
@@ -300,7 +328,10 @@ def load_rules_config() -> dict:
     import tomllib
     from pathlib import Path
     config = {}
-    for name in ("pbicompass.rules.toml", "rules.toml"):
+    candidates = [_rules_config_path] if _rules_config_path else ("pbicompass.rules.toml", "rules.toml")
+    for name in candidates:
+        if not name:
+            continue
         p = Path(name)
         if p.exists():
             try:
@@ -315,6 +346,12 @@ def load_rules_config() -> dict:
         for rid, sev in _rules_override_config.get("severity_overrides", {}).items():
             rules.setdefault(rid, {})["severity"] = sev
     return config
+
+def get_threshold(name: str, default):
+    """A configurable audit threshold from the rules TOML's ``[thresholds]``
+    table (J.A.3) — e.g. ``visual_density_limit`` or
+    ``description_coverage_pct``. Falls back to ``default`` when unset."""
+    return load_rules_config().get("thresholds", {}).get(name, default)
 
 def process_finding(finding_obj, key: str) -> bool:
     rule_id = FINDING_RULES.get(key, "")
@@ -352,6 +389,7 @@ _SENSITIVE_NAME = re.compile(r"(ssn|social.?security|passport|password|salary|do
                              r"credit.?card|phone|email|address)", re.IGNORECASE)
 _ID_LIKE_NAME = re.compile(r"(id|key|guid|email|phone|address)$", re.IGNORECASE)
 _TEXT_BLOB_NAME = re.compile(r"(description|comment|note|remark|detail|text|body)", re.IGNORECASE)
+_BRIDGE_NAME = re.compile(r"(bridge|junction|xref|mapping|map)\b", re.IGNORECASE)
 
 
 # -- Health score & complexity -------------------------------------------------
@@ -687,7 +725,8 @@ def check_best_practices(model: SemanticModel) -> list[BestPracticeCheck]:
     visible_columns = [c for t in model.tables for c in t.columns if not c.is_hidden]
     described = sum(1 for m in measures if m.description) + sum(1 for c in visible_columns if c.description)
     total_describable = len(measures) + len(visible_columns)
-    desc_ok = total_describable == 0 or (described / total_describable) >= 0.5
+    desc_coverage_pct = get_threshold("description_coverage_pct", 0.5)
+    desc_ok = total_describable == 0 or (described / total_describable) >= desc_coverage_pct
     checks.append(BestPracticeCheck(
         id="description_coverage", name="Description coverage", passed=desc_ok,
         category="documentation",
@@ -752,6 +791,51 @@ def check_best_practices(model: SemanticModel) -> list[BestPracticeCheck]:
         category="modeling",
         detail=(f"{len(many_to_many)} many-to-many relationship(s) detected." if many_to_many
                 else "No many-to-many relationships."),
+    ))
+
+    # PBIC-MOD-014: many-to-many relationships that connect two tables
+    # directly, with no intermediate bridge/junction table. Bridge tables are
+    # identified by name pattern or by shape (a handful of key-only columns,
+    # no measures) — a real bridge table itself is fine; what's risky is two
+    # substantive tables joined many-to-many with nothing between them.
+    table_by_name = {t.name: t for t in model.tables}
+
+    def _looks_like_bridge(table_name: str) -> bool:
+        if _BRIDGE_NAME.search(table_name):
+            return True
+        t = table_by_name.get(table_name)
+        # The shape heuristic (few key-only columns, no measures) only
+        # applies to tables the model didn't already classify as fact/
+        # dimension — a lean fact or dimension table is still a real
+        # substantive table, not a bridge, no matter how few columns it has.
+        return (bool(t) and t.kind not in ("fact", "dimension")
+                and len(t.columns) <= 3 and not t.measures)
+
+    m2m_direct = [r for r in many_to_many
+                  if not _looks_like_bridge(r.from_table) and not _looks_like_bridge(r.to_table)]
+    checks.append(BestPracticeCheck(
+        id="m2m_no_bridge", name="Many-to-many relationship without a bridge table",
+        passed=not m2m_direct, category="modeling",
+        detail=(f"{len(m2m_direct)} many-to-many relationship(s) connect two tables directly with no "
+                f"bridge/junction table in between: "
+                + ", ".join(f"{r.from_table} <-> {r.to_table}" for r in m2m_direct) + "."
+                if m2m_direct else
+                "Every many-to-many relationship routes through a bridge table, or none exist."),
+    ))
+
+    # PBIC-MOD-015: bidirectional cross-filtering that touches a fact table
+    # specifically — worse than a bidirectional relationship between two
+    # dimensions, since it risks ambiguous totals on the table everything
+    # else aggregates against.
+    fact_tables = {t.name for t in model.tables if t.kind == "fact"}
+    bidi_fact = [r for r in bidirectional if r.from_table in fact_tables or r.to_table in fact_tables]
+    checks.append(BestPracticeCheck(
+        id="bidirectional_fact", name="Bidirectional relationship filtering a fact table",
+        passed=not bidi_fact, category="modeling",
+        detail=(f"{len(bidi_fact)} bidirectional relationship(s) filter a fact table, a major "
+                f"performance and correctness risk: "
+                + ", ".join(f"{r.from_table} <-> {r.to_table}" for r in bidi_fact) + "."
+                if bidi_fact else "No bidirectional relationships touch a fact table."),
     ))
 
     # Circular-dependency risk: union-find over the graph of *active*
@@ -939,9 +1023,10 @@ def find_performance_risks(model: SemanticModel) -> list[PerformanceRisk]:
     high_card_slicer_targets = {
         r.object_name for r in risks if r.kind == "high_cardinality_signal"
     }
+    visual_density_limit = get_threshold("visual_density_limit", 12)
     for p in model.pages:
         visible_visuals = [v for v in p.visuals if not v.is_slicer]
-        if len(visible_visuals) > 12:
+        if len(visible_visuals) > visual_density_limit:
             risks.append(PerformanceRisk(
                 kind="visual_density", object_name=p.display_name, table=None,
                 detail=f"{len(visible_visuals)} visuals on one page — more visuals means more "
@@ -1022,7 +1107,8 @@ def check_governance(
     visible_columns = [c for t in model.tables for c in t.columns if not c.is_hidden]
     described = sum(1 for m in measures if m.description) + sum(1 for c in visible_columns if c.description)
     total = len(measures) + len(visible_columns)
-    if total and (described / total) < 0.5:
+    desc_coverage_pct = get_threshold("description_coverage_pct", 0.5)
+    if total and (described / total) < desc_coverage_pct:
         pct = round(100 * described / total)
         findings.append(GovernanceFinding(
             area="descriptions",
@@ -1253,6 +1339,16 @@ _PRACTICE_TEMPLATES = {
         "A disconnected table won't filter or summarize with the rest of the report — any visual built from it shows unrelated or misleading totals.",
         "Add a relationship connecting the table to the model, or remove it if it's not needed.",
         "Every table in the model filters and aggregates correctly with the rest of the report."),
+    "m2m_no_bridge": ("Medium",
+        "Some many-to-many relationships connect two substantive tables directly, with no bridge table.",
+        "A direct many-to-many relationship is the least predictable filter shape in Power BI and is especially prone to silent double-counting.",
+        "Introduce a dedicated bridge table with a unique key, and relate both sides to it with 1:M relationships.",
+        "Correct, predictable aggregation across both tables."),
+    "bidirectional_fact": ("High",
+        "A bidirectional relationship filters a fact table.",
+        "Bidirectional filtering on a fact table is the most common cause of ambiguous or duplicated totals, and carries a real performance cost as the model grows.",
+        "Switch the relationship to single-direction filtering from the dimension side, and use CROSSFILTER() in the specific measure(s) that genuinely need the reverse direction.",
+        "Predictable, fast aggregation on the fact table."),
     "dev_leftover_naming": ("Medium",
         "Some table or column names look like development leftovers (e.g. 'test', 'tmp', 'Copy of ...').",
         "Development scaffolding that ships to production confuses report authors and signals the model wasn't cleaned up before handover.",
@@ -1354,10 +1450,10 @@ _EFFORT_BY_KIND = {
 
 
 def _recommendation(priority: str, issue: str, why: str, fix: str, benefit: str,
-                    effort: str = "Medium", category: str = "modeling") -> Recommendation:
+                    effort: str = "Medium", category: str = "modeling", rule_id: str = "") -> Recommendation:
     return Recommendation(priority=priority, issue=issue, why_it_matters=why,
                           suggested_fix=fix, expected_benefit=benefit, effort=effort,
-                          category=category)
+                          category=category, rule_id=rule_id)
 
 
 def build_recommendations(
@@ -1378,24 +1474,28 @@ def build_recommendations(
     for kind in seen_dax:
         if kind in _DAX_TEMPLATES:
             recs.append(_recommendation(*_DAX_TEMPLATES[kind],
-                                        effort=_EFFORT_BY_KIND.get(kind, "Medium"), category="dax"))
+                                        effort=_EFFORT_BY_KIND.get(kind, "Medium"), category="dax",
+                                        rule_id=FINDING_RULES.get(kind, "")))
 
     for check in best_practices:
         if not check.passed and check.id in _PRACTICE_TEMPLATES:
             recs.append(_recommendation(*_PRACTICE_TEMPLATES[check.id],
-                                        effort=_EFFORT_BY_KIND.get(check.id, "Medium"), category="modeling"))
+                                        effort=_EFFORT_BY_KIND.get(check.id, "Medium"), category="modeling",
+                                        rule_id=FINDING_RULES.get(check.id, "")))
 
     seen_perf = dict.fromkeys(f.kind for f in performance_risks)
     for kind in seen_perf:
         if kind in _PERF_TEMPLATES:
             recs.append(_recommendation(*_PERF_TEMPLATES[kind],
-                                        effort=_EFFORT_BY_KIND.get(kind, "Medium"), category="performance"))
+                                        effort=_EFFORT_BY_KIND.get(kind, "Medium"), category="performance",
+                                        rule_id=FINDING_RULES.get(kind, "")))
 
     seen_gov = dict.fromkeys(f.area for f in governance)
     for area in seen_gov:
         if area in _GOVERNANCE_TEMPLATES:
             recs.append(_recommendation(*_GOVERNANCE_TEMPLATES[area],
-                                        effort=_EFFORT_BY_KIND.get(area, "Medium"), category="governance"))
+                                        effort=_EFFORT_BY_KIND.get(area, "Medium"), category="governance",
+                                        rule_id=FINDING_RULES.get(area, "")))
 
     unused_total = (
         len(unused_assets.measures) + len(unused_assets.columns)
@@ -1454,6 +1554,97 @@ def build_recommendations(
                             te_lines.append(f"Model.Tables[\"{t_name}\"].Columns[\"{c_name}\"].IsHidden = true;")
                     r.suggested_fix = r.suggested_fix + "\n\n```csharp\n// Tabular Editor C# Script to hide key/ID columns\n" + "\n".join(te_lines) + "\n```"
 
+            # PBIC-MOD-002 / PBIC-MOD-014: many-to-many relationships
+            elif "relationships are many-to-many" in r.issue.lower():
+                m2m_rels = [rel for rel in model.relationships
+                            if rel.from_cardinality == "many" and rel.to_cardinality == "many"]
+                if m2m_rels:
+                    fix_lines = [f"// {rel.from_table} <-> {rel.to_table}: introduce a bridge table "
+                                 f"(e.g. '{rel.from_table}{rel.to_table}Bridge') with a unique key, "
+                                 f"related 1:M to each side, instead of the direct M:N relationship."
+                                 for rel in m2m_rels]
+                    r.suggested_fix = r.suggested_fix + "\n\n```text\n" + "\n".join(fix_lines) + "\n```"
+
+            elif "connect two substantive tables directly" in r.issue.lower():
+                m2m_rels = [rel for rel in model.relationships
+                            if rel.from_cardinality == "many" and rel.to_cardinality == "many"]
+
+                def _bridge_like(name: str) -> bool:
+                    if _BRIDGE_NAME.search(name):
+                        return True
+                    t = next((tt for tt in model.tables if tt.name == name), None)
+                    return (bool(t) and t.kind not in ("fact", "dimension")
+                            and len(t.columns) <= 3 and not t.measures)
+
+                direct = [rel for rel in m2m_rels
+                          if not _bridge_like(rel.from_table) and not _bridge_like(rel.to_table)]
+                if direct:
+                    fix_lines = [f"// Add a bridge table between '{rel.from_table}' and '{rel.to_table}':\n"
+                                 f"Model.AddTable(\"{rel.from_table}{rel.to_table}Bridge\");\n"
+                                 f"// then relate {rel.from_table} -> Bridge (1:M) and {rel.to_table} -> Bridge (1:M)"
+                                 for rel in direct]
+                    r.suggested_fix = r.suggested_fix + "\n\n```csharp\n// Tabular Editor C# Script to scaffold a bridge table\n" + "\n\n".join(fix_lines) + "\n```"
+
+            # PBIC-MOD-003: circular dependency — name the specific
+            # relationship that closes the cycle (union-find over active
+            # relationships, same algorithm as the best-practice check).
+            elif "relationship graph contains a cycle" in r.issue.lower():
+                parent: dict[str, str] = {}
+
+                def _find(x: str) -> str:
+                    parent.setdefault(x, x)
+                    while parent[x] != x:
+                        x = parent[x]
+                    return x
+
+                closing_edges = []
+                for rel in model.relationships:
+                    if not rel.is_active:
+                        continue
+                    ra, rb = _find(rel.from_table), _find(rel.to_table)
+                    if ra == rb:
+                        closing_edges.append(rel)
+                    else:
+                        parent[ra] = rb
+                if closing_edges:
+                    fix_lines = [f"Model.Relationships.First(rel => rel.FromTable.Name == \"{rel.from_table}\" "
+                                 f"&& rel.ToTable.Name == \"{rel.to_table}\").IsActive = false; "
+                                 f"// breaks the cycle through {rel.from_table} <-> {rel.to_table}"
+                                 for rel in closing_edges]
+                    r.suggested_fix = r.suggested_fix + "\n\n```csharp\n// Tabular Editor C# Script to break the relationship cycle\n" + "\n".join(fix_lines) + "\n```"
+
+            # PBIC-MOD-004: disconnected fact/dimension tables
+            elif "no relationships to the rest of the model" in r.issue.lower():
+                related_tables = ({rel.from_table for rel in model.relationships}
+                                   | {rel.to_table for rel in model.relationships})
+                disconnected = [t.name for t in model.tables
+                                if t.kind in ("fact", "dimension") and t.name not in related_tables]
+                if disconnected:
+                    fix_lines = [f"// '{name}' has no relationships — connect it to the model, e.g.:\n"
+                                 f"Model.AddRelationship(\"{name}\", \"<KeyColumn>\", \"<OtherTable>\", \"<OtherKeyColumn>\");"
+                                 for name in disconnected]
+                    r.suggested_fix = r.suggested_fix + "\n\n```csharp\n// Tabular Editor C# Script (fill in the real join columns)\n" + "\n\n".join(fix_lines) + "\n```"
+
+            # PBIC-GOV-004: sensitive column names visible
+            elif "sensitive data is present and visible" in r.issue.lower():
+                sensitive_cols = [(t.name, c.name) for t in model.tables for c in t.columns
+                                  if _SENSITIVE_NAME.search(c.name) and not c.is_hidden]
+                if sensitive_cols:
+                    fix_lines = [f"Model.Tables[\"{tbl}\"].Columns[\"{col}\"].IsHidden = true; "
+                                 f"// review whether {col} needs RLS/OLS or a sensitivity label instead"
+                                 for tbl, col in sensitive_cols]
+                    r.suggested_fix = r.suggested_fix + "\n\n```csharp\n// Tabular Editor C# Script to hide sensitive-looking columns\n" + "\n".join(fix_lines) + "\n```"
+
+            # PBIC-GOV-010: hardcoded local file paths in data sources
+            elif "hardcoded local file path" in r.issue.lower():
+                paths = local_path_sources(model)
+                if paths:
+                    fix_lines = [f"// was: Source = File.Contents(\"{p}\")\n"
+                                 f"let\n    SourcePath = #\"Path\" /* Power Query parameter, e.g. bound to a "
+                                 f"SharePoint/gateway location */\nin\n    Source = File.Contents(SourcePath)"
+                                 for p in paths]
+                    r.suggested_fix = r.suggested_fix + "\n\n```m\n// Replace each hardcoded path with a Power Query parameter\n" + "\n\n".join(fix_lines) + "\n```"
+
             # Unused assets
             elif "unused asset" in r.issue.lower():
                 m_to_tbl = {m.name: m.table for m in model.all_measures() if m.table}
@@ -1470,6 +1661,58 @@ def build_recommendations(
 
     recs.sort(key=lambda r: _PRIORITY_ORDER.get(r.priority, 4))
     return recs
+
+
+def compute_checks_ledger(
+    dax_findings: list[DaxFinding],
+    best_practices: list[BestPracticeCheck],
+    performance_risks: list[PerformanceRisk],
+    governance: list[GovernanceFinding],
+    suppressed_rules: list[str],
+) -> dict:
+    """Rule-engine ledger (4.1): pass/fail/suppressed counts over the *full*
+    stable-ID rule registry (every ID in ``FINDING_RULES``), not just the
+    findings that happened to fire. A rule "fails" if it produced at least
+    one finding/failed check; otherwise, if it isn't suppressed, it "passed"
+    silently — that silent pass has to be counted too, or "Checks run: N"
+    would only ever equal the number of problems found, i.e. never honest
+    about how much was actually checked.
+    """
+    all_ids = set(FINDING_RULES.values())
+    fired: set[str] = set()
+    for f in dax_findings:
+        if f.rule_id:
+            fired.add(f.rule_id)
+    for r in performance_risks:
+        if r.rule_id:
+            fired.add(r.rule_id)
+    for g in governance:
+        if g.rule_id:
+            fired.add(g.rule_id)
+    for c in best_practices:
+        if not c.passed and c.rule_id:
+            fired.add(c.rule_id)
+
+    suppressed = set(suppressed_rules) & all_ids
+    failed = (fired & all_ids) - suppressed
+    passed = all_ids - failed - suppressed
+
+    by_category: dict[str, dict[str, int]] = {}
+    for rid in all_ids:
+        category = RULE_METADATA.get(rid, ("other",))[0]
+        bucket = by_category.setdefault(category, {"run": 0, "passed": 0, "failed": 0, "suppressed": 0})
+        bucket["run"] += 1
+        if rid in suppressed:
+            bucket["suppressed"] += 1
+        elif rid in failed:
+            bucket["failed"] += 1
+        else:
+            bucket["passed"] += 1
+
+    return {
+        "run": len(all_ids), "passed": len(passed), "failed": len(failed),
+        "suppressed": len(suppressed), "by_category": by_category,
+    }
 
 
 def get_and_update_score_history(report_name: str, current_score: int) -> Optional[str]:
