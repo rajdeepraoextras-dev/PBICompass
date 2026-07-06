@@ -1226,7 +1226,7 @@
 
             <div class="grid-2" id="effort-row">
               <div class="form-group">
-                <label>AI Thinking Effort <small>(Claude/MeshAPI only — higher takes longer, writes better prose)</small></label>
+                <label>AI Thinking Effort <small>(Claude only — higher takes longer, writes better prose)</small></label>
                 <select id="effort">
                   <option value="low">Low — fastest, lighter reasoning</option>
                   <option value="medium">Medium — balanced</option>
@@ -1676,10 +1676,13 @@ const providerApikey = $("provider-apikey");
 providerApikey.value = localStorage.getItem("pbicompass_provider_key") || "";
 providerApikey.addEventListener("change", () => localStorage.setItem("pbicompass_provider_key", providerApikey.value.trim()));
 
-// Effort only applies to engines with a thinking-effort knob (Claude,
-// MeshAPI) — hide it otherwise; the engine key field only makes sense once
-// an LLM engine is selected.
-const EFFORT_CAPABLE_PROVIDERS = ["anthropic", "meshapi"];
+// Effort only applies to the Claude engine — hide it otherwise; the engine
+// key field only makes sense once an LLM engine is selected. MeshAPI fronts
+// 1000+ models of wildly varying reasoning-effort support with no per-model
+// signal exposed here, and its own gateway 400s instead of ignoring the
+// parameter for models that don't recognize it, so effort is never sent
+// for it (see MeshAPIClient.complete_json).
+const EFFORT_CAPABLE_PROVIDERS = ["anthropic"];
 function syncEffortVisibility() {
   const isOffline = $("provider").value === "none";
   $("effort-row").style.display = EFFORT_CAPABLE_PROVIDERS.includes($("provider").value) ? "" : "none";
@@ -1706,7 +1709,7 @@ const ESTIMATED_SECONDS = {
   gemini: 25,
   cohere: 30,
   anthropic: { low: 18, medium: 35, high: 60, xhigh: 100, max: 150 },
-  meshapi: { low: 18, medium: 35, high: 60, xhigh: 100, max: 150 },
+  meshapi: 30,
 };
 let progressTimer = null;
 

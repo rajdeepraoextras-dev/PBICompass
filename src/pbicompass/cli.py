@@ -224,8 +224,8 @@ def main(argv: list[str] | None = None) -> int:
                             "across providers; use a 'provider/model-name' --model id, e.g. 'openai/gpt-4o')")
     p_gen.add_argument("--model", default="claude-opus-4-8", help="Model id for the LLM provider")
     p_gen.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"],
-                       help="Thinking effort (quality vs. latency), honored by --provider anthropic/meshapi. "
-                            "Ignored for --provider gemini/cohere/none.")
+                       help="Anthropic thinking effort (quality vs. latency). "
+                            "Ignored for --provider gemini/cohere/meshapi/none.")
     p_gen.add_argument("--document", default="technical", choices=[*DOCUMENT_TYPES, "all"],
                        help="Document type to generate (default: technical — the original documentation). "
                             "'all' generates every document type from a single parse.")
@@ -423,7 +423,7 @@ def main(argv: list[str] | None = None) -> int:
         client = None
         if args.provider not in ("none", "offline", "deterministic"):
             client_kwargs = {"model": args.model}
-            if args.provider in ("anthropic", "claude", "meshapi", "mesh"):
+            if args.provider in ("anthropic", "claude"):
                 client_kwargs["effort"] = args.effort
             try:
                 client = get_client(args.provider, **client_kwargs)

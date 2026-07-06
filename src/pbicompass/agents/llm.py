@@ -263,11 +263,6 @@ class MeshAPIClient:
 
     _BASE_URL = "https://api.meshapi.ai/v1"
 
-    # MeshAPI's `reasoning_effort` is a 4-level enum (low/medium/high/none) —
-    # coarser than this codebase's 5-level EFFORT_LEVELS; xhigh/max both map
-    # to its ceiling ("high") since MeshAPI has nothing deeper.
-    _EFFORT_MAP = {"low": "low", "medium": "medium", "high": "high", "xhigh": "high", "max": "high"}
-
     def __init__(
         self,
         model: str = "openai/gpt-4o",
@@ -292,10 +287,15 @@ class MeshAPIClient:
         self.timeout = timeout
 
     def complete_json(self, system: str, user: str, schema: dict, *, effort: Optional[str] = None) -> dict:
-        resolved_effort = effort if effort is not None else self.effort
-        extra: dict[str, Any] = {}
-        if resolved_effort is not None:
-            extra["reasoning_effort"] = self._EFFORT_MAP.get(resolved_effort, resolved_effort)
+        # MeshAPI documents `reasoning_effort` as a unified-schema field, but
+        # doesn't drop it gracefully for models that don't recognize it — it
+        # 400s ("Unrecognized request argument supplied: reasoning_effort")
+        # instead, confirmed against openai/gpt-4o (a non-reasoning model),
+        # failing every single agent call. MeshAPI fronts 1000+ models of
+        # wildly varying reasoning-effort support with no per-model signal
+        # exposed here, so — like GeminiClient/CohereClient — effort is
+        # accepted for protocol compatibility and silently ignored rather
+        # than risk breaking the call for whichever model is configured.
         response = self._client.chat.completions.create(
             model=self.model,
             max_tokens=self.max_tokens,
@@ -307,7 +307,6 @@ class MeshAPIClient:
                 "type": "json_schema",
                 "json_schema": {"name": "response", "schema": schema, "strict": True},
             },
-            **extra,
         )
         choice = response.choices[0]
         if getattr(choice, "finish_reason", None) == "content_filter":

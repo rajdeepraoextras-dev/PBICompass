@@ -79,7 +79,7 @@ def _make_client(options: dict) -> tuple[object | None, str | None]:
     if provider in (None, "", "none", "offline", "deterministic"):
         return None, None
     kwargs = {"model": options.get("model", "claude-opus-4-8")}
-    if provider in ("anthropic", "claude", "meshapi", "mesh"):
+    if provider in ("anthropic", "claude"):
         kwargs["effort"] = _clamp_effort_for_plan(options.get("effort") or "high", options.get("plan", "free"))
     api_key = options.get("provider_api_key")
     if api_key:

@@ -441,12 +441,18 @@ class ClientFactoryTest(unittest.TestCase):
             with self.assertRaises(ImportError):
                 get_client("mesh", model="anthropic/claude-opus-4.8")
 
-    def test_meshapi_maps_effort_and_parses_response(self):
+    def test_meshapi_never_sends_reasoning_effort_and_parses_response(self):
         # Stub out the 'openai' package (it may not be installed in this
         # environment — MeshAPI is deliberately implemented on top of the
         # official OpenAI SDK pointed at MeshAPI's base URL) so
         # MeshAPIClient's lazy import resolves to a fake client we control,
         # mirroring the Cohere content-parsing regression test above.
+        #
+        # Regression: MeshAPI documents `reasoning_effort` as a unified
+        # field but 400s ("Unrecognized request argument supplied:
+        # reasoning_effort") for models that don't recognize it — confirmed
+        # against openai/gpt-4o, the default — so it must never be sent,
+        # even when an effort was requested.
         import sys
         from types import ModuleType, SimpleNamespace
         from unittest.mock import patch
@@ -477,11 +483,10 @@ class ClientFactoryTest(unittest.TestCase):
         with patch.dict(sys.modules, {"openai": fake_module}):
             from pbicompass.agents.llm import MeshAPIClient
             client = MeshAPIClient(model="anthropic/claude-opus-4.8", api_key="rsk_test", effort="xhigh")
-            out = client.complete_json("sys", "user", {"type": "object"})
+            out = client.complete_json("sys", "user", {"type": "object"}, effort="high")
 
         self.assertEqual(out, {"ok": True})
-        # xhigh has no MeshAPI equivalent — maps down to its ceiling, "high".
-        self.assertEqual(captured["reasoning_effort"], "high")
+        self.assertNotIn("reasoning_effort", captured)
         self.assertEqual(captured["model"], "anthropic/claude-opus-4.8")
         self.assertEqual(client.last_usage, {"input_tokens": 10, "output_tokens": 5})
 
