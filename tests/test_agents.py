@@ -439,7 +439,7 @@ class ClientFactoryTest(unittest.TestCase):
             with self.assertRaises(ImportError):
                 get_client("meshapi", model="claude-opus-4-8")
             with self.assertRaises(ImportError):
-                get_client("mesh", model="anthropic/claude-opus-4-8")
+                get_client("mesh", model="anthropic/claude-opus-4.8")
 
     def test_meshapi_maps_effort_and_parses_response(self):
         # Stub out the 'openai' package (it may not be installed in this
@@ -476,13 +476,13 @@ class ClientFactoryTest(unittest.TestCase):
 
         with patch.dict(sys.modules, {"openai": fake_module}):
             from pbicompass.agents.llm import MeshAPIClient
-            client = MeshAPIClient(model="anthropic/claude-opus-4-8", api_key="rsk_test", effort="xhigh")
+            client = MeshAPIClient(model="anthropic/claude-opus-4.8", api_key="rsk_test", effort="xhigh")
             out = client.complete_json("sys", "user", {"type": "object"})
 
         self.assertEqual(out, {"ok": True})
         # xhigh has no MeshAPI equivalent — maps down to its ceiling, "high".
         self.assertEqual(captured["reasoning_effort"], "high")
-        self.assertEqual(captured["model"], "anthropic/claude-opus-4-8")
+        self.assertEqual(captured["model"], "anthropic/claude-opus-4.8")
         self.assertEqual(client.last_usage, {"input_tokens": 10, "output_tokens": 5})
 
     def test_gemini_schema_strips_additional_properties(self):
