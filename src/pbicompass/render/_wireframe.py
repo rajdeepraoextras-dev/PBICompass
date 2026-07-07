@@ -227,13 +227,13 @@ def render_wireframe(
             ty = vy + 10
             if title_text:
                 box.append(f'<text x="{vx + text_x_offset:.1f}" y="{ty:.1f}" font-size="7.5" font-family="\'Poppins\', sans-serif" '
-                          f'font-weight="600" fill="{text_color}">{html_e(title_text)}</text>')
+                          f'font-weight="600" fill="{text_color}">WIP</text>')
                 ty += 9
             box.append(f'<text x="{vx + text_x_offset:.1f}" y="{ty:.1f}" font-size="6.5" font-family="\'Poppins\', sans-serif" '
-                      f'fill="{text_color}" opacity="0.75">{html_e(friendly)}</text>')
+                      f'fill="{text_color}" opacity="0.75">WIP</text>')
         elif vw >= 35 and vh >= 18:
             box.append(f'<text x="{vx + text_x_offset:.1f}" y="{vy + vh / 2 + 2.5:.1f}" font-size="6.5" font-family="\'Poppins\', sans-serif" '
-                      f'fill="{text_color}">{html_e(_truncate(friendly, 14))}</text>')
+                      f'fill="{text_color}">WIP</text>')
 
         if category == "data":
             metrics, dims = [], []

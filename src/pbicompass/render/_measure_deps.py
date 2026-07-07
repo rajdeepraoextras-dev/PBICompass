@@ -138,7 +138,7 @@ def render_measure_dependency_graph_svg(model: SemanticModel) -> str:
                 
             svg.append(
                 f'    <text x="{cx + box_w/2:.1f}" y="{cy + box_h/2 + 3:.1f}" font-size="9" '
-                f'text-anchor="middle" fill="#5b21b6">{html_e(display_name)}</text>'
+                f'fill="#1e293b" text-anchor="middle" font-weight="500">WIP</text>'
             )
             svg.append(f'  </g>')
             

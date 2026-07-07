@@ -162,9 +162,9 @@ def _diagram(tables: list[dict], edges: list[dict]) -> str:
         svg.append(f'<rect x="{rx:.0f}" y="{ry:.0f}" width="{bw}" height="{bh}" rx="9" '
                    f'fill="{fill}" stroke="{line}" stroke-width="1.6"/>')
         svg.append(f'<text x="{x:.0f}" y="{y-4:.0f}" font-size="12.5" font-weight="600" '
-                   f'text-anchor="middle" fill="#1f2933">{_e(name)}</text>')
+                   f'text-anchor="middle" fill="#1f2933">WIP</text>')
         svg.append(f'<text x="{x:.0f}" y="{y+12:.0f}" font-size="9.5" text-anchor="middle" '
-                   f'fill="#8a94a3">{_e(sub)}</text>')
+                   f'fill="#8a94a3">WIP</text>')
         svg.append("</g>")
     svg.append("</svg>")
 

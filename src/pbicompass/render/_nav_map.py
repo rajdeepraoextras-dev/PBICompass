@@ -204,7 +204,7 @@ def render_navigation_map(model: SemanticModel) -> tuple[list[dict[str, str]], s
             display_name = display_name[:16] + "..."
             
         svg.append(f'    <text x="{x:.1f}" y="{y + 3:.1f}" font-size="8.5" font-weight="600" fill="{text_color}" '
-                   f'text-anchor="middle">{html_e(display_name)}</text>')
+                   f'text-anchor="middle">WIP</text>')
         svg.append('  </a>')
 
     svg.append('</svg>')
