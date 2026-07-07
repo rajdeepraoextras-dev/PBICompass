@@ -52,6 +52,12 @@ def _glyph_defs(suffix: str) -> str:
     computes one per page), so without a per-instance suffix a document with
     more than one page would define the same ``id="wf-i-bars"`` twice."""
     return f"""<defs>
+<filter id="wf-shadow-{suffix}" x="-10%" y="-10%" width="120%" height="120%">
+  <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.06"/>
+</filter>
+<filter id="wf-shadow-sm-{suffix}" x="-10%" y="-10%" width="120%" height="120%">
+  <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.04"/>
+</filter>
 <symbol id="wf-i-bars-{suffix}" viewBox="0 0 12 12"><rect x="1" y="6" width="2.4" height="5"/><rect x="4.8" y="3" width="2.4" height="8"/><rect x="8.6" y="1" width="2.4" height="10"/></symbol>
 <symbol id="wf-i-line-{suffix}" viewBox="0 0 12 12"><polyline points="1,9 4,5 7,7 11,2" fill="none" stroke-width="1.4"/></symbol>
 <symbol id="wf-i-combo-{suffix}" viewBox="0 0 12 12"><rect x="1" y="7" width="2.2" height="4"/><rect x="5" y="4" width="2.2" height="7"/><rect x="9" y="6" width="2.2" height="5"/><polyline points="1,4 5,2 9,3.5" fill="none" stroke-width="1.2"/></symbol>
@@ -68,18 +74,18 @@ def _glyph_defs(suffix: str) -> str:
 # filters; nav is a thin green outline; decorative recedes (light gray, no
 # stroke) instead of competing with real content for attention (J.C item 5).
 _STYLE = {
-    "data": ("#ffffff", "#4f46e5", "#312e81"),
-    "slicer": ("#fef3c7", "#f59e0b", "#92400e"),
-    "nav": ("#ecfdf5", "#10b981", "#065f46"),
-    "decorative": ("#e2e8f0", "none", "#64748b"),
+    "data": ("#ffffff", "#e0e7ff", "#312e81"),
+    "slicer": ("#fffbeb", "#fde68a", "#92400e"),
+    "nav": ("#f0fdf4", "#bbf7d0", "#065f46"),
+    "decorative": ("#f8fafc", "none", "#94a3b8"),
 }
 
 _LEGEND = (
     '<div class="legend">'
-    '<span><i class="swatch" style="background:#ffffff;border:1.5px solid #4f46e5"></i>Data visual</span>'
-    '<span><i class="swatch" style="background:#fef3c7;border:1px solid #f59e0b"></i>Slicer</span>'
-    '<span><i class="swatch" style="background:#ecfdf5;border:1px solid #10b981"></i>Navigation</span>'
-    '<span><i class="swatch" style="background:#e2e8f0"></i>Decorative</span>'
+    '<span><i class="swatch" style="background:#ffffff;border:1px solid #e0e7ff;box-shadow:0 2px 4px rgba(0,0,0,0.06)"></i>Data visual</span>'
+    '<span><i class="swatch" style="background:#fffbeb;border:1px solid #fde68a;box-shadow:0 1px 2px rgba(0,0,0,0.04)"></i>Slicer</span>'
+    '<span><i class="swatch" style="background:#f0fdf4;border:1px solid #bbf7d0;box-shadow:0 1px 2px rgba(0,0,0,0.04)"></i>Navigation</span>'
+    '<span><i class="swatch" style="background:#f8fafc"></i>Decorative</span>'
     "</div>"
 )
 
@@ -156,7 +162,7 @@ def render_wireframe(
     margin = 4
     svg.append(
         f'<rect x="{margin}" y="{margin}" width="{target_w - 2 * margin:.0f}" '
-        f'height="{target_h - 2 * margin:.0f}" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>'
+        f'height="{target_h - 2 * margin:.0f}" fill="#f1f5f9" rx="12" stroke="#e2e8f0" stroke-width="1"/>'
     )
 
     sorted_visuals = sorted(valid_visuals, key=lambda v: v.z or 0)
@@ -195,8 +201,9 @@ def render_wireframe(
         friendly = friendly_visual_type(v.type)
         label = v.title or friendly
 
-        stroke_width = 0 if stroke == "none" else (1.5 if category == "data" else 1)
-        rect_attrs = f'x="{vx:.1f}" y="{vy:.1f}" width="{vw:.1f}" height="{vh:.1f}" rx="3" class="wf-node"'
+        stroke_width = 0 if stroke == "none" else 1
+        filter_id = f'filter="url(#wf-shadow-{glyph_suffix})"' if category == "data" else (f'filter="url(#wf-shadow-sm-{glyph_suffix})"' if category != "decorative" else "")
+        rect_attrs = f'x="{vx:.1f}" y="{vy:.1f}" width="{vw:.1f}" height="{vh:.1f}" rx="6" class="wf-node" {filter_id}'
         style_attrs = f'fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}"'
 
         box = [f'<rect {rect_attrs} {style_attrs}/>']
@@ -219,13 +226,13 @@ def render_wireframe(
             title_text = _truncate(v.title, 22) if v.title else None
             ty = vy + 10
             if title_text:
-                box.append(f'<text x="{vx + text_x_offset:.1f}" y="{ty:.1f}" font-size="7.5" '
+                box.append(f'<text x="{vx + text_x_offset:.1f}" y="{ty:.1f}" font-size="7.5" font-family="\'Poppins\', sans-serif" '
                           f'font-weight="600" fill="{text_color}">{html_e(title_text)}</text>')
                 ty += 9
-            box.append(f'<text x="{vx + text_x_offset:.1f}" y="{ty:.1f}" font-size="6.5" '
+            box.append(f'<text x="{vx + text_x_offset:.1f}" y="{ty:.1f}" font-size="6.5" font-family="\'Poppins\', sans-serif" '
                       f'fill="{text_color}" opacity="0.75">{html_e(friendly)}</text>')
         elif vw >= 35 and vh >= 18:
-            box.append(f'<text x="{vx + text_x_offset:.1f}" y="{vy + vh / 2 + 2.5:.1f}" font-size="6.5" '
+            box.append(f'<text x="{vx + text_x_offset:.1f}" y="{vy + vh / 2 + 2.5:.1f}" font-size="6.5" font-family="\'Poppins\', sans-serif" '
                       f'fill="{text_color}">{html_e(_truncate(friendly, 14))}</text>')
 
         if category == "data":
