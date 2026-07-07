@@ -627,7 +627,7 @@ details.collapsible > .code-block pre {
 .diagram-hint {
   width: 100%;
   margin-top: 4px;
-  font-style: italic;
+  opacity: 0.8;
 }
 /* Page wireframe (J.C) — hover feedback lives here instead of a per-rect
    style=/onmouseover= attribute (cleaner markup, smaller HTML). */
@@ -642,7 +642,7 @@ a:hover > .wf-node {
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 6px;
-  font-style: italic;
+  opacity: 0.8;
 }
 
 /* Print cover page + watermark — hidden on screen entirely; only exist for

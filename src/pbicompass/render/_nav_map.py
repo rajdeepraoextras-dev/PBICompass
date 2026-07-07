@@ -131,7 +131,7 @@ def render_navigation_map(model: SemanticModel) -> tuple[list[dict[str, str]], s
 
     svg = [
         f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" '
-        f'font-family="inherit" role="img" aria-labelledby="nav-diagram-title">'
+        f'role="img" aria-labelledby="nav-diagram-title">\n<style>text {{ font-family: "Poppins", sans-serif !important; }}</style>'
     ]
     svg.append('<title id="nav-diagram-title">Report page navigation flow map</title>')
 

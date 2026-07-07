@@ -111,8 +111,8 @@ def _diagram(tables: list[dict], edges: list[dict]) -> str:
         pos = {t["name"]: pos[t["name"]] for t in tables}
 
     table_names = ", ".join(t["name"] for t in tables)
-    svg = [f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="inherit" '
-           f'role="img" aria-labelledby="model-diagram-title">']
+    svg = [f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" '
+           f'role="img" aria-labelledby="model-diagram-title">\n<style>text {{ font-family: "Poppins", sans-serif !important; }}</style>']
     svg.append(f'<title id="model-diagram-title">Data model diagram: {_e(table_names)}, connected by '
                f'{len(edges)} relationship(s)</title>')
     svg.append('<defs><marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">'
