@@ -586,6 +586,9 @@ details.collapsible > .code-block pre {
   cursor: grab;
   touch-action: none;
 }
+.diagram svg text {
+  font-family: var(--font-sans);
+}
 .diagram svg:active {
   cursor: grabbing;
 }
