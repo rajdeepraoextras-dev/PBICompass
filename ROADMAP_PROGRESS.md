@@ -812,6 +812,7 @@ The user reported not being able to see the lineage graph, and asked to make it 
 ### Known gap / explicit follow-up needed
 
 - **The wireframe is now hidden in production, at explicit user instruction, not because anything is broken with it** — Day 13's own "wireframes visible again" done-when is technically un-met again as of this change, by design. Re-enabling it (uncommenting the two lines above) is a one-line-per-file change whenever the user is ready; flagged here so a future session (or handoff) doesn't mistake "wireframe hidden" for a regression and re-investigate a non-issue.
+- **Timing decided (same day, follow-up instruction):** re-enable/finalize the wireframe **last**, bundled into Sprint 7's dedicated `index.html`/hub design push (Days 33–35, §6.3) rather than sooner in Sprint 3 — the owner's explicit call, so the wireframe's final polish lands alongside the rest of the product's visual-surface work instead of shipping on its own separately. Noted directly in `PRODUCTION_ROADMAP.md` at both Day 15 (Sprint 3 QA — scope narrowed to exclude the wireframe) and Days 33–35 (now carries an explicit "re-enable the wireframe here" bullet) so the deferral isn't lost between now and August.
 
 ---
 

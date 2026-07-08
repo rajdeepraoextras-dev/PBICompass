@@ -427,7 +427,9 @@ Kill every embarrassing line before anyone new sees the output. Highest percepti
 
 **Day 14 (Jul 27) — Lineage graph redesign + reintroduce. ✅ DONE (2026-07-08, pulled forward from Sprint 3's own Day-13 v4 addendum + a same-day user request).** The "readable layered SVG, dark-mode-aware" redesign already happened as part of Day 13's v4 addendum (lineage got the same v4 card treatment as the wireframe). Reintroduction (`html.py:344-345` uncommented) happened today at the user's explicit request ("make the lineage visuals appear"). At the same request, the wireframe was *re-hidden* (`html.py:456-457` and `user_guide.py:146-147` re-commented) — an explicit, temporary, user-directed state ("for now"), not a regression; see `ROADMAP_PROGRESS.md`'s note for the swap. _Done-when:_ lineage renders cleanly (confirmed in the regenerated `technical.html` golden); md/docx fallback intact (`lineage_edges` table — unaffected, was never gated on the SVG).
 
-**Day 15 (Jul 28) — Sprint 3 QA.** Full regen read-through across all 4 docs × formats with wireframe/lineage back in; golden snapshots updated. _Done-when:_ every visual renders cleanly in light+dark; no regressions. _(The dedicated `index.html` redesign moves to Sprint 7, §6.3.)_
+**Day 15 (Jul 28) — Sprint 3 QA.** Full regen read-through across all 4 docs × formats — lineage back in; wireframe intentionally still hidden (owner request, 2026-07-08 — see Day 14's note). Scope narrows to: lineage renders cleanly in light+dark, no regressions on the docs as they actually ship today. _(The dedicated `index.html` redesign moves to Sprint 7, §6.3.)_
+
+> **Owner note (2026-07-08):** the wireframe re-enablement/final polish is intentionally deferred, not forgotten — do it **last**, bundled into Sprint 7's dedicated design push (Days 33–35, §6.3) alongside the `index.html`/hub redesign, when the team is already deep in cross-surface visual work. Re-enabling it before then is a one-line-per-file revert (`html.py:456-457`, `user_guide.py:146-147`) whenever wanted sooner, but the *default* plan is: wireframe waits for the website-UI phase.
 
 **Sprint 3 outcome:** the two intentionally-hidden sections are back at the same bar as the rest; nothing embarrassing ships commented-out.
 
@@ -492,7 +494,7 @@ The infrastructure that makes it a real service. **Prerequisite for all auth/bil
 **Days 33–35 (Aug 21, 24, 25) — `index.html` professional redesign (dedicated design push, §6.3, owner-requested).**
 - _Day 33:_ product **landing / upload page** (`service/static/index.html`) — value prop, four-doc preview, trust signals (zero-retention/metadata-only), signed-in state + pricing CTA (auth/billing now exist).
 - _Day 34:_ per-job **documentation hub** (`render/hub.py`) — deliverable-grade cover: title, generated date, health chip + top-3 findings, document cards, breadcrumbs, branding.
-- _Day 35:_ cross-surface design QA — landing, hub, and all four docs read as one system in light+dark; responsive/mobile check.
+- _Day 35:_ cross-surface design QA — landing, hub, and all four docs read as one system in light+dark; responsive/mobile check. **Re-enable the wireframe here too** (uncomment `html.py:456-457`, `user_guide.py:146-147` — hidden since 2026-07-08 at owner request, deferred to this exact design push per that same request) and give it a final pass alongside the landing/hub work, so every visual surface lands in one coherent design sweep instead of the wireframe shipping separately/earlier.
 - _Done-when:_ a first-time visitor understands the product in 10 seconds and a shared hub link reads like a Big-4 cover sheet; design score → ~93.
 
 **Day 36 (Aug 26) — Full test sweep.** Integration (signup→pay→generate→ask), e2e browser smoke, billing-webhook, zero-retention regression — all in CI as deploy gates. _Done-when:_ all P0/P1 tests green; CI blocks on red.
