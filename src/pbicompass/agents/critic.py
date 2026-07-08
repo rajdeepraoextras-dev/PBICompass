@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from .generators.base import call_llm
 from .llm import LLMClient
+from .sanitize import is_meta_commentary
 
 if TYPE_CHECKING:
     from .context import JobAIContext
@@ -164,9 +165,20 @@ def apply_critic_pass(
 
 
 def apply_results(triples: list[tuple[str, str, Callable[[str], None]]], results: dict[str, str]) -> None:
-    """Write ``results`` (from :func:`apply_critic_pass`) back onto whatever
-    object each ``setter`` closes over — callers build ``triples`` from their
-    own document schema (``(location, original_text, setter)``)."""
+    """Write ``results`` (from :func:`apply_critic_pass` or
+    ``grounding.apply_grounding_pass``) back onto whatever object each
+    ``setter`` closes over — callers build ``triples`` from their own
+    document schema (``(location, original_text, setter)``).
+
+    D2: a result that reads as LLM meta-commentary (an editing directive or
+    a reference to the document's own data structures, e.g. "Remove the
+    duplicated entry as it is identical to glossary[15].plain_definition.")
+    is rejected here rather than written into the document — this is the
+    single choke point every critic/grounding result from every generator
+    passes through, so one guard covers all of them."""
     for location, _original, setter in triples:
         if location in results:
-            setter(results[location])
+            replacement = results[location]
+            if is_meta_commentary(replacement):
+                continue
+            setter(replacement)

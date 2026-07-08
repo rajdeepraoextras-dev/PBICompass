@@ -228,14 +228,15 @@ def _page_questions(visuals, measure_names: set[str], field_param_tables: set[st
     actually shown on the page — never invented beyond the fields present.
     Fields from a field-parameter/disconnected helper table (I4) are
     excluded — they're a UI selector, not a real dimension to ask about."""
+    from .report_facts import is_field_selector
+
     metrics: list[str] = []
     dims: list[str] = []
     for v in visuals:
         for f in v.fields:
-            parts = f.split(".")
-            if len(parts) > 1 and parts[0] in field_param_tables:
+            if is_field_selector(f, field_param_tables):
                 continue
-            leaf = parts[-1]
+            leaf = f.split(".")[-1]
             if not leaf:
                 continue
             bucket = metrics if leaf in measure_names else dims
@@ -251,10 +252,17 @@ def _page_questions(visuals, measure_names: set[str], field_param_tables: set[st
     return questions[:3]
 
 
-def _page_theme(visuals) -> str:
+def _page_theme(visuals, field_param_tables: set[str] = frozenset()) -> str:
+    """Field-parameter fields (I4) are excluded — a UI selector isn't a
+    "key field" worth naming in the page summary any more than it's a real
+    dimension to ask a business question about."""
+    from .report_facts import is_field_selector
+
     seen: list[str] = []
     for v in visuals:
         for f in v.fields:
+            if is_field_selector(f, field_param_tables):
+                continue
             leaf = f.split(".")[-1]
             if leaf and leaf not in seen:
                 seen.append(leaf)
@@ -285,7 +293,7 @@ def business_analyst_deterministic(model: SemanticModel) -> ExecutiveSummary:
 
     pages: list[PageSummary] = []
     for p in visible_pages:
-        theme = _page_theme(p.visuals)
+        theme = _page_theme(p.visuals, field_param_tables)
         counts = Counter(v.type for v in p.visuals)
         inv = ", ".join(f"{n} {_visual_name(vt, n)}" for vt, n in counts.most_common(5))
         summary = f"Presents {len(p.visuals)} visual(s)"
@@ -302,11 +310,14 @@ def business_analyst_deterministic(model: SemanticModel) -> ExecutiveSummary:
             business_questions=_page_questions(p.visuals, measure_names, field_param_tables),
         ))
 
+    from .report_facts import FIELD_SELECTOR_LABEL, is_field_selector
+
     nav: list[str] = []
     for p in model.pages:
         for v in p.visuals:
             if v.is_slicer:
-                field = v.fields[0] if v.fields else v.title or "a field"
+                raw_field = v.fields[0] if v.fields else v.title or "a field"
+                field = FIELD_SELECTOR_LABEL if v.fields and is_field_selector(raw_field, field_param_tables) else raw_field
                 nav.append(
                     f"On '{p.display_name}', use the '{field}' slicer to filter the visuals on that page."
                 )

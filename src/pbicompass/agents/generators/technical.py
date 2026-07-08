@@ -44,13 +44,16 @@ from ..report_facts import (
     calc_columns,
     data_source_summaries,
     detect_hardcoded_years,
+    field_parameter_table_names,
     find_referenced_tables,
     first_sentence,
+    is_field_selector,
     local_path_sources,
     report_pages,
     slicers,
     table_priority_key,
 )
+from ..sanitize import is_meta_commentary, is_punt_phrase
 from ..usage import measure_dependencies, measure_usage, used_measure_names
 from .base import Warn, call_llm, call_llm_with_retry
 
@@ -222,6 +225,20 @@ def _lineage(model: SemanticModel) -> LineageArchitecture:
 
 
 # -- IV. Semantic Model -------------------------------------------------------
+def _related_tables(model: SemanticModel, table_name: str, column_name: str) -> list[str]:
+    """Tables reachable from ``table_name[column_name]`` via a relationship
+    — used to broaden the deterministic "join key" derivation (D6) to any
+    column that structurally participates in a relationship, not just ones
+    named ``*Id``/``*Key``."""
+    related: list[str] = []
+    for r in model.relationships:
+        if r.from_table == table_name and r.from_column == column_name and r.to_table not in related:
+            related.append(r.to_table)
+        elif r.to_table == table_name and r.to_column == column_name and r.from_table not in related:
+            related.append(r.from_table)
+    return related
+
+
 def _column_descriptions(model: SemanticModel, client, warn, ai_context: Optional[JobAIContext]) -> dict[tuple[str, str], str]:
     descriptions = {}
     for t in model.tables:
@@ -237,9 +254,19 @@ def _column_descriptions(model: SemanticModel, client, warn, ai_context: Optiona
                 if c_lower.endswith("id") or c_lower.endswith("key"):
                     desc = f"Key identifier; used to join {t.name} to related tables."
                 else:
-                    # Honest default — never fabricate business intent (the LLM
-                    # pass below overwrites this when it can actually infer one).
-                    desc = "Unknown — requires business confirmation."
+                    related = _related_tables(model, t.name, c.name)
+                    if related:
+                        # D6: broaden deterministic derivation — a column
+                        # participating in a relationship has a known
+                        # structural role even without an Id/Key name.
+                        desc = f"Join key linking {t.name} to {', '.join(related)}."
+                    else:
+                        # Honest, calm default for a genuinely roleless
+                        # column — never fabricate business intent, and
+                        # never the alarming "requires business
+                        # confirmation" wording for a column that isn't
+                        # actually ambiguous, just undescribed (D6).
+                        desc = "No description set."
             descriptions[(t.name, c.name)] = desc
 
     if client is not None:
@@ -249,9 +276,18 @@ def _column_descriptions(model: SemanticModel, client, warn, ai_context: Optiona
             for item in data.get("columns", []):
                 t_name = item.get("table")
                 c_name = item.get("column")
-                desc = item.get("description")
-                if t_name and c_name and desc:
-                    descriptions[(t_name, c_name)] = desc
+                desc = (item.get("description") or "").strip()
+                key = (t_name, c_name)
+                if not desc or key not in descriptions:
+                    continue
+                if is_meta_commentary(desc):
+                    continue  # D2: reject a leaked editing directive
+                if is_punt_phrase(desc):
+                    # D6: the LLM may only improve a description, never
+                    # downgrade one — a deterministic description always
+                    # exists by this point, so a punt is discarded outright.
+                    continue
+                descriptions[key] = desc
     return descriptions
 
 
@@ -369,21 +405,36 @@ def _measure_catalog(model: SemanticModel, client, warn, ai_context: Optional[Jo
         measure_deps_map[m.name] = [d for d in _measure_refs(m.expression or "") if d in measure_names and d != m.name]
 
     for entry, measure in zip(entries, measures):
+        det_plain_english, det_caveats, det_category = translate_dax(
+            measure.name, measure.expression, measure.format_string
+        )
         t = translations.get(entry.name) if translations else None
         if t:
-            entry.plain_english = t.get("plain_english", "")
-            entry.calculation_logic = t.get("calculation_logic", "")
-            entry.caveats = t.get("caveats", "")
-            entry.category = t.get("category", "")
-            entry.confidence = t.get("confidence", "")
-        else:
-            entry.plain_english, entry.caveats, entry.category = translate_dax(
-                measure.name, measure.expression, measure.format_string
+            plain_english = (t.get("plain_english") or "").strip()
+            if is_meta_commentary(plain_english) or is_punt_phrase(plain_english):
+                # D6: the LLM may only improve the deterministic gloss,
+                # never downgrade it to a punt or leak an editing directive.
+                entry.plain_english = det_plain_english
+                entry.confidence = "Low"
+            else:
+                entry.plain_english = plain_english
+                entry.confidence = t.get("confidence", "") or "Low"
+            calculation_logic = (t.get("calculation_logic") or "").strip()
+            entry.calculation_logic = (
+                calculation_logic if calculation_logic and not is_meta_commentary(calculation_logic)
+                else entry.plain_english
             )
+            caveats = (t.get("caveats") or "").strip()
+            entry.caveats = caveats if not is_meta_commentary(caveats) else det_caveats
+            entry.category = t.get("category", "") or det_category
+        else:
             # The deterministic line is derived from the DAX, so it doubles as
             # the calculation logic; the business meaning behind it is
             # unverified, hence the explicit Low confidence.
-            entry.calculation_logic = entry.plain_english
+            entry.plain_english = det_plain_english
+            entry.calculation_logic = det_plain_english
+            entry.caveats = det_caveats
+            entry.category = det_category
             entry.confidence = "Low"
         if getattr(measure, "provenance", None) == "Human-provided":
             # A human-supplied description (enrichment file, 5.1) is the
@@ -505,7 +556,8 @@ def _check_typo(name: str) -> str:
     return ""
 
 
-def _infer_glossary(model: SemanticModel, measure_catalog: MeasureCatalog, col_descs: dict[tuple[str, str], str]) -> list[dict[str, str]]:
+def _infer_glossary(model: SemanticModel, measure_catalog: MeasureCatalog, col_descs: dict[tuple[str, str], str],
+                     field_param_tables: set[str] = frozenset()) -> list[dict[str, str]]:
     entries = []
 
     # 1. Add all measures (first sentence only — full definition lives in the
@@ -519,12 +571,18 @@ def _infer_glossary(model: SemanticModel, measure_catalog: MeasureCatalog, col_d
             "typo_flag": typo_flag
         })
 
-    # 2. Add key dimension fields used in report visuals
+    # 2. Add key dimension fields used in report visuals. A field-parameter
+    # reference (I4) is excluded — it's a UI selector, not a real
+    # dimension, and (being disconnected from the model) can never resolve
+    # to a real column description, so it would otherwise always render the
+    # alarming "requires business confirmation" punt (D6/D4).
     measure_names = {m.name for m in model.all_measures()}
     dimensions = set()
     for p in model.pages:
         for v in p.visuals:
             for f in v.fields:
+                if is_field_selector(f, field_param_tables):
+                    continue
                 name = f.split(".")[-1]
                 if name and name not in measure_names:
                     dimensions.add(name)
@@ -532,16 +590,17 @@ def _infer_glossary(model: SemanticModel, measure_catalog: MeasureCatalog, col_d
     for dim in sorted(dimensions):
         typo_flag = _check_typo(dim)
 
-        # Look up definition in data dictionary descriptions ("Unknown" entries
-        # don't count — the keyword heuristics below may still identify the field)
+        # Look up definition in data dictionary descriptions (a placeholder
+        # "Unknown"/"No description set" entry doesn't count — the keyword
+        # heuristics below may still identify the field)
         definition = None
         for (t_name, c_name), desc in col_descs.items():
-            if c_name == dim and desc and not desc.startswith("Unknown"):
+            if c_name == dim and desc and not desc.startswith(("Unknown", "No description set")):
                 definition = desc
                 break
 
         if not definition:
-            definition = "Unknown — requires business confirmation."
+            definition = "No description set."
             dim_lower = dim.lower()
             if "date" in dim_lower or "calendar" in dim_lower:
                 definition = "Time-dimension field used to filter, segment, and perform time-intelligence trends."
@@ -753,7 +812,7 @@ class TechnicalDocumentationGenerator:
             )
             doc.executive_summary.core_purpose += warning_msg
 
-        doc.glossary_entries = _infer_glossary(model, doc.measure_catalog, col_descs)
+        doc.glossary_entries = _infer_glossary(model, doc.measure_catalog, col_descs, field_parameter_table_names(model))
         health_score, ai_recs, suppressed = _health_and_recommendations(
             model, owner, classification,
         )

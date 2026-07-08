@@ -236,18 +236,21 @@ def render_wireframe(
                       f'fill="{text_color}">WIP</text>')
 
         if category == "data":
+            from ..agents.report_facts import is_field_selector
+
             metrics, dims = [], []
             for f in v.fields:
-                parts = f.split(".")
-                if len(parts) > 1 and parts[0] in field_param_tables:
+                if is_field_selector(f, field_param_tables):
                     continue
-                leaf = parts[-1]
+                leaf = f.split(".")[-1]
                 (metrics if leaf in measure_names else dims).append(leaf)
             # Same label a caller's table row was built with (report_facts's
             # visual_label()) — not the simpler ``label`` used for the
             # on-canvas text above — so the link always resolves (I3).
             link_label = visual_label(v.title, v.type, metrics, dims)
-            field_leaves = ", ".join(f.split(".")[-1] for f in v.fields) or "no fields bound"
+            field_leaves = ", ".join(
+                f.split(".")[-1] for f in v.fields if not is_field_selector(f, field_param_tables)
+            ) or "no fields bound"
             tooltip = f"{label} — {friendly} ({field_leaves})"
             visual_slug = anchor_slug(link_label)
             svg.append(f'<a href="#visual-{page_title_slug}-{visual_slug}">')

@@ -621,6 +621,9 @@ details.collapsible > .code-block pre {
   cursor: grab;
   touch-action: none;
 }
+.diagram svg text {
+  font-family: 'Poppins', sans-serif !important;
+}
 .diagram svg:active {
   cursor: grabbing;
 }
@@ -659,7 +662,7 @@ details.collapsible > .code-block pre {
 .diagram-hint {
   width: 100%;
   margin-top: 4px;
-  font-style: italic;
+  opacity: 0.8;
 }
 /* Page wireframe (J.C) — hover feedback lives here instead of a per-rect
    style=/onmouseover= attribute (cleaner markup, smaller HTML). */
@@ -674,7 +677,7 @@ a:hover > .wf-node {
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 6px;
-  font-style: italic;
+  opacity: 0.8;
 }
 
 /* Print cover page + watermark — hidden on screen entirely; only exist for
@@ -959,7 +962,7 @@ a:hover > .wf-node {
 <div class="kpi"><div class="n">2</div><div class="l">Key KPIs</div></div>
 <div class="kpi"><div class="n">5</div><div class="l">Top Risks</div></div>
 <div class="kpi"><div class="n">1</div><div class="l">Data Sources</div></div>
-<div class="kpi"><div class="n">2</div><div class="l">Next Steps</div></div>
+<div class="kpi"><div class="n">1</div><div class="l">Next Steps</div></div>
 </div>
 <h2 id="sec1">1. Purpose &amp; Value</h2>
 <p>&#x27;SampleSales&#x27; reports on Sales, tracking Avg Order Value, Total Revenue, Revenue YTD across Customer, Date. It spans 2 report page(s), documented individually below. This purpose statement is derived from the model contents alone — the business context requires confirmation from the report owner.</p>
@@ -990,11 +993,11 @@ a:hover > .wf-node {
 <h2 id="sec4">4. Data &amp; Refresh at a Glance</h2>
 <p><strong>Data sources:</strong> 1 SQL database(s)</p>
 <p><strong>Refresh schedule:</strong> <span class="muted">not documented</span></p>
-<p>6 modeling best-practice gap(s) and 7 governance finding(s) from the latest audit should be reviewed periodically.</p>
+<p>13 item(s) from the latest review should be checked periodically to keep this report reliable and secure.</p>
 <h2 id="sec5">5. Ownership &amp; Accountability</h2>
-<ul><li><strong>Owner:</strong> <span class="muted">not specified</span></li><li><strong>Steward:</strong> <span class="muted">not specified</span></li><li><strong>Classification:</strong> <span class="muted">not specified</span></li></ul>
+<ul><li><strong>Owner:</strong> <span class="muted">not specified</span></li></ul>
 <h2 id="sec6">6. What&#x27;s Next</h2>
-<ul><li>Next priority: Many measures/columns have no description. — expected benefit: Faster onboarding and self-documenting metadata in Power BI Desktop tooltips.</li><li>This document is 6% complete — 16 field(s) still need business input: owner, refresh_schedule, version, status, author, reviewer, classification, business_decision, requirements, security_notes, refresh_notes, deployment_notes, access_notes, glossary, assumptions, support_notes.</li></ul>
+<ul><li>Next priority: Many measures/columns have no description. — expected benefit: Faster onboarding and self-documenting metadata in Power BI Desktop tooltips.</li></ul>
 </main></div>
 
 <script>

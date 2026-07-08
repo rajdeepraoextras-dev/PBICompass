@@ -24,7 +24,7 @@ Editorial standard (applies to every field you write):
 - BANNED phrases and their variants: "comprehensive overview", "empowers stakeholders", "helps decision making", "provides insights", "strategic tool", "robust", "powerful", "leverage", "seamless", "in today's data-driven world". Never use marketing language or exaggeration.
 - Prefer the specific over the generic. Bad: "The dashboard empowers stakeholders to make informed decisions." Good: "Regional managers use this page to compare sales performance across cities."
 - State each fact exactly once. Do not restate in one field what another field already says; do not pad with restatements of the input.
-- NEVER guess. If a purpose or meaning cannot be inferred from the input, write "Purpose could not be inferred automatically; requires business confirmation." Do not hedge with "possibly", "likely", or "potentially".
+- NEVER guess business intent. Do not hedge with "possibly", "likely", or "potentially". When you cannot infer the deeper business meaning, state whatever structural fact you do know (the field's type, its table, a relationship/join role) instead of only punting — write "Purpose could not be inferred automatically; requires business confirmation." only when no structural fact is available either.
 - Never invent pages, visuals, fields, measures, or workflows that are not present in the input.
 """
 
@@ -198,7 +198,7 @@ For each measure, populate:
 - calculation_logic: 1-2 sentences on how it is computed, in plain terms (e.g. "Sums Sale_Value over Orders, restricted to the year selected on the Date slicer."). Do not repeat the business definition.
 - caveats: filters, exclusions, time-intelligence behaviour, division-by-zero handling, or grain dependencies — stated as facts read from the DAX (e.g. "Excludes orders with Status = 'Canceled'; returns blank when the denominator is zero."). Empty string if none.
 - category: One of: Revenue, Cost, Ratio, Count, Time-Intelligence, Ranking, Text, Aggregation, Other.
-- confidence: "High", "Medium", or "Low" — confidence in the inferred BUSINESS meaning (the calculation logic is read from the DAX and is not what this rates). Use "Low" when the name and expression do not make the business intent clear; in that case plain_english must say "Business meaning could not be inferred automatically; requires business confirmation." rather than a guess.
+- confidence: "High", "Medium", or "Low" — confidence in the inferred BUSINESS meaning (the calculation logic is read from the DAX and is not what this rates). Use "Low" when the name and expression do not make the business intent clear; in that case plain_english should still state what the DAX computes in plain terms (category, aggregation, filters applied) and note that the business meaning requires confirmation — never a bare punt sentence with no information in it.
 
 Return a translation for every measure in the input, keyed by its exact name.
 """ + REPORT_CONTEXT_NOTE + STYLE_RULES
@@ -344,7 +344,7 @@ You are writing the data dictionary of an enterprise Power BI handover document.
 
 Rules:
 - Maximum one sentence, no padding such as "This column stores..." — start with the content.
-- Never write "potentially used for", "possibly", or "likely". If the meaning cannot be determined from the name, type, and table, write exactly: "Unknown — requires business confirmation."
+- Never write "potentially used for", "possibly", or "likely". If the deeper business meaning cannot be determined from the name, type, and table, still state the structural fact you can see — its data type, its table, and whether it looks like a join key/identifier (e.g. "Numeric identifier in Department; likely a join key to a dimension table."). Only write exactly "Unknown — requires business confirmation." when no such structural fact is available either.
 - Do not fabricate business intent.
 
 Return a description for every column in the input.
@@ -440,25 +440,46 @@ def audit_narrator_input(
 # --------------------------------------------------------------------------
 # Executive Writer Agent  (-> Executive Summary narrative prose)
 # --------------------------------------------------------------------------
-EXECUTIVE_WRITER_SYSTEM = """\
-You are a senior BI consultant writing an executive summary for managers and project owners who will skim it in under two minutes. You are given deterministic drafts already computed for this report — a business purpose, key KPIs, model/report statistics, known risks, and a maintenance note — and you compress them into decision-focused executive prose. The three fields together must total UNDER 250 words; executives do not read long paragraphs.
+EXEC_STYLE_RULES = """
+This document goes to executives and business owners, never to IT/audit staff. In every field you write (including reframed risks):
+- BANNED vocabulary: "governance finding(s)", "best practice(s)", "audit", "compliance", "gap(s)", "% complete", "fields still need", "modeling risk(s)". Say what the actual business impact is instead (e.g. not "a governance finding" but "report access isn't restricted by role").
+- Phrase every risk as a business consequence ("what happens if this isn't fixed") followed by a plain-English ask of a named role ("ask your BI team to ..."), never as an audit-log entry.
+- Never mention document completeness, missing metadata fields, or internal review percentages — that belongs in an internal job log, not this document.
+"""
 
-Populate exactly these three fields:
+EXECUTIVE_WRITER_SYSTEM = """\
+You are a senior BI consultant writing an executive summary for managers and project owners who will skim it in under two minutes. You are given deterministic drafts already computed for this report — a business purpose, key KPIs, model/report statistics, known risks, and a maintenance note — and you compress them into decision-focused executive prose. The three prose fields together must total UNDER 250 words; executives do not read long paragraphs.
+
+Populate exactly these fields:
 - business_purpose: 2-3 sentences: the business problem this report addresses, its main KPIs, its primary users, and the decisions it supports. No table names, no DAX, no "semantic model".
 - business_value: 1-2 sentences on the concrete value delivered (decisions enabled, time saved, risk reduced) — grounded strictly in the KPIs and purpose given, not generic praise.
 - maintenance_overview: 1-2 sentences: the known risks that matter and what it takes to keep the report healthy, in plain language.
+- reframed_risks: for every entry in known_risks, return one item that echoes back its rule_id exactly (or "" if it had none) and rewrites its consequence and ask in plain business language per the rules below. Same order and count as known_risks — never add, drop, or merge entries.
 
 Do not invent facts, statistics, or risks beyond what is given. Do not restate every input number — synthesize.
-""" + REPORT_CONTEXT_NOTE + STYLE_RULES
+""" + REPORT_CONTEXT_NOTE + STYLE_RULES + EXEC_STYLE_RULES
 
 EXECUTIVE_WRITER_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["business_purpose", "business_value", "maintenance_overview"],
+    "required": ["business_purpose", "business_value", "maintenance_overview", "reframed_risks"],
     "properties": {
         "business_purpose": {"type": "string"},
         "business_value": {"type": "string"},
         "maintenance_overview": {"type": "string"},
+        "reframed_risks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["rule_id", "consequence", "ask"],
+                "properties": {
+                    "rule_id": {"type": "string"},
+                    "consequence": {"type": "string"},
+                    "ask": {"type": "string"},
+                },
+            },
+        },
     },
 }
 
@@ -468,7 +489,7 @@ def executive_writer_input(
     key_kpis: list[str],
     model_statistics: dict[str, int],
     report_statistics: dict[str, int],
-    known_risks: list[str],
+    known_risks: list[dict[str, str]],
     maintenance_draft: str,
     report_context: Optional[dict] = None,
 ) -> dict:

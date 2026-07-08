@@ -13,7 +13,13 @@ verify each factual claim against it:
 - ``supported``    — left untouched.
 - ``contradicted``  — replaced with the model's own ``correction``.
 - ``unverifiable``  — replaced with the established
-  "Unknown — requires business confirmation." convention (never a guess).
+  "Unknown — requires business confirmation." convention (never a guess)
+  *when the claim runs to the end of its sentence*; when the claim is an
+  internal clause (more sentence follows after it), the whole sentence is
+  dropped instead (see ``_replace_unverifiable_claim`` — this is the D3
+  fix: substituting an already-punctuated sentence fragment mid-clause
+  produced nonsense like "However, Unknown — requires business
+  confirmation., are aspects that need attention...").
 
 Offline (``client is None``), no digest available, or a failed call all
 degrade to a no-op — the regex bracket-name check in ``critic.py`` remains
@@ -22,6 +28,7 @@ the deterministic floor regardless.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Callable, Optional
 
 from .generators.base import call_llm
@@ -82,6 +89,51 @@ def grounding_input(fields: dict[str, str], model_digest: str) -> dict:
     return {"fields": fields, "model_digest": model_digest}
 
 
+# Splits text into sentences, each retaining its own terminal punctuation
+# and trailing whitespace, so the pieces can be rejoined losslessly.
+_SENTENCE_RE = re.compile(r'[^.!?]*[.!?]+(?:\s+|$)')
+# A sentence remainder consisting only of closing quotes/punctuation and
+# whitespace: the claim it follows effectively ends the sentence, so an
+# inline substitution there reads fine grammatically.
+_SENTENCE_END_REMAINDER_RE = re.compile(r"""^[.!?"'’”)\]]*\s*$""")
+
+
+def _split_sentences(text: str) -> list[str]:
+    sentences = _SENTENCE_RE.findall(text)
+    consumed = "".join(sentences)
+    if len(consumed) < len(text):
+        sentences.append(text[len(consumed):])
+    return [s for s in sentences if s]
+
+
+def _replace_unverifiable_claim(current: str, quote: str) -> str:
+    """Apply an ``unverifiable`` verdict for ``quote`` inside ``current``.
+
+    If ``quote`` runs to the end of its sentence, a plain inline
+    substitution with :data:`UNVERIFIABLE_TEXT` reads fine. If it's an
+    internal clause — more sentence text follows it — splicing the
+    already-punctuated ``UNVERIFIABLE_TEXT`` in place would break grammar
+    (D3), so the whole sentence is dropped instead. Falls back to a plain
+    inline substitution if ``quote`` can't be located within a sentence
+    (defensive; callers already check ``quote in current``)."""
+    idx = current.find(quote)
+    if idx == -1:
+        return current.replace(quote, UNVERIFIABLE_TEXT)
+
+    sentences = _split_sentences(current)
+    pos = 0
+    for i, sentence in enumerate(sentences):
+        if pos <= idx < pos + len(sentence):
+            quote_end = (idx - pos) + len(quote)
+            remainder = sentence[quote_end:]
+            if _SENTENCE_END_REMAINDER_RE.match(remainder):
+                return current.replace(quote, UNVERIFIABLE_TEXT)
+            remaining = "".join(s for j, s in enumerate(sentences) if j != i).strip()
+            return remaining if remaining else UNVERIFIABLE_TEXT
+        pos += len(sentence)
+    return current.replace(quote, UNVERIFIABLE_TEXT)
+
+
 def apply_grounding_pass(
     fields: list[tuple[str, str]],
     client: Optional[LLMClient],
@@ -134,6 +186,6 @@ def apply_grounding_pass(
                 results[location] = current.replace(quote, correction)
                 warn(f"{location}: grounding pass corrected a contradicted claim.")
         elif verdict == "unverifiable":
-            results[location] = current.replace(quote, UNVERIFIABLE_TEXT)
+            results[location] = _replace_unverifiable_claim(current, quote)
             warn(f"{location}: grounding pass flagged an unverifiable claim.")
     return results

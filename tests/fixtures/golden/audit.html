@@ -621,6 +621,9 @@ details.collapsible > .code-block pre {
   cursor: grab;
   touch-action: none;
 }
+.diagram svg text {
+  font-family: 'Poppins', sans-serif !important;
+}
 .diagram svg:active {
   cursor: grabbing;
 }
@@ -659,7 +662,7 @@ details.collapsible > .code-block pre {
 .diagram-hint {
   width: 100%;
   margin-top: 4px;
-  font-style: italic;
+  opacity: 0.8;
 }
 /* Page wireframe (J.C) — hover feedback lives here instead of a per-rect
    style=/onmouseover= attribute (cleaner markup, smaller HTML). */
@@ -674,7 +677,7 @@ a:hover > .wf-node {
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 6px;
-  font-style: italic;
+  opacity: 0.8;
 }
 
 /* Print cover page + watermark — hidden on screen entirely; only exist for
@@ -1006,7 +1009,7 @@ Model.Relationships.First(rel =&gt; rel.FromTable.Name == &quot;Sales&quot; &amp
 <div class="card-section" id="rec-PBIC-MOD-001">
 <h3><span class="pill high">High</span> Some relationships use bidirectional cross-filtering.<span class="pill rule-id" title="Bidirectional cross-filtering">PBIC-MOD-001</span></h3>
 <p><strong>Why it matters:</strong> Bidirectional filters can create ambiguous filter paths and materially slow down query performance.</p>
-<p><strong>Suggested fix:</strong> Switch to single-direction filtering and use CROSSFILTER() in specific DAX measures where bidirectional behavior is truly needed.<br><br><div style="margin: 8px 0; position: relative;"><pre style="font-size:0.85em; background:#f1f5f9; padding:8px; border-radius:4px; overflow-x:auto;"><code>// Tabular Editor C# Script to resolve bidirectional cross-filtering
+<p><strong>Suggested fix:</strong> Switch to single-direction filtering and use CROSSFILTER() in specific DAX measures where bidirectional behavior is truly needed.<br><br><div style="margin: 8px 0; position: relative;"><pre><code>// Tabular Editor C# Script to resolve bidirectional cross-filtering
 Model.Relationships.First(rel =&gt; rel.FromTable.Name == &quot;Sales&quot; &amp;&amp; rel.ToTable.Name == &quot;Date&quot;).CrossFilteringBehavior = CrossFilteringBehavior.OneDirection;
 </code></pre></div></p>
 <p><strong>Expected benefit:</strong> More predictable filtering and better query performance.</p>
@@ -1015,7 +1018,7 @@ Model.Relationships.First(rel =&gt; rel.FromTable.Name == &quot;Sales&quot; &amp
 <div class="card-section" id="rec-PBIC-MOD-015">
 <h3><span class="pill high">High</span> A bidirectional relationship filters a fact table.<span class="pill rule-id" title="Bi-directional relationship filtering a fact table">PBIC-MOD-015</span></h3>
 <p><strong>Why it matters:</strong> Bidirectional filtering on a fact table is the most common cause of ambiguous or duplicated totals, and carries a real performance cost as the model grows.</p>
-<p><strong>Suggested fix:</strong> Switch the relationship to single-direction filtering from the dimension side, and use CROSSFILTER() in the specific measure(s) that genuinely need the reverse direction.<br><br><div style="margin: 8px 0; position: relative;"><pre style="font-size:0.85em; background:#f1f5f9; padding:8px; border-radius:4px; overflow-x:auto;"><code>// Tabular Editor C# Script to resolve bidirectional cross-filtering
+<p><strong>Suggested fix:</strong> Switch the relationship to single-direction filtering from the dimension side, and use CROSSFILTER() in the specific measure(s) that genuinely need the reverse direction.<br><br><div style="margin: 8px 0; position: relative;"><pre><code>// Tabular Editor C# Script to resolve bidirectional cross-filtering
 Model.Relationships.First(rel =&gt; rel.FromTable.Name == &quot;Sales&quot; &amp;&amp; rel.ToTable.Name == &quot;Date&quot;).CrossFilteringBehavior = CrossFilteringBehavior.OneDirection;
 </code></pre></div></p>
 <p><strong>Expected benefit:</strong> Predictable, fast aggregation on the fact table.</p>
@@ -1059,7 +1062,7 @@ Model.Relationships.First(rel =&gt; rel.FromTable.Name == &quot;Sales&quot; &amp
 <div class="card-section" id="rec-PBIC-MOD-006">
 <h3><span class="pill low">Low</span> Some ID/key-style columns are visible to report authors.<span class="pill rule-id" title="Hidden technical key columns">PBIC-MOD-006</span></h3>
 <p><strong>Why it matters:</strong> Visible technical join keys clutter the field list and can be mis-used in visuals by mistake.</p>
-<p><strong>Suggested fix:</strong> Hide columns that exist only to support relationships.<br><br><div style="margin: 8px 0; position: relative;"><pre style="font-size:0.85em; background:#f1f5f9; padding:8px; border-radius:4px; overflow-x:auto;"><code>// Tabular Editor C# Script to hide key/ID columns
+<p><strong>Suggested fix:</strong> Hide columns that exist only to support relationships.<br><br><div style="margin: 8px 0; position: relative;"><pre><code>// Tabular Editor C# Script to hide key/ID columns
 Model.Tables[&quot;Sales&quot;].Columns[&quot;CustomerKey&quot;].IsHidden = true;
 Model.Tables[&quot;Sales&quot;].Columns[&quot;OrderDateKey&quot;].IsHidden = true;
 Model.Tables[&quot;Sales&quot;].Columns[&quot;ShipDateKey&quot;].IsHidden = true;
@@ -1091,7 +1094,7 @@ Model.Tables[&quot;Sales&quot;].Columns[&quot;ShipDateKey&quot;].IsHidden = true
 <div class="card-section" id="rec-11">
 <h3><span class="pill low">Low</span> 12 unused asset(s) were found (measures, columns, tables, calculated columns, or hidden non-drillthrough pages).</h3>
 <p><strong>Why it matters:</strong> Unused assets add to model size, refresh time, and cognitive load for anyone maintaining the report.</p>
-<p><strong>Suggested fix:</strong> Remove unused assets, or confirm they&#x27;re intentionally kept for a documented reason (e.g. future use, RLS support).<br><br><div style="margin: 8px 0; position: relative;"><pre style="font-size:0.85em; background:#f1f5f9; padding:8px; border-radius:4px; overflow-x:auto;"><code>// Tabular Editor C# Script to delete unused assets
+<p><strong>Suggested fix:</strong> Remove unused assets, or confirm they&#x27;re intentionally kept for a documented reason (e.g. future use, RLS support).<br><br><div style="margin: 8px 0; position: relative;"><pre><code>// Tabular Editor C# Script to delete unused assets
 Model.Tables[&quot;Customer&quot;].Columns[&quot;Customer Name&quot;].Delete();
 Model.Tables[&quot;Date&quot;].Columns[&quot;Month Name&quot;].Delete();
 Model.Tables[&quot;Sales&quot;].Columns[&quot;CustomerKey&quot;].Delete();

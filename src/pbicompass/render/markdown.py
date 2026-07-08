@@ -455,9 +455,9 @@ def render_markdown(doc: Document) -> str:
 
     # 19. Methodology & Guarantees
     out.append("\n## 19. Methodology & Guarantees [Extracted]\n")
-    out.append("- **Parsed Artifacts:** Power BI metadata (tables, columns, measures, relationships, visuals, and page layout layout tables). No customer database row-level data is ever parsed, read, or transmitted.\n")
+    out.append("- **Parsed Artifacts:** Power BI metadata (tables, columns, measures, relationships, visuals, and page layout tables). No customer database row-level data is ever parsed, read, or transmitted.\n")
     out.append("- **AI Agents Used:** PBICompass Engine v0.1.0 and prompt version 2026-07. Models called: Anthropic Claude, Google Gemini, Cohere. All operations run under zero-retention policies.\n")
-    out.append("- **Guarantees:** 100% offline-ready deliverables, zero-CDNs, zero telemetries, and fully reproducible scoring metrics backed by deterministic compliance checking rules.\n")
+    out.append("- **Guarantees:** 100% offline-ready deliverables, zero CDNs, zero telemetry, and fully reproducible scoring metrics backed by deterministic compliance checking rules.\n")
     out.append("- **Limitations:** This tool cannot verify runtime query performance, network latency, database authentication credentials, or confirm the actual semantic business meaning without human verification.\n")
 
     return "\n".join(out).rstrip() + "\n"

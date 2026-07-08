@@ -80,6 +80,42 @@ def field_parameter_table_names(model: SemanticModel) -> set[str]:
     return names
 
 
+# The reader-facing label substituted for a raw field-parameter reference
+# wherever one has to remain visible (e.g. a slicer bound directly to it —
+# a real, working control the reader needs to know about).
+FIELD_SELECTOR_LABEL = "field selector"
+
+
+def is_field_selector(field: str, field_param_tables: set[str]) -> bool:
+    """True if ``field`` (one entry of a ``Visual.fields`` list) refers into
+    a field-parameter table (I4) rather than a real dimension/measure.
+
+    Handles two shapes a Power BI report layout produces:
+
+    - Fully qualified, ``"Table.Column"`` — the normal case, resolved via
+      ``field_param_tables`` (from :func:`field_parameter_table_names`).
+    - Bare, e.g. ``"select"`` — Power BI's ``queryRef`` for a field-parameter
+      projection is sometimes just the parameter table's own name with no
+      ``Entity.Property`` qualification at all (see
+      ``parsers/pbir.py::_extract_fields``'s ``queryRef`` fallback, which
+      never reaches the qualified path for these). Since there is no ``.``
+      to strip a table name from, a bare token is recognized either by
+      matching a table this model *did* resolve, or — when the table itself
+      wasn't captured in ``model.tables`` at all, which happens for some
+      field-parameter tables — by the same telltale-name heuristic
+      (``select``/``select1``/``Range``/``Field Parameter``/...) used to
+      recognize the table in the first place.
+
+    Regression (I4 D4): fields shaped this way used to leak past the
+    qualified-only check into visual titles, generated business questions,
+    and the technical doc's inferred glossary.
+    """
+    parts = field.split(".")
+    if len(parts) > 1:
+        return parts[0] in field_param_tables
+    return field in field_param_tables or bool(_FIELD_PARAM_NAME_RE.match(field.strip()))
+
+
 def table_priority_key(table_name: str) -> int:
     name_lower = table_name.lower()
     if "measure" in name_lower:
@@ -123,10 +159,9 @@ def report_pages(model: SemanticModel) -> list[dict]:
                 continue
             metrics, dims = [], []
             for f in v.fields:
-                parts = f.split(".")
-                if len(parts) > 1 and parts[0] in field_param_tables:
+                if is_field_selector(f, field_param_tables):
                     continue  # field selector, not a real dimension (I4)
-                leaf = parts[-1]
+                leaf = f.split(".")[-1]
                 (metrics if leaf in measure_names else dims).append(leaf)
             if not (v.title or metrics or dims) and v.type in DECORATIVE:
                 decorative += 1
@@ -172,14 +207,21 @@ def slicers(model: SemanticModel) -> list[dict]:
     """One row per distinct (page, field) slicer. Multiple slicer visuals
     bound to the same field on the same page collapse into a single row —
     ``count`` tells the caller how many, so callers can note the multiplicity
-    ("Type (2 slicers)") instead of repeating the same filter bullet twice."""
+    ("Type (2 slicers)") instead of repeating the same filter bullet twice.
+
+    A slicer bound to a field-parameter table (I4) is a real, working
+    control the reader needs to know about — unlike a chart axis/legend it
+    isn't dropped — but its raw internal name (``select``/``select1``) is
+    relabeled to :data:`FIELD_SELECTOR_LABEL` rather than leaked verbatim."""
+    field_param_tables = field_parameter_table_names(model)
     counts: dict[tuple[str, str], int] = {}
     order: list[tuple[str, str]] = []
     for p in model.pages:
         for v in p.visuals:
             if not v.is_slicer:
                 continue
-            field = v.fields[0] if v.fields else (v.title or "—")
+            raw_field = v.fields[0] if v.fields else (v.title or "—")
+            field = FIELD_SELECTOR_LABEL if v.fields and is_field_selector(raw_field, field_param_tables) else raw_field
             key = (p.display_name, field)
             if key not in counts:
                 order.append(key)

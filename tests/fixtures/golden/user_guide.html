@@ -621,6 +621,9 @@ details.collapsible > .code-block pre {
   cursor: grab;
   touch-action: none;
 }
+.diagram svg text {
+  font-family: 'Poppins', sans-serif !important;
+}
 .diagram svg:active {
   cursor: grabbing;
 }
@@ -659,7 +662,7 @@ details.collapsible > .code-block pre {
 .diagram-hint {
   width: 100%;
   margin-top: 4px;
-  font-style: italic;
+  opacity: 0.8;
 }
 /* Page wireframe (J.C) — hover feedback lives here instead of a per-rect
    style=/onmouseover= attribute (cleaner markup, smaller HTML). */
@@ -674,7 +677,7 @@ a:hover > .wf-node {
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 6px;
-  font-style: italic;
+  opacity: 0.8;
 }
 
 /* Print cover page + watermark — hidden on screen entirely; only exist for
@@ -964,7 +967,14 @@ a:hover > .wf-node {
 <h2 id="sec3">3. Report Pages</h2>
 <div class="card-section" id="page-sales-overview">
 <h3>Sales Overview</h3>
-<div class="diagram"><svg viewBox="0 0 480 270" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="inherit" role="img" aria-labelledby="wireframe-title-page1"><title id="wireframe-title-page1">Wireframe layout for page Sales Overview</title><defs>
+<div class="diagram"><svg viewBox="0 0 480 270" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="wireframe-title-page1">
+<style>text { font-family: "Poppins", sans-serif !important; }</style><title id="wireframe-title-page1">Wireframe layout for page Sales Overview</title><defs>
+<filter id="wf-shadow-page1" x="-10%" y="-10%" width="120%" height="120%">
+  <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.06"/>
+</filter>
+<filter id="wf-shadow-sm-page1" x="-10%" y="-10%" width="120%" height="120%">
+  <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.04"/>
+</filter>
 <symbol id="wf-i-bars-page1" viewBox="0 0 12 12"><rect x="1" y="6" width="2.4" height="5"/><rect x="4.8" y="3" width="2.4" height="8"/><rect x="8.6" y="1" width="2.4" height="10"/></symbol>
 <symbol id="wf-i-line-page1" viewBox="0 0 12 12"><polyline points="1,9 4,5 7,7 11,2" fill="none" stroke-width="1.4"/></symbol>
 <symbol id="wf-i-combo-page1" viewBox="0 0 12 12"><rect x="1" y="7" width="2.2" height="4"/><rect x="5" y="4" width="2.2" height="7"/><rect x="9" y="6" width="2.2" height="5"/><polyline points="1,4 5,2 9,3.5" fill="none" stroke-width="1.2"/></symbol>
@@ -974,7 +984,7 @@ a:hover > .wf-node {
 <symbol id="wf-i-card123-page1" viewBox="0 0 12 12"><rect x="1" y="2" width="10" height="8" rx="1" fill="none" stroke-width="1"/><line x1="2.5" y1="7.5" x2="9.5" y2="7.5" stroke-width="1"/></symbol>
 <symbol id="wf-i-funnel-page1" viewBox="0 0 12 12"><polygon points="1,1.5 11,1.5 7.5,6.5 7.5,10 4.5,10.5 4.5,6.5"/></symbol>
 <symbol id="wf-i-tree-page1" viewBox="0 0 12 12"><circle cx="6" cy="1.8" r="1.4"/><circle cx="2" cy="9.5" r="1.4"/><circle cx="10" cy="9.5" r="1.4"/><line x1="6" y1="3.2" x2="2" y2="8.1" stroke-width="1"/><line x1="6" y1="3.2" x2="10" y2="8.1" stroke-width="1"/></symbol>
-</defs><rect x="4" y="4" width="472" height="262" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/><a href="#visual-sales-overview-revenue-by-year"><title>Revenue by Year — Column chart (Year, Total Revenue)</title><rect x="6.0" y="30.0" width="225.0" height="150.0" rx="3" class="wf-node" fill="#ffffff" stroke="#4f46e5" stroke-width="1.5"/><use href="#wf-i-bars-page1" x="9.0" y="33.0" width="10" height="10" fill="#4f46e5" stroke="#4f46e5"/><text x="20.0" y="40.0" font-size="7.5" font-weight="600" fill="#312e81">Revenue by Year</text><text x="20.0" y="49.0" font-size="6.5" fill="#312e81" opacity="0.75">Column chart</text></a><a href="#page-sales-overview"><title>Slicer — filters this page</title><rect x="6.0" y="6.0" width="112.5" height="22.5" rx="3" class="wf-node" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/><use href="#wf-i-funnel-page1" x="9.0" y="9.0" width="10" height="10" fill="#b45309" stroke="#b45309"/><text x="20.0" y="19.8" font-size="6.5" fill="#92400e">Slicer</text></a><a href="#visual-sales-overview-revenue-breakdown"><title>Revenue Breakdown — Decomposition tree (Total Revenue, Region, Segment)</title><rect x="240.0" y="30.0" width="225.0" height="150.0" rx="3" class="wf-node" fill="#ffffff" stroke="#4f46e5" stroke-width="1.5"/><use href="#wf-i-tree-page1" x="243.0" y="33.0" width="10" height="10" fill="#4f46e5" stroke="#4f46e5"/><text x="254.0" y="40.0" font-size="7.5" font-weight="600" fill="#312e81">Revenue Breakdown</text><text x="254.0" y="49.0" font-size="6.5" fill="#312e81" opacity="0.75">Decomposition tree</text></a></svg><div class="legend"><span><i class="swatch" style="background:#ffffff;border:1.5px solid #4f46e5"></i>Data visual</span><span><i class="swatch" style="background:#fef3c7;border:1px solid #f59e0b"></i>Slicer</span><span><i class="swatch" style="background:#ecfdf5;border:1px solid #10b981"></i>Navigation</span><span><i class="swatch" style="background:#e2e8f0"></i>Decorative</span></div></div>
+</defs><rect x="4" y="4" width="472" height="262" fill="#f1f5f9" rx="12" stroke="#e2e8f0" stroke-width="1"/><a href="#visual-sales-overview-revenue-by-year"><title>Revenue by Year — Column chart (Year, Total Revenue)</title><rect x="6.0" y="30.0" width="225.0" height="150.0" rx="6" class="wf-node" filter="url(#wf-shadow-page1)" fill="#ffffff" stroke="#e0e7ff" stroke-width="1"/><use href="#wf-i-bars-page1" x="9.0" y="33.0" width="10" height="10" fill="#4f46e5" stroke="#4f46e5"/><text x="20.0" y="40.0" font-size="7.5" font-family="'Poppins', sans-serif" font-weight="600" fill="#312e81">WIP</text><text x="20.0" y="49.0" font-size="6.5" font-family="'Poppins', sans-serif" fill="#312e81" opacity="0.75">WIP</text></a><a href="#page-sales-overview"><title>Slicer — filters this page</title><rect x="6.0" y="6.0" width="112.5" height="22.5" rx="6" class="wf-node" filter="url(#wf-shadow-sm-page1)" fill="#fffbeb" stroke="#fde68a" stroke-width="1"/><use href="#wf-i-funnel-page1" x="9.0" y="9.0" width="10" height="10" fill="#b45309" stroke="#b45309"/><text x="20.0" y="19.8" font-size="6.5" font-family="'Poppins', sans-serif" fill="#92400e">WIP</text></a><a href="#visual-sales-overview-revenue-breakdown"><title>Revenue Breakdown — Decomposition tree (Total Revenue, Region, Segment)</title><rect x="240.0" y="30.0" width="225.0" height="150.0" rx="6" class="wf-node" filter="url(#wf-shadow-page1)" fill="#ffffff" stroke="#e0e7ff" stroke-width="1"/><use href="#wf-i-tree-page1" x="243.0" y="33.0" width="10" height="10" fill="#4f46e5" stroke="#4f46e5"/><text x="254.0" y="40.0" font-size="7.5" font-family="'Poppins', sans-serif" font-weight="600" fill="#312e81">WIP</text><text x="254.0" y="49.0" font-size="6.5" font-family="'Poppins', sans-serif" fill="#312e81" opacity="0.75">WIP</text></a></svg><div class="legend"><span><i class="swatch" style="background:#ffffff;border:1px solid #e0e7ff;box-shadow:0 2px 4px rgba(0,0,0,0.06)"></i>Data visual</span><span><i class="swatch" style="background:#fffbeb;border:1px solid #fde68a;box-shadow:0 1px 2px rgba(0,0,0,0.04)"></i>Slicer</span><span><i class="swatch" style="background:#f0fdf4;border:1px solid #bbf7d0;box-shadow:0 1px 2px rgba(0,0,0,0.04)"></i>Navigation</span><span><i class="swatch" style="background:#f8fafc"></i>Decorative</span></div></div>
 <p>Presents 3 visual(s) — 1 column chart, 1 slicer, 1 decomposition tree. Key fields: Year, Total Revenue, Date, Region, Segment.</p>
 <p><strong>What to look at:</strong> Total Revenue</p>
 <table><thead><tr><th>Visual</th><th>What it shows</th></tr></thead><tbody><tr id="visual-sales-overview-revenue-by-year"><td>Revenue by Year</td><td>Shows Total Revenue broken down by Year.</td></tr><tr id="visual-sales-overview-revenue-breakdown"><td>Revenue Breakdown</td><td>A decomposition tree breaks a measure down one field at a time. Click the + on a node and pick a field to expand by; the tree shows which categories contribute most to the total.</td></tr></tbody></table>
@@ -988,7 +998,14 @@ a:hover > .wf-node {
 </div>
 <div class="card-section" id="page-region-detail">
 <h3>Region Detail</h3>
-<div class="diagram"><svg viewBox="0 0 480 270" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="inherit" role="img" aria-labelledby="wireframe-title-page2"><title id="wireframe-title-page2">Wireframe layout for page Region Detail</title><defs>
+<div class="diagram"><svg viewBox="0 0 480 270" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="wireframe-title-page2">
+<style>text { font-family: "Poppins", sans-serif !important; }</style><title id="wireframe-title-page2">Wireframe layout for page Region Detail</title><defs>
+<filter id="wf-shadow-page2" x="-10%" y="-10%" width="120%" height="120%">
+  <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.06"/>
+</filter>
+<filter id="wf-shadow-sm-page2" x="-10%" y="-10%" width="120%" height="120%">
+  <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.04"/>
+</filter>
 <symbol id="wf-i-bars-page2" viewBox="0 0 12 12"><rect x="1" y="6" width="2.4" height="5"/><rect x="4.8" y="3" width="2.4" height="8"/><rect x="8.6" y="1" width="2.4" height="10"/></symbol>
 <symbol id="wf-i-line-page2" viewBox="0 0 12 12"><polyline points="1,9 4,5 7,7 11,2" fill="none" stroke-width="1.4"/></symbol>
 <symbol id="wf-i-combo-page2" viewBox="0 0 12 12"><rect x="1" y="7" width="2.2" height="4"/><rect x="5" y="4" width="2.2" height="7"/><rect x="9" y="6" width="2.2" height="5"/><polyline points="1,4 5,2 9,3.5" fill="none" stroke-width="1.2"/></symbol>
@@ -998,7 +1015,7 @@ a:hover > .wf-node {
 <symbol id="wf-i-card123-page2" viewBox="0 0 12 12"><rect x="1" y="2" width="10" height="8" rx="1" fill="none" stroke-width="1"/><line x1="2.5" y1="7.5" x2="9.5" y2="7.5" stroke-width="1"/></symbol>
 <symbol id="wf-i-funnel-page2" viewBox="0 0 12 12"><polygon points="1,1.5 11,1.5 7.5,6.5 7.5,10 4.5,10.5 4.5,6.5"/></symbol>
 <symbol id="wf-i-tree-page2" viewBox="0 0 12 12"><circle cx="6" cy="1.8" r="1.4"/><circle cx="2" cy="9.5" r="1.4"/><circle cx="10" cy="9.5" r="1.4"/><line x1="6" y1="3.2" x2="2" y2="8.1" stroke-width="1"/><line x1="6" y1="3.2" x2="10" y2="8.1" stroke-width="1"/></symbol>
-</defs><rect x="4" y="4" width="472" height="262" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/><a href="#visual-region-detail-revenue-by-region"><title>Revenue by Region — Map (Region, Total Revenue)</title><rect x="6.0" y="6.0" width="465.0" height="255.0" rx="3" class="wf-node" fill="#ffffff" stroke="#4f46e5" stroke-width="1.5"/><use href="#wf-i-pin-page2" x="9.0" y="9.0" width="10" height="10" fill="#4f46e5" stroke="#4f46e5"/><text x="20.0" y="16.0" font-size="7.5" font-weight="600" fill="#312e81">Revenue by Region</text><text x="20.0" y="25.0" font-size="6.5" fill="#312e81" opacity="0.75">Map</text></a></svg><div class="legend"><span><i class="swatch" style="background:#ffffff;border:1.5px solid #4f46e5"></i>Data visual</span><span><i class="swatch" style="background:#fef3c7;border:1px solid #f59e0b"></i>Slicer</span><span><i class="swatch" style="background:#ecfdf5;border:1px solid #10b981"></i>Navigation</span><span><i class="swatch" style="background:#e2e8f0"></i>Decorative</span></div></div>
+</defs><rect x="4" y="4" width="472" height="262" fill="#f1f5f9" rx="12" stroke="#e2e8f0" stroke-width="1"/><a href="#visual-region-detail-revenue-by-region"><title>Revenue by Region — Map (Region, Total Revenue)</title><rect x="6.0" y="6.0" width="465.0" height="255.0" rx="6" class="wf-node" filter="url(#wf-shadow-page2)" fill="#ffffff" stroke="#e0e7ff" stroke-width="1"/><use href="#wf-i-pin-page2" x="9.0" y="9.0" width="10" height="10" fill="#4f46e5" stroke="#4f46e5"/><text x="20.0" y="16.0" font-size="7.5" font-family="'Poppins', sans-serif" font-weight="600" fill="#312e81">WIP</text><text x="20.0" y="25.0" font-size="6.5" font-family="'Poppins', sans-serif" fill="#312e81" opacity="0.75">WIP</text></a></svg><div class="legend"><span><i class="swatch" style="background:#ffffff;border:1px solid #e0e7ff;box-shadow:0 2px 4px rgba(0,0,0,0.06)"></i>Data visual</span><span><i class="swatch" style="background:#fffbeb;border:1px solid #fde68a;box-shadow:0 1px 2px rgba(0,0,0,0.04)"></i>Slicer</span><span><i class="swatch" style="background:#f0fdf4;border:1px solid #bbf7d0;box-shadow:0 1px 2px rgba(0,0,0,0.04)"></i>Navigation</span><span><i class="swatch" style="background:#f8fafc"></i>Decorative</span></div></div>
 <p>Presents 1 visual(s) — 1 map. Key fields: Region, Total Revenue. Drill-through detail page reached from other pages.</p>
 <p><strong>What to look at:</strong> Total Revenue</p>
 <table><thead><tr><th>Visual</th><th>What it shows</th></tr></thead><tbody><tr id="visual-region-detail-revenue-by-region"><td>Revenue by Region</td><td>A map plots values geographically. Bubble size or colour encodes the measure — compare regions visually and zoom for detail.</td></tr></tbody></table>

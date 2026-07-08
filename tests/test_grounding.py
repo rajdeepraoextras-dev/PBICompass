@@ -119,6 +119,69 @@ class ApplyGroundingPassTest(unittest.TestCase):
         )
         self.assertEqual(client.calls, 0)
 
+    def test_unverifiable_mid_sentence_claim_drops_whole_sentence(self):
+        # The claim is an internal clause (more sentence follows it), so a
+        # plain inline substring replace would splice the already-punctuated
+        # UNVERIFIABLE_TEXT mid-sentence. The whole sentence should be
+        # dropped instead, leaving the rest of the paragraph intact.
+        client = FakeGroundingClient([
+            {"location": "a", "quote": "the report's ownership and its refresh cadence",
+             "verdict": "unverifiable", "correction": ""},
+        ])
+        text = (
+            "This document summarizes report health. However, the report's ownership and its "
+            "refresh cadence are aspects that need attention, whereas the underlying data quality "
+            "remains solid. No further issues were found."
+        )
+        results = apply_grounding_pass([("a", text)], client, model_digest="digest")
+        self.assertEqual(
+            results["a"],
+            "This document summarizes report health. No further issues were found.",
+        )
+        self.assertNotIn(UNVERIFIABLE_TEXT, results["a"])
+
+    def test_audit_narrative_two_mid_sentence_claims_collapse_cleanly(self):
+        # Reproduces the exact D3 production bug from audit.md: two
+        # unverifiable claims inside the same comma-separated sentence used
+        # to each be substring-replaced in place, producing "However,
+        # Unknown — requires business confirmation., are aspects that need
+        # attention, whereas Unknown — requires business confirmation.." —
+        # nonsense grammar with a bare ".," splice mid-sentence.
+        client = FakeGroundingClient([
+            {"location": "a", "quote": "the report's field-level security setup",
+             "verdict": "unverifiable", "correction": ""},
+            {"location": "a", "quote": "the underlying refresh cadence remains unclear",
+             "verdict": "unverifiable", "correction": ""},
+        ])
+        text = (
+            "This audit surfaces the report's core structure. However, the report's field-level "
+            "security setup, are aspects that need attention, whereas the underlying refresh "
+            "cadence remains unclear. Overall the schema is stable."
+        )
+        results = apply_grounding_pass([("a", text)], client, model_digest="digest")
+        rendered = results["a"]
+        self.assertNotIn(".,", rendered)
+        self.assertNotIn(UNVERIFIABLE_TEXT, rendered)
+        self.assertEqual(
+            rendered,
+            "This audit surfaces the report's core structure. Overall the schema is stable.",
+        )
+
+    def test_unverifiable_claim_spanning_the_whole_sentence_falls_back_to_the_convention_text(self):
+        # When the offending sentence is the field's only content, dropping
+        # it entirely would leave an empty field — fall back to the
+        # standalone convention sentence instead of leaving nothing.
+        client = FakeGroundingClient([
+            {"location": "a", "quote": "used only by an unspecified department",
+             "verdict": "unverifiable", "correction": ""},
+        ])
+        text = (
+            "The report is used only by an unspecified department, for occasional purposes "
+            "only, per the model."
+        )
+        results = apply_grounding_pass([("a", text)], client, model_digest="digest")
+        self.assertEqual(results["a"], UNVERIFIABLE_TEXT)
+
     def test_multiple_claims_apply_in_sequence_on_the_same_location(self):
         client = FakeGroundingClient([
             {"location": "a", "quote": "12 tables", "verdict": "contradicted", "correction": "9 tables"},
@@ -203,6 +266,43 @@ class GroundingGeneratorWiringTest(unittest.TestCase):
         doc = TechnicalDocumentationGenerator.generate(_model(), self._ContradictingClient())
         self.assertIn("a handful of tables", doc.executive_summary.core_purpose)
         self.assertNotIn("12 tables", doc.executive_summary.core_purpose)
+
+
+class GroundingMidSentenceWiringTest(unittest.TestCase):
+    """D3 end-to-end: an unverifiable claim that's an internal clause of a
+    longer core-purpose sentence must drop that whole sentence in the final
+    Document object, never splice UNVERIFIABLE_TEXT mid-sentence."""
+
+    class _UnverifiableMidSentenceClient(GroundingGeneratorWiringTest._ContradictingClient):
+        def complete_json(self, system: str, user: str, schema: dict, *, effort: str | None = None) -> dict:
+            if "fact-checker" in system:
+                import json
+                payload = json.loads(user)
+                if "executive_summary.core_purpose" in payload.get("fields", {}):
+                    return {"claims": [
+                        {"location": "executive_summary.core_purpose",
+                         "quote": "tracked by an unspecified analytics team",
+                         "verdict": "unverifiable", "correction": ""},
+                    ]}
+                return {"claims": []}
+            if "Business Analyst" in system or "BI consultant" in system:
+                return {
+                    "core_purpose": (
+                        "This report supports quarterly reviews. It covers sales performance "
+                        "tracked by an unspecified analytics team, for board-level reporting "
+                        "purposes. Additional context follows in later sections."
+                    ),
+                    "pages": [], "navigation_guide": [], "complex_visual_explainers": [],
+                }
+            return super().complete_json(system, user, schema, effort=effort)
+
+    def test_mid_sentence_unverifiable_claim_drops_whole_sentence_not_a_splice(self):
+        doc = TechnicalDocumentationGenerator.generate(_model(), self._UnverifiableMidSentenceClient())
+        core_purpose = doc.executive_summary.core_purpose
+        self.assertNotIn(".,", core_purpose)
+        self.assertNotIn(UNVERIFIABLE_TEXT, core_purpose)
+        self.assertIn("This report supports quarterly reviews.", core_purpose)
+        self.assertIn("Additional context follows in later sections.", core_purpose)
 
 
 if __name__ == "__main__":

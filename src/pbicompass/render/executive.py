@@ -68,11 +68,12 @@ def render_markdown(doc: ExecutiveDocument) -> str:
     out.append(doc.maintenance_note + "\n")
 
     out.append(f"\n## {_SECTION_TITLES[4]}\n")
-    out.append(_table(["Field", "Value"], [
-        ["Owner", md.owner or "not specified"],
-        ["Steward", doc.steward or "not specified"],
-        ["Classification", doc.classification or "not specified"],
-    ]))
+    ownership_rows = [["Owner", md.owner or "not specified"]]
+    if doc.steward:
+        ownership_rows.append(["Steward", doc.steward])
+    if doc.classification:
+        ownership_rows.append(["Classification", doc.classification])
+    out.append(_table(["Field", "Value"], ownership_rows))
 
     out.append(f"\n## {_SECTION_TITLES[5]}\n")
     if doc.next_steps:
@@ -150,16 +151,13 @@ def render_html(
 
     _not_specified = '<span class="muted">not specified</span>'
     owner_html = _e(md.owner) if md.owner else _not_specified
-    steward_html = _e(doc.steward) if doc.steward else _not_specified
-    classification_html = _e(doc.classification) if doc.classification else _not_specified
+    ownership_items = [f"<li><strong>Owner:</strong> {owner_html}</li>"]
+    if doc.steward:
+        ownership_items.append(f"<li><strong>Steward:</strong> {_e(doc.steward)}</li>")
+    if doc.classification:
+        ownership_items.append(f"<li><strong>Classification:</strong> {_e(doc.classification)}</li>")
     o.append(f'<h2 id="sec5">{_e(_SECTION_TITLES[4])}</h2>')
-    o.append(
-        "<ul>"
-        f"<li><strong>Owner:</strong> {owner_html}</li>"
-        f"<li><strong>Steward:</strong> {steward_html}</li>"
-        f"<li><strong>Classification:</strong> {classification_html}</li>"
-        "</ul>"
-    )
+    o.append("<ul>" + "".join(ownership_items) + "</ul>")
 
     o.append(f'<h2 id="sec6">{_e(_SECTION_TITLES[5])}</h2>')
     if doc.next_steps:
@@ -223,11 +221,12 @@ def render_docx(doc: ExecutiveDocument, out_path) -> Path:
     d.para(doc.maintenance_note)
 
     d.heading(1, _SECTION_TITLES[4])
-    d.table(["Field", "Value"], [
-        ["Owner", md.owner or "not specified"],
-        ["Steward", doc.steward or "not specified"],
-        ["Classification", doc.classification or "not specified"],
-    ])
+    ownership_rows = [["Owner", md.owner or "not specified"]]
+    if doc.steward:
+        ownership_rows.append(["Steward", doc.steward])
+    if doc.classification:
+        ownership_rows.append(["Classification", doc.classification])
+    d.table(["Field", "Value"], ownership_rows)
 
     d.heading(1, _SECTION_TITLES[5])
     _bullets_or_none(doc.next_steps, "Nothing outstanding.")

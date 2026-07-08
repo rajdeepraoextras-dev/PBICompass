@@ -765,9 +765,9 @@ def render_html(
     # 19. Methodology & Guarantees
     o.append('<h2 id="sec19">19. Methodology &amp; Guarantees <span class="pill extracted">Extracted</span></h2>')
     o.append('<div class="card-section">')
-    o.append('<p><strong>Parsed Artifacts:</strong> Power BI metadata (tables, columns, measures, relationships, visuals, and page layout layout tables). No customer database row-level data is ever parsed, read, or transmitted.</p>')
+    o.append('<p><strong>Parsed Artifacts:</strong> Power BI metadata (tables, columns, measures, relationships, visuals, and page layout tables). No customer database row-level data is ever parsed, read, or transmitted.</p>')
     o.append('<p><strong>AI Agents Used:</strong> PBICompass Engine v0.1.0 and prompt version 2026-07. Models called: Anthropic Claude, Google Gemini, Cohere. All operations run under zero-retention policies.</p>')
-    o.append('<p><strong>Guarantees:</strong> 100% offline-ready deliverables, zero-CDNs, zero telemetries, and fully reproducible scoring metrics backed by deterministic compliance checking rules.</p>')
+    o.append('<p><strong>Guarantees:</strong> 100% offline-ready deliverables, zero CDNs, zero telemetry, and fully reproducible scoring metrics backed by deterministic compliance checking rules.</p>')
     o.append('<p><strong>Limitations:</strong> This tool cannot verify runtime query performance, network latency, database authentication credentials, or confirm the actual semantic business meaning without human verification.</p>')
     o.append('</div>')
 

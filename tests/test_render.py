@@ -505,6 +505,18 @@ class ExecutiveMarkdownRenderTest(unittest.TestCase):
     def test_contains_content(self):
         self.assertIn("SampleSales", self.md)
 
+    def test_unset_steward_and_classification_rows_are_omitted(self):
+        # D1: empty "Steward: not specified" / "Classification: not
+        # specified" rows read as noise nobody asked for — omit the row
+        # entirely rather than showing a placeholder, when unset.
+        doc = _executive_doc()
+        self.assertIsNone(doc.steward)
+        self.assertIsNone(doc.classification)
+        md = render_executive_markdown(doc)
+        self.assertNotIn("| Steward |", md)
+        self.assertNotIn("| Classification |", md)
+        self.assertIn("| Owner |", md)
+
 
 class ExecutiveHtmlRenderTest(unittest.TestCase):
     @classmethod
@@ -535,6 +547,13 @@ class ExecutiveHtmlRenderTest(unittest.TestCase):
         self.assertTrue(doc.top_risks and doc.top_risks[0].rule_id)
         html = render_executive_html(doc, sibling_hrefs={"audit": "audit.html"})
         self.assertIn(f'audit.html#rec-{doc.top_risks[0].rule_id}', html)
+
+    def test_unset_steward_and_classification_rows_are_omitted(self):
+        doc = _executive_doc()
+        html = render_executive_html(doc)
+        self.assertNotIn("<strong>Steward:</strong>", html)
+        self.assertNotIn("<strong>Classification:</strong>", html)
+        self.assertIn("<strong>Owner:</strong>", html)
 
 
 class ExecutiveDocxRenderTest(unittest.TestCase):

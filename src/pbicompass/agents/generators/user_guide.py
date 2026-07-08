@@ -32,9 +32,11 @@ from ..report_facts import (
     business_plain_english,
     field_parameter_table_names,
     first_sentence,
+    is_field_selector,
     report_pages,
     slicers,
 )
+from ..sanitize import is_meta_commentary, is_punt_phrase
 from .base import Warn, build_core_metadata, call_llm, call_llm_with_retry
 
 _DIMENSION_DEFINITIONS = [
@@ -77,8 +79,13 @@ def _build_glossary(model, client: Optional[LLMClient], warn: Warn,
         # reaches the glossary too, instead of only ever falling back to the
         # mechanical DAX-to-English gloss.
         for name, t in ai_context.translations.items():
-            if t.get("plain_english"):
-                llm_translations[name] = first_sentence(t["plain_english"])
+            plain_english = (t.get("plain_english") or "").strip()
+            # D2/D6: never let a leaked editing directive or a bare punt
+            # phrase into the glossary — the deterministic fallback below
+            # (business_plain_english / the typed bucket) is always better
+            # than either.
+            if plain_english and not is_meta_commentary(plain_english) and not is_punt_phrase(plain_english):
+                llm_translations[name] = first_sentence(plain_english)
 
     terms: list[GlossaryTerm] = []
     seen_measure_names = set()
@@ -101,15 +108,14 @@ def _build_glossary(model, client: Optional[LLMClient], warn: Warn,
     for p in model.pages:
         for v in p.visuals:
             for f in v.fields:
-                parts = f.split(".")
-                leaf = parts[-1]
+                leaf = f.split(".")[-1]
                 if not leaf or leaf in measure_names or leaf in seen_dims:
                     continue
                 seen_dims.add(leaf)
                 # I4: a field parameter is a UI selector, not a business
                 # dimension — label it as what it is instead of guessing a
                 # generic "grouping" definition for a name like "select".
-                is_field_param = len(parts) > 1 and parts[0] in field_param_tables
+                is_field_param = is_field_selector(f, field_param_tables)
                 definition = ("A field selector that switches what the chart displays."
                              if is_field_param else _dimension_definition(leaf))
                 terms.append(GlossaryTerm(term=leaf, plain_definition=definition))

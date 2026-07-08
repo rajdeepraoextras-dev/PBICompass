@@ -85,10 +85,16 @@ class FakeExecutiveWriterClient:
         if "Report Intelligence" in system:
             return _fake_report_intelligence_response()
         if "executive summary" in system:
+            import json as _json
+            payload = _json.loads(user)
             return {
                 "business_purpose": "FAKE_BUSINESS_PURPOSE",
                 "business_value": "FAKE_BUSINESS_VALUE",
                 "maintenance_overview": "FAKE_MAINTENANCE_OVERVIEW",
+                "reframed_risks": [
+                    {"rule_id": r["rule_id"], "consequence": f"FAKE_CONSEQUENCE {i}", "ask": f"FAKE_ASK {i}"}
+                    for i, r in enumerate(payload["known_risks"])
+                ],
             }
         if "senior DAX developer" in system:
             import json as _json
@@ -256,9 +262,28 @@ class ExecutiveGeneratorDeterministicTest(unittest.TestCase):
     def test_data_source_types_include_sql_and_never_a_path(self):
         self.assertTrue(any("SQL database" in d for d in self.doc.data_source_types))
 
-    def test_next_steps_reuse_audit_engine_and_include_completeness(self):
+    def test_next_steps_reuse_audit_engine(self):
         self.assertTrue(self.doc.next_steps)
-        self.assertTrue(any("complete" in s for s in self.doc.next_steps))
+
+    def test_next_steps_never_show_doc_completeness_nag(self):
+        # D1: document-completeness is an internal production concern, not
+        # something an executive reader needs to see — it must never appear
+        # in the rendered next_steps, only as a job warning (below).
+        for s in self.doc.next_steps:
+            self.assertNotIn("% complete", s)
+            self.assertNotIn("still need business", s)
+
+    def test_incomplete_metadata_surfaces_as_a_warning_not_doc_content(self):
+        warnings = []
+        ExecutiveSummaryGenerator.generate(_model(), on_warning=warnings.append)
+        self.assertTrue(any("metadata field(s) still need business input" in w for w in warnings))
+
+    def test_maintenance_note_has_no_governance_or_audit_jargon(self):
+        # D1: "governance finding(s)"/"best-practice gap(s)" is audit-speak
+        # that leaked into the executive doc — the plain-language rewrite
+        # must never use those terms, whether items are outstanding or not.
+        for banned in ("governance finding", "best-practice gap", "best practice gap"):
+            self.assertNotIn(banned, self.doc.maintenance_note.lower())
 
     def test_next_steps_do_not_repeat_top_risks(self):
         # P6: §11 Future Recommendations used to draw from the same
@@ -298,9 +323,16 @@ class ExecutiveGeneratorLlmTest(unittest.TestCase):
         # + 1 critic pass (5.3) + 1 grounding pass (Phase 3).
         self.assertEqual(client.calls, 5)
         self.assertTrue(any("FAKE_KPI_MEANING" in kpi for kpi in doc.key_kpis))
-        # deterministic facts stay identical regardless of the LLM client
+        # deterministic facts (severity, rule_id, next_steps) stay identical
+        # regardless of the LLM client; only the risk wording is reframed
+        # into business language (D1 — reframed_risks).
         deterministic_doc = ExecutiveSummaryGenerator.generate(_model())
-        self.assertEqual(doc.top_risks, deterministic_doc.top_risks)
+        self.assertEqual([r.severity for r in doc.top_risks], [r.severity for r in deterministic_doc.top_risks])
+        self.assertEqual([r.rule_id for r in doc.top_risks], [r.rule_id for r in deterministic_doc.top_risks])
+        self.assertTrue(doc.top_risks)
+        for r in doc.top_risks:
+            self.assertTrue(r.consequence.startswith("FAKE_CONSEQUENCE"))
+            self.assertTrue(r.ask.startswith("FAKE_ASK"))
         self.assertEqual(doc.next_steps, deterministic_doc.next_steps)
 
     def test_failing_client_falls_back_to_deterministic_prose(self):
@@ -311,6 +343,42 @@ class ExecutiveGeneratorLlmTest(unittest.TestCase):
         self.assertTrue(warnings)
         self.assertNotEqual(doc.purpose, "")
         self.assertNotIn("FAKE", doc.purpose)
+
+
+class ApplyReframedRisksTest(unittest.TestCase):
+    """D1: a mismatched-count/shape response from the Executive Writer must
+    never be trusted to overwrite the deterministic risk wording — it's
+    silently ignored rather than applied partially or out of order."""
+
+    def _risks(self):
+        from pbicompass.schemas.executive_document import ExecutiveRisk
+        return [
+            ExecutiveRisk(severity="High", consequence="orig consequence 1", ask="orig ask 1", rule_id="R1"),
+            ExecutiveRisk(severity="Medium", consequence="orig consequence 2", ask="orig ask 2", rule_id="R2"),
+        ]
+
+    def test_applies_matching_count_response(self):
+        from pbicompass.agents.generators.executive import _apply_reframed_risks
+        risks = self._risks()
+        _apply_reframed_risks(risks, [
+            {"rule_id": "R1", "consequence": "new consequence 1", "ask": "new ask 1"},
+            {"rule_id": "R2", "consequence": "new consequence 2", "ask": "new ask 2"},
+        ])
+        self.assertEqual(risks[0].consequence, "new consequence 1")
+        self.assertEqual(risks[1].ask, "new ask 2")
+
+    def test_ignores_mismatched_count_response(self):
+        from pbicompass.agents.generators.executive import _apply_reframed_risks
+        risks = self._risks()
+        _apply_reframed_risks(risks, [{"rule_id": "R1", "consequence": "new consequence 1", "ask": "new ask 1"}])
+        self.assertEqual(risks[0].consequence, "orig consequence 1")
+        self.assertEqual(risks[1].consequence, "orig consequence 2")
+
+    def test_ignores_none_response(self):
+        from pbicompass.agents.generators.executive import _apply_reframed_risks
+        risks = self._risks()
+        _apply_reframed_risks(risks, None)
+        self.assertEqual(risks[0].consequence, "orig consequence 1")
 
 
 class FakeUserGuideWriterClient:
@@ -499,6 +567,49 @@ class BusinessGuideGeneratorLlmTest(unittest.TestCase):
         self.assertTrue(warnings)
         self.assertNotIn("FAKE", doc.introduction)
         self.assertTrue(doc.pages)
+
+
+class _PuntingGlossaryClient:
+    """D2/D6: the DAX Translator returns a bare punt phrase for every
+    measure's business meaning — the glossary must fall back to its own
+    deterministic gloss rather than shipping the punt as a definition."""
+
+    def complete_json(self, system: str, user: str, schema: dict, *, effort: str | None = None) -> dict:
+        if "Report Intelligence" in system:
+            return _fake_report_intelligence_response()
+        if "Business User Guide" in system:
+            import json as _json
+            payload = _json.loads(user)
+            return {
+                "introduction": "FAKE_INTRODUCTION",
+                "pages": [
+                    {"page_title": p["page_title"], "purpose": "FAKE_PURPOSE", "common_scenarios": []}
+                    for p in payload["pages"]
+                ],
+            }
+        if "senior DAX developer" in system:
+            import json as _json
+            payload = _json.loads(user)
+            return {
+                "translations": [
+                    {"name": m["name"],
+                     "plain_english": "Business meaning could not be inferred automatically; requires business confirmation.",
+                     "calculation_logic": "", "caveats": "", "category": "Other", "confidence": "Low"}
+                    for m in payload["measures"]
+                ]
+            }
+        if "expert technical editor" in system:
+            return {"violations": []}
+        if "fact-checker" in system:
+            return {"claims": []}
+        raise AssertionError("unexpected system prompt")
+
+
+class BusinessGuideGlossaryAntiPuntTest(unittest.TestCase):
+    def test_glossary_never_ships_a_punt_as_a_definition(self):
+        doc = BusinessGuideGenerator.generate(_model(), _PuntingGlossaryClient())
+        for term in doc.glossary:
+            self.assertNotIn("requires business confirmation", term.plain_definition)
 
 
 if __name__ == "__main__":

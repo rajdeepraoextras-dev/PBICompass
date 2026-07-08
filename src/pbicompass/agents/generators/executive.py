@@ -152,6 +152,23 @@ def _business_safe_ask(suggested_fix: str) -> str:
     return fix
 
 
+def _apply_reframed_risks(top_risks: list[ExecutiveRisk], reframed: Optional[list[dict]]) -> None:
+    """Overwrite each risk's ``consequence``/``ask`` with the Executive
+    Writer's business-language reframing (D1), matched back positionally —
+    the prompt asks for the same order/count as ``known_risks``. Ignored
+    (deterministic wording kept) if the count doesn't line up, since a
+    mismatched response can't be safely matched to the right risk."""
+    if not reframed or len(reframed) != len(top_risks):
+        return
+    for risk, r in zip(top_risks, reframed):
+        consequence = (r.get("consequence") or "").strip()
+        ask = (r.get("ask") or "").strip()
+        if consequence:
+            risk.consequence = consequence
+        if ask:
+            risk.ask = ask
+
+
 def _business_value(key_kpis: list[str], audience: Optional[str]) -> str:
     who = audience or "stakeholders"
     metrics = ", ".join(key_kpis[:3]) if key_kpis else "key metrics"
@@ -160,17 +177,18 @@ def _business_value(key_kpis: list[str], audience: Optional[str]) -> str:
 
 
 def _maintenance_note(failed_practice_count: int, governance_count: int) -> str:
-    if failed_practice_count or governance_count:
-        return (f"{failed_practice_count} modeling best-practice gap(s) and {governance_count} governance "
-                f"finding(s) from the latest audit should be reviewed periodically.")
-    return "No outstanding modeling or governance gaps were found in the latest audit."
+    total = failed_practice_count + governance_count
+    if total:
+        return (f"{total} item(s) from the latest review should be checked periodically to keep this "
+                f"report reliable and secure.")
+    return "No outstanding items were found in the latest review; the report is in good shape to maintain."
 
 
-def _next_steps(recommendations, shown_rule_ids: set[str], metadata) -> list[str]:
+def _next_steps(recommendations, shown_rule_ids: set[str], metadata, warn: Warn) -> list[str]:
     """"What's next" (G.1): the top remediation not already covered by Top
-    Risks, plus a doc-completeness ask (reuses the same field-completeness
-    helper the audit/user-guide renderers already show — 5.5's full meter
-    isn't wired in yet, but "what's still missing" is answerable today)."""
+    Risks. Document-completeness is an internal production concern, not
+    something an executive reader needs to see (D1) — it's reported to
+    ``warn`` (surfaced as a job warning) instead of rendered into the doc."""
     from ...render._shared import compute_completeness
 
     steps: list[str] = []
@@ -178,14 +196,12 @@ def _next_steps(recommendations, shown_rule_ids: set[str], metadata) -> list[str
     if remaining:
         top = remaining[0]
         steps.append(f"Next priority: {top.issue} — expected benefit: {top.expected_benefit}")
-    pct, missing_count, missing_fields = compute_completeness(metadata)
-    if missing_count:
-        steps.append(
-            f"This document is {pct}% complete — {missing_count} field(s) still need business "
-            f"input: {', '.join(missing_fields)}."
-        )
     else:
-        steps.append("All available metadata fields have been filled in.")
+        steps.append("No further action items from the latest review.")
+    _pct, missing_count, missing_fields = compute_completeness(metadata)
+    if missing_count:
+        warn(f"Executive Summary: {missing_count} metadata field(s) still need business input: "
+             f"{', '.join(missing_fields)}.")
     return steps
 
 
@@ -295,7 +311,10 @@ class ExecutiveSummaryGenerator:
                         "pages": len(model.pages),
                         "visible_pages": sum(1 for p in model.pages if not p.is_hidden),
                     },
-                    known_risks=[f"[{r.severity}] {r.consequence}" for r in top_risks],
+                    known_risks=[
+                        {"rule_id": r.rule_id, "severity": r.severity, "consequence": r.consequence, "ask": r.ask}
+                        for r in top_risks
+                    ],
                     maintenance_draft=maintenance_note,
                     report_context=ai_context.insights if ai_context is not None else None,
                 ),
@@ -305,6 +324,7 @@ class ExecutiveSummaryGenerator:
                 purpose = data.get("business_purpose") or purpose
                 business_value = data.get("business_value") or business_value
                 maintenance_note = data.get("maintenance_overview") or maintenance_note
+                _apply_reframed_risks(top_risks, data.get("reframed_risks"))
 
         metadata = build_core_metadata(
             model, "executive", default_audience="Managers, executives, and project owners",
@@ -322,7 +342,7 @@ class ExecutiveSummaryGenerator:
             maintenance_note=maintenance_note,
             steward=None,  # sourced from the enrichment file (5.1) once wired in
             classification=classification,
-            next_steps=_next_steps(recommendations, shown_rule_ids, metadata),
+            next_steps=_next_steps(recommendations, shown_rule_ids, metadata, warn),
         )
 
         if client is not None:

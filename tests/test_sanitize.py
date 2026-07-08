@@ -1,0 +1,74 @@
+"""Tests for ``agents/sanitize.py`` (AI-Native roadmap D2/D6): the
+deterministic meta-commentary and punt-phrase guards."""
+
+from __future__ import annotations
+
+import unittest
+
+from pbicompass.agents.sanitize import is_meta_commentary, is_punt_phrase, sanitize
+
+
+class IsMetaCommentaryTest(unittest.TestCase):
+    def test_verify_directive_is_flagged(self):
+        self.assertTrue(is_meta_commentary(
+            "Verify existence of 'Plan, LE1, LE2, and LE3' in the model."
+        ))
+
+    def test_consider_directive_is_flagged(self):
+        self.assertTrue(is_meta_commentary(
+            "Consider providing a more specific description of how 'select' is used."
+        ))
+
+    def test_remove_directive_referencing_array_index_is_flagged(self):
+        self.assertTrue(is_meta_commentary(
+            "Remove the duplicated entry as it is identical to glossary[15].plain_definition."
+        ))
+
+    def test_ensure_and_provide_and_add_a_are_flagged(self):
+        self.assertTrue(is_meta_commentary("Ensure the field name matches the source column."))
+        self.assertTrue(is_meta_commentary("Provide a more specific description here."))
+        self.assertTrue(is_meta_commentary("Add a caveat about refresh timing."))
+
+    def test_normal_prose_is_not_flagged(self):
+        self.assertFalse(is_meta_commentary("Total invoiced revenue for the period in view."))
+        self.assertFalse(is_meta_commentary("A field selector that switches what the chart displays."))
+
+    def test_empty_text_is_not_flagged(self):
+        self.assertFalse(is_meta_commentary(""))
+        self.assertFalse(is_meta_commentary(None))
+
+
+class IsPuntPhraseTest(unittest.TestCase):
+    def test_column_punt_phrase_is_flagged(self):
+        self.assertTrue(is_punt_phrase("Unknown — requires business confirmation."))
+
+    def test_measure_punt_phrase_is_flagged(self):
+        self.assertTrue(is_punt_phrase(
+            "Business meaning could not be inferred automatically; requires business confirmation."
+        ))
+
+    def test_empty_or_none_counts_as_a_punt(self):
+        self.assertTrue(is_punt_phrase(""))
+        self.assertTrue(is_punt_phrase(None))
+
+    def test_real_description_is_not_a_punt(self):
+        self.assertFalse(is_punt_phrase("Key identifier; used to join Orders to related tables."))
+
+
+class SanitizeTest(unittest.TestCase):
+    def test_meta_commentary_falls_back(self):
+        self.assertEqual(
+            sanitize("Consider providing a more specific description.", "fallback text"),
+            "fallback text",
+        )
+
+    def test_clean_text_passes_through(self):
+        self.assertEqual(sanitize("A clean sentence.", "fallback text"), "A clean sentence.")
+
+    def test_empty_text_falls_back(self):
+        self.assertEqual(sanitize("", "fallback text"), "fallback text")
+        self.assertEqual(sanitize(None, "fallback text"), "fallback text")
+
+
+if __name__ == "__main__":
+    unittest.main()

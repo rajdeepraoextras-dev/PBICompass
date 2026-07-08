@@ -108,6 +108,15 @@ class ApplyResultsTest(unittest.TestCase):
         apply_results(triples, {"a": "new-a"})
         self.assertEqual(sink, {"a": "new-a"})
 
+    def test_meta_commentary_result_is_rejected(self):
+        # D2: a critic/grounding "fix" that itself reads as an internal
+        # editing directive must never be written into the document — the
+        # setter is simply never called, leaving the prior text in place.
+        sink = {}
+        triples = [("a", "orig-a", lambda v: sink.__setitem__("a", v))]
+        apply_results(triples, {"a": "Consider providing a more specific description here."})
+        self.assertEqual(sink, {})
+
 
 class CriticGeneratorWiringTest(unittest.TestCase):
     """5.3 end-to-end: a banned word seeded into the technical document's

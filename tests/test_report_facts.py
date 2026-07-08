@@ -8,10 +8,12 @@ from __future__ import annotations
 import unittest
 
 from pbicompass.agents.report_facts import (
+    FIELD_SELECTOR_LABEL,
     business_plain_english,
     declassify,
     field_parameter_table_names,
     first_sentence,
+    is_field_selector,
     local_path_sources,
     report_pages,
     simplify_dax_prose,
@@ -138,6 +140,99 @@ class FieldParameterRecognitionTest(unittest.TestCase):
         term = next((g for g in doc.glossary if g.term == "select"), None)
         self.assertIsNotNone(term)
         self.assertIn("field selector", term.plain_definition.lower())
+
+
+def _model_with_bare_field_parameter() -> SemanticModel:
+    """D4 regression: Power BI's report layout sometimes emits a field-
+    parameter projection as a bare, unqualified ``queryRef`` — just the
+    parameter table's own name ("select"/"select1"), with no
+    ``Entity.Property`` qualification at all (see
+    ``parsers/pbir.py::_extract_fields``'s ``queryRef`` fallback).
+    Reproduces the exact production shape: the parameter table doesn't even
+    appear in ``model.tables`` (dropped somewhere upstream of the report
+    layout), so there is no dot to strip a table name from and no table
+    object for ``field_parameter_table_names()`` to have recognized in the
+    first place — only the bare token's own name gives it away."""
+    sales = Table(name="Sales", kind="fact", measures=[
+        Measure(name="Actual", expression="SUM(Sales[Amount])", table="Sales"),
+    ])
+    page = Page(
+        id="p1", display_name="Overview",
+        visuals=[
+            Visual(id="v1", type="lineStackedColumnComboChart",
+                   fields=["select", "select1", "Sales.Actual"]),
+            Visual(id="s1", type="slicer", is_slicer=True, fields=["select1"]),
+        ],
+    )
+    return SemanticModel(report_name="R", tables=[sales], pages=[page])
+
+
+class BareFieldSelectorRegressionTest(unittest.TestCase):
+    """D4: a field-parameter reference shaped as a bare, unqualified token
+    (no table object in ``model.tables``, no ``.`` to split) must be
+    recognized just like the qualified ``Table.Column`` shape — everywhere
+    ``report_facts``'s I4 filtering already applied to the qualified case."""
+
+    def test_is_field_selector_recognizes_bare_telltale_names(self):
+        self.assertTrue(is_field_selector("select", set()))
+        self.assertTrue(is_field_selector("select1", set()))
+        self.assertTrue(is_field_selector("Range", set()))
+        self.assertTrue(is_field_selector("Field Parameter", set()))
+        self.assertFalse(is_field_selector("Business Area", set()))
+        self.assertFalse(is_field_selector("Sales.Actual", set()))
+
+    def test_bare_field_parameter_excluded_from_visual_title_and_dimensions(self):
+        pages = report_pages(_model_with_bare_field_parameter())
+        visuals = pages[0]["visuals"]
+        self.assertEqual(len(visuals), 1)  # the slicer visual is never a "visual" row (I3)
+        combo = visuals[0]
+        self.assertNotIn("select", combo["dimensions"])
+        self.assertNotIn("select1", combo["dimensions"])
+        self.assertEqual(combo["label"], "Actual")
+
+    def test_bare_field_parameter_excluded_from_business_questions(self):
+        from pbicompass.agents.deterministic import business_analyst_deterministic
+
+        summary = business_analyst_deterministic(_model_with_bare_field_parameter())
+        questions = summary.pages[0].business_questions
+        self.assertFalse(any("select" in q for q in questions),
+                         f"bare field parameter leaked into a question: {questions}")
+
+    def test_bare_field_parameter_excluded_from_page_theme(self):
+        from pbicompass.agents.deterministic import business_analyst_deterministic
+
+        summary = business_analyst_deterministic(_model_with_bare_field_parameter())
+        self.assertNotIn("select", summary.pages[0].summary)
+
+    def test_bare_field_parameter_slicer_relabeled(self):
+        rows = slicers(_model_with_bare_field_parameter())
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["field"], FIELD_SELECTOR_LABEL)
+
+    def test_bare_field_parameter_nav_guide_relabeled(self):
+        from pbicompass.agents.deterministic import business_analyst_deterministic
+
+        summary = business_analyst_deterministic(_model_with_bare_field_parameter())
+        nav_text = " ".join(summary.navigation_guide)
+        self.assertNotIn("select1", nav_text)
+        self.assertIn(FIELD_SELECTOR_LABEL, nav_text)
+
+    def test_bare_field_parameter_excluded_from_technical_glossary(self):
+        from pbicompass.agents.generators.technical import TechnicalDocumentationGenerator
+
+        doc = TechnicalDocumentationGenerator.generate(_model_with_bare_field_parameter())
+        terms = {e["term"] for e in doc.glossary_entries}
+        self.assertNotIn("select", terms)
+        self.assertNotIn("select1", terms)
+
+    def test_bare_field_parameter_labeled_as_selector_in_user_guide_glossary(self):
+        from pbicompass.agents.generators.user_guide import BusinessGuideGenerator
+
+        doc = BusinessGuideGenerator.generate(_model_with_bare_field_parameter())
+        for name in ("select", "select1"):
+            term = next((g for g in doc.glossary if g.term == name), None)
+            self.assertIsNotNone(term, f"expected a glossary entry for {name!r}")
+            self.assertIn("field selector", term.plain_definition.lower())
 
 
 class LocalPathSourcesTest(unittest.TestCase):
