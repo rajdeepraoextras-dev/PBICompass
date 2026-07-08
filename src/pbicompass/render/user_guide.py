@@ -144,7 +144,10 @@ def render_html(
         o.append(f'<div class="card-section" id="{_e(page_id)}">')
         o.append(f"<h3>{_e(p.page_title)}</h3>")
         if p.wireframe_svg:
-            o.append(p.wireframe_svg)
+            # Hidden for now at the user's request (2026-07-08) while the
+            # lineage graph is reviewed first — re-enable by uncommenting.
+            # o.append(p.wireframe_svg)
+            pass
         o.append(f"<p>{_e(p.purpose)}</p>")
 
         if p.main_kpis:

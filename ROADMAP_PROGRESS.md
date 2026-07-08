@@ -531,7 +531,7 @@ No live LLM credentials are available in this sandbox (same class of gap flagged
 | 11 | Jul 22 | `html.py` → `_html_shell.py` migration (A2-2) | ✅ **Done** (found already complete pre-roadmap; verified, not re-implemented) |
 | 12 | Jul 23 | Wireframe v2 redesign (part 1) | ✅ **Done** |
 | 13 | Jul 24 | Wireframe v2 (part 2) + reintroduce | ✅ **Done** — original scope + v4 exact-match addendum both complete |
-| 14 | Jul 27 | Lineage graph redesign + reintroduce | ⬜ Not started |
+| 14 | Jul 27 | Lineage graph redesign + reintroduce | ✅ **Done** — pulled forward (redesign was Day 13's v4 addendum; reintroduction today at user request) |
 | 15 | Jul 28 | Sprint 3 QA | ⬜ Not started |
 
 ---
@@ -787,6 +787,31 @@ Still open, deferred to the mockup pass: how v4's size-dependent "ghost content"
 - **Lineage nodes still aren't linked** — noted above; a genuine future enhancement (table/measure nodes could jump to their existing `#table-{slug}`/`#measure-{slug}` anchors elsewhere in the technical doc) but out of scope for a visual-parity redesign.
 
 **Verdict: the Day 13 v4 addendum is fully done.** Every element the user called out — font, color, "all the things" — matches the reference file exactly, applied to the wireframe's real per-visual positions rather than v4's fixed demo grid (the confirmed "Option A" scope), and the lineage graph received a genuinely matching (not just superficially similar) redesign sharing literal CSS classes with the wireframe. A real paint-order bug was found and fixed during implementation, not left for later. Test coverage grew by 19 tests (10 wireframe + 9 new lineage, where none existed before), and the full suite confirms zero regressions against Day 1–13's prior work.
+
+---
+
+## Day 13/14 follow-up (2026-07-08, after push to main) — geometry fix + a visibility swap
+
+**Push to main.** After the v4 addendum landed, the user asked to push — commit `c16d075` (`Wireframe/lineage v4 redesign, I3 href-resolution fix, Sprint 3 Days 12-13`) went to `origin/main`, leaving the pre-existing untracked `Corporate_Spend_Report.zip` alone (unrelated, predates this session).
+
+### Bug found from a user screenshot: cards poking past the canvas's rounded corner
+
+The user shared a rendered screenshot showing wireframe cards visually overflowing the "slide" canvas's rounded border. Root cause: `render_wireframe()` scaled every visual's real `x`/`y` directly onto the *full* SVG viewBox (`vx = v.x * scale`), while the decorative canvas rect they're meant to sit on is drawn *inset* by a `margin` from that same viewBox. A visual at real `x=0`/`y=0` (or flush against the page's right/bottom edge — both common, e.g. a full-width title textbox) landed exactly on the viewBox boundary, poking its square card corner out past the canvas's rounded one. Fixed by scaling/sizing the *inset content area* (`content_w`/`content_h = target_w/target_h - 2×margin`) instead of the full viewBox, and offsetting every visual's position by that same margin — verified directly by computing a flush-top-left and flush-bottom-right visual's rendered coordinates and confirming both now land exactly within the canvas rect's bounds (previously the flush-top-left visual was 4 units outside it). Golden snapshots regenerated (coordinate-only diff, 10 lines across 2 files); full suite: 481 passed, same 2 pre-existing unrelated failures. Committed (`3b2c4c5`) and pushed.
+
+### Visibility swap, at explicit user request: lineage on, wireframe off ("for now")
+
+The user reported not being able to see the lineage graph, and asked to make it appear while hiding the wireframe "for now" — an explicit, temporary, user-directed state, not a regression or a quality problem with the wireframe itself.
+
+- [x] `html.py:456-457` (Technical doc's wireframe append) — re-commented, with a dated comment explaining why and how to re-enable.
+- [x] `user_guide.py:146-147` (User Guide's wireframe append — the one that was *live* since before Day 12, per that day's own correction note) — commented out for the first time, same treatment.
+- [x] `html.py:344-345` (Technical doc's lineage append) — uncommented; this is Day 14's own "reintroduce" step, pulled forward to today since the redesign itself (Day 14's other half) already happened as part of Day 13's v4 addendum.
+- [x] Verified precisely (not just "no error") with a marker-based check — `lineage-diagram-title` (lineage's own SVG title id) present in `technical.html`; `wireframe-title-` (wireframe's own SVG title id prefix) absent from both `technical.html` and `user_guide.html`. An earlier, cruder check using the shared `wf-card-bg` CSS class name was a false positive (that class is shared between wireframe and lineage cards by design) — caught and corrected before trusting the result.
+- [x] Golden snapshots regenerated: `technical.html` gained the lineage graph and lost the wireframe (net removal, since lineage's single graph is smaller than 3 pages' worth of wireframe SVG); `user_guide.html` lost the wireframe with nothing added (it never had a lineage section). `md`/`docx` lineage fallback (`lineage_edges` connection-list table) was never gated on the SVG append, so it's unaffected either way.
+- [x] Full suite: 4 pre-existing failures surfaced — 2 were the golden snapshots (expected, regenerated), 2 were the already-known, unrelated model-diagram failures. No test asserting wireframe-hidden-by-default broke unexpectedly, and `WireframeHrefResolutionTest`'s href-scanning tests degrade gracefully to "zero hrefs, zero dead links" when the wireframe is absent, rather than failing.
+
+### Known gap / explicit follow-up needed
+
+- **The wireframe is now hidden in production, at explicit user instruction, not because anything is broken with it** — Day 13's own "wireframes visible again" done-when is technically un-met again as of this change, by design. Re-enabling it (uncommenting the two lines above) is a one-line-per-file change whenever the user is ready; flagged here so a future session (or handoff) doesn't mistake "wireframe hidden" for a regression and re-investigate a non-issue.
 
 ---
 
