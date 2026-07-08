@@ -867,6 +867,24 @@ class WireframeHrefResolutionTest(unittest.TestCase):
     def test_user_guide_html_wireframe_hrefs_all_resolve(self):
         self._assert_no_dead_hrefs(render_user_guide_html(_user_guide_doc()), "user_guide")
 
+    def test_grouped_duplicate_visuals_produce_no_dead_hrefs_end_to_end(self):
+        """SampleSales has no duplicate/slug-colliding visuals, so it never
+        exercised report_pages()'s "Label — Type ×N" relabeling — the one
+        case that actually broke the wireframe's own links (Day 13). Proves
+        it through the real html.py path, not just report_pages() directly."""
+        from pbicompass.schemas.model import Measure, Page, SemanticModel, Table, Visual
+
+        table = Table(name="Sales", measures=[Measure(name="Sale_Value", expression="SUM(Sales[Amount])", table="Sales")])
+        page = Page(
+            id="p1", display_name="Overview",
+            visuals=[Visual(id=f"v{i}", type="card", fields=["Sales.Sale_Value"],
+                            x=i * 100, y=0, z=0, width=90, height=70) for i in range(3)],
+        )
+        model = SemanticModel(report_name="Dup", tables=[table], pages=[page])
+        html = render_html(generate_document(model))
+        self.assertIn("×3", html)  # confirms the grouping this test targets actually fired
+        self._assert_no_dead_hrefs(html, "technical (duplicate-visual fixture)")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

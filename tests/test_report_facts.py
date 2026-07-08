@@ -19,6 +19,7 @@ from pbicompass.agents.report_facts import (
     simplify_dax_prose,
     slicers,
 )
+from pbicompass.render._shared import anchor_slug
 from pbicompass.schemas.model import Column, DataSource, Measure, Page, SemanticModel, Table, Visual
 
 
@@ -65,6 +66,43 @@ class ReportPagesDedupeTest(unittest.TestCase):
         pages = report_pages(SemanticModel(report_name="R", tables=[table], pages=[page]))
         self.assertEqual(len(pages[0]["visuals"]), 2)
         self.assertTrue(all(v["count"] == 1 for v in pages[0]["visuals"]))
+
+
+class WireframeHrefResolutionTest(unittest.TestCase):
+    """Day 13 / I3: report_pages() is the single place that groups 2+
+    identical visuals into one "Label — Type ×N" row and resolves any
+    remaining anchor-slug collision between different rows (dedupe_ids).
+    The wireframe SVG it also produces must link into *that* resolved
+    anchor — before this fix, ``render_wireframe`` recomputed its own raw,
+    unresolved slug independently, so any page with duplicate or
+    slug-colliding visuals (a common real shape — repeated KPI cards) got a
+    dead wireframe link the moment 2+ visuals actually collapsed into one
+    row."""
+
+    def test_grouped_duplicate_visuals_href_resolves_to_the_relabeled_row(self):
+        # Same 5-identical-cards shape as _model_with_duplicate_visuals(),
+        # with layout coordinates added so a wireframe SVG actually renders.
+        table = Table(name="Sales", measures=[Measure(name="Sale_Value", expression="SUM(Sales[Amount])", table="Sales")])
+        page = Page(
+            id="p1", display_name="Overview",
+            visuals=[Visual(id=f"v{i}", type="card", fields=["Sales.Sale_Value"],
+                            x=i * 100, y=0, z=0, width=90, height=70) for i in range(5)],
+        )
+        pages = report_pages(SemanticModel(report_name="R", tables=[table], pages=[page]))
+
+        visuals = pages[0]["visuals"]
+        self.assertEqual(visuals[0]["count"], 5)
+        self.assertIn("×5", visuals[0]["label"])  # confirms grouping actually happened
+
+        svg = pages[0]["wireframe_svg"]
+        self.assertIsNotNone(svg)
+        resolved_slug = anchor_slug(visuals[0]["label"])  # the "...×5" row's real id
+        raw_slug = anchor_slug("Sale_Value")               # the old, pre-grouping target
+        self.assertIn(f'href="#visual-overview-{resolved_slug}"', svg)
+        self.assertNotIn(f'href="#visual-overview-{raw_slug}"', svg)
+        # All 5 tiles share one group, so all 5 tiles' <a> should point at
+        # the same single resolved anchor — never a per-instance guess.
+        self.assertEqual(svg.count(f'href="#visual-overview-{resolved_slug}"'), 5)
 
 
 class SlicersDedupeTest(unittest.TestCase):

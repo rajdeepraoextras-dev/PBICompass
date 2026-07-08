@@ -629,21 +629,84 @@ details.collapsible > .code-block pre {
   margin-top: 4px;
   opacity: 0.8;
 }
-/* Page wireframe (J.C) — hover feedback lives here instead of a per-rect
-   style=/onmouseover= attribute (cleaner markup, smaller HTML). */
+/* Page wireframe + lineage (v4, 2026-07-08) — a white "card" per node with
+   a colored top/left accent bar, tinted icon badge, and soft shadow. Hover
+   feedback lives entirely here (a .wf-node class) instead of a per-rect
+   style=/onmouseover= attribute. Fixed light hex (not shell CSS
+   variables) so wireframe/lineage cards never theme-flip in dark mode —
+   same rule as the always-light canvas underneath them. */
 .wf-node {
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: transform 0.18s ease, filter 0.18s ease;
+  filter: drop-shadow(0 1px 2px rgba(31,36,51,.08));
 }
-a:hover > .wf-node {
-  opacity: 0.82;
+.wf-node:hover {
+  transform: translateY(-1.5px);
+  filter: drop-shadow(0 4px 10px rgba(31,36,51,.14));
+}
+/* Hover/keyboard-focus border tint, per category — a fixed approximation
+   of a 40% accent/edge blend (not CSS color-mix(), for older print/PDF
+   engine safety). .wf-node:hover alone covers both linked (data/slicer,
+   wrapped in <a>) and unlinked (nav/decorative) cards; :focus-visible only
+   ever applies to the linked ones, since a plain <g> isn't tabbable. */
+.wf-node.cat-data:hover .wf-card-bg, a:focus-visible > .wf-node.cat-data .wf-card-bg { stroke: #aab8f5; stroke-width: 1.4; }
+.wf-node.cat-slicer:hover .wf-card-bg, a:focus-visible > .wf-node.cat-slicer .wf-card-bg { stroke: #edcc96; stroke-width: 1.4; }
+.wf-node.cat-nav:hover .wf-card-bg, a:focus-visible > .wf-node.cat-nav .wf-card-bg { stroke: #91d6c5; stroke-width: 1.4; }
+.wf-node.cat-decorative:hover .wf-card-bg, a:focus-visible > .wf-node.cat-decorative .wf-card-bg { stroke: #c2b1f4; stroke-width: 1.4; }
+.wf-node.cat-source:hover .wf-card-bg, a:focus-visible > .wf-node.cat-source .wf-card-bg { stroke: #c2b1f4; stroke-width: 1.4; }
+.wf-node.cat-table:hover .wf-card-bg, a:focus-visible > .wf-node.cat-table .wf-card-bg { stroke: #aab8f5; stroke-width: 1.4; }
+.wf-node.cat-measure:hover .wf-card-bg, a:focus-visible > .wf-node.cat-measure .wf-card-bg { stroke: #edcc96; stroke-width: 1.4; }
+.wf-node.cat-page:hover .wf-card-bg, a:focus-visible > .wf-node.cat-page .wf-card-bg { stroke: #91d6c5; stroke-width: 1.4; }
+/* Dimension tag (real box pixel size) — hidden until the card is hovered
+   or keyboard-focused, matching v4's own hover-reveal treatment. */
+.wf-tag {
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.wf-node:hover .wf-tag, a:focus-visible > .wf-node .wf-tag {
+  opacity: 1;
 }
 .wf-footer {
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 6px;
   opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
+/* Uppercase legend for the wireframe/lineage only (a modifier, so the
+   shared model/nav-map/measure-deps legends keep their normal case). */
+.legend--upper {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+/* Rounded pill "chips" (v4) for the wireframe/lineage legend, replacing a
+   plain swatch square — one shared style, reused by both diagrams since
+   they carry the same four accent colors (source/decorative = purple,
+   table/data = blue, measure/slicer = amber, page/nav = green). */
+.wf-legend {
+  gap: 8px;
+}
+.wf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #ffffff;
+  border: 1px solid #e7eaf3;
+  border-radius: 999px;
+  padding: 5px 12px;
+  box-shadow: 0 1px 2px rgba(31,36,51,.05);
+}
+.wf-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.wf-chip-dot--data, .wf-chip-dot--table { background: #4f6ef7; }
+.wf-chip-dot--slicer, .wf-chip-dot--measure { background: #f59e0b; }
+.wf-chip-dot--nav, .wf-chip-dot--page { background: #10b981; }
+.wf-chip-dot--deco, .wf-chip-dot--source { background: #8b5cf6; }
 
 /* Print cover page + watermark — hidden on screen entirely; only exist for
    @media print / print-to-PDF (2.8). */

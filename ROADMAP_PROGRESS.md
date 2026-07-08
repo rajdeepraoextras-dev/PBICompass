@@ -524,6 +524,272 @@ No live LLM credentials are available in this sandbox (same class of gap flagged
 
 ---
 
-## Sprint 3–7 (Days 11–38)
+## Sprint 3 — Reintroduce hidden content at production quality (Jul 22–28 · Days 11–15)
+
+| Day | Date | Task | Status |
+|---|---|---|---|
+| 11 | Jul 22 | `html.py` → `_html_shell.py` migration (A2-2) | ✅ **Done** (found already complete pre-roadmap; verified, not re-implemented) |
+| 12 | Jul 23 | Wireframe v2 redesign (part 1) | ✅ **Done** |
+| 13 | Jul 24 | Wireframe v2 (part 2) + reintroduce | ✅ **Done** — original scope + v4 exact-match addendum both complete |
+| 14 | Jul 27 | Lineage graph redesign + reintroduce | ⬜ Not started |
+| 15 | Jul 28 | Sprint 3 QA | ⬜ Not started |
+
+---
+
+## Day 11 (Jul 22) — `html.py` → `_html_shell.py` migration (A2-2)
+
+**Objective (per the roadmap):** `render/html.py` allegedly "carries its own copy of the shell that `render/_html_shell.py` also provides" (A2-2, §2.1) — every presentation change done twice. Migrate `html.py` onto the shared shell behind golden snapshots first, then delete the duplicated shell.
+
+### Investigation before writing any code
+
+Read `render/html.py` end to end (813 lines) before assuming the roadmap's audit finding was still current. It already:
+- Imports `page_shell` from `_html_shell.py` ([html.py:25](src/pbicompass/render/html.py#L25)).
+- Builds *only* its own section-body HTML (Document Control through §19 Methodology & Guarantees) and hands it to `page_shell(...)` as the final return statement ([html.py:806-812](src/pbicompass/render/html.py#L806-L812)).
+- Carries no local `_CSS`, `<!DOCTYPE>`, `<script>`, or sidebar/TOC markup of its own — its own module docstring already documents this design ([html.py:1-15](src/pbicompass/render/html.py#L1-L15)).
+
+Checked whether this was a fluke specific to `html.py` or whether the other three HTML renderers were still duplicating: `audit.py`, `executive.py`, and `user_guide.py` all import and call `page_shell` too (each has exactly one `from ._html_shell import page_shell` and one `return page_shell(...)`). No HTML renderer in the codebase builds its own shell.
+
+Bisected *when* this happened, since the roadmap (dated 2026-07-07) describes it as still-outstanding: `git show bd832be:src/pbicompass/render/html.py` (the "Rename pbidoc to PBICompass" commit) is 924 lines and does contain its own `_CSS = """..."""` and `<!DOCTYPE html>` — so the duplication the roadmap describes was real *at some point*. `git show d4d195f:...` (the very next tracked commit, "Implement Documentation Quality Plan Step 0, Phase 1, and Phase 2") is already down to 574 lines with zero `_CSS` definitions. The migration happened there, months before this roadmap document was drafted — the roadmap's A2-2 finding is a stale artifact of an earlier audit pass that was never re-checked against current code.
+
+Also checked `render/hub.py` (the separate per-job documentation-hub cover page, `render/hub.py` → per-job `index.html`) — it *does* still define its own `_CSS` and `<!DOCTYPE html>`. This is correctly out of scope for A2-2: it isn't one of the four "document-type HTML renderers" (technical/audit/executive/user-guide) the shared shell targets, it's a structurally different, much simpler cover-page artifact, and the roadmap itself schedules a dedicated redesign for it separately (§6.3, Sprint 7 Day 34) rather than folding it into the shared shell.
+
+### Verification
+
+- `python -m pytest tests/test_golden_html.py -v` — all 4 byte-exact snapshots (`technical`, `audit`, `executive`, `user_guide`) **pass**, confirming the shared-shell output is stable and these tests (added specifically to guard A2-2 per their own docstring: *"before/after A2-2 and every Phase-2 item"*) already lock this in.
+- `python -m pytest tests/test_golden_html.py tests/test_render.py -q` — 82 passed, 8 subtests passed; the only 2 failures (`test_accessibility_landmarks_present`, `test_interactive_diagram_nodes_and_edges`) are the same pre-existing, already-documented Sprint-3-scoped model-diagram-commented-out failures every prior day (1–10) has flagged and left untouched (`56f2788`) — unrelated to A2-2 or Day 11.
+- Confirmed no other HTML renderer regressed by grepping the whole `render/` package for `_CSS = ` / `<!DOCTYPE html>` / `def page_shell`: only `_html_shell.py` (the shared module) and `hub.py` (correctly out of scope) define a shell; every document-type renderer calls the shared one.
+
+### Deliverable
+
+- No code changes — there was nothing left to migrate. `PRODUCTION_ROADMAP.md` and this file updated in place: §2.1 A2-2 marked resolved (with the correction that it was already fixed, not fixed today), §6.1 marked done, and the Day 11 execution-plan entry annotated with what was actually found.
+
+### Done-when (from the roadmap)
+
+- [x] Snapshots byte-identical (or intentional-diff reviewed) — byte-identical, no diff needed.
+- [x] Duplication gone — confirmed already gone across all four document-type renderers; `hub.py`'s separate shell is an intentional, differently-scoped exception, not missed duplication.
+
+**Verdict: Day 11 is fully done.** The A2-2 migration this day exists to perform was already completed in an earlier, pre-roadmap commit (`d4d195f`) and is guard-tested by the existing golden HTML snapshots. Rather than blindly executing the roadmap's task list, verified the actual current state of the code first, confirmed nothing was left to do, and corrected the roadmap's own stale audit finding so future days (and any handoff to Antigravity/Gemini) don't re-attempt already-finished work.
+
+---
+
+## Day 12 (Jul 23) — Wireframe v2 redesign (part 1)
+
+**Objective (per the roadmap):** framed "slide" canvas, friendly visual-type names, visual titles, dark-mode-aware (J.C spec). _Done-when:_ no truncated internal type names; no inline `style=`/`onmouseover=`.
+
+### Investigation before writing any code
+
+Read `render/_wireframe.py` end to end first, rather than assume a from-scratch rebuild was needed. The v2 "slide" redesign the roadmap describes was **already ~80% built**: the framed canvas, four-role category system (data/slicer/nav/decorative), per-type glyph library, drop-shadows, tooltips, tiny-object-to-dot collapse, decorative-overflow footer, and the `.wf-node` hover-via-CSS-class convention (replacing per-rect `onmouseover=`) were all already in place — a prior, undocumented pass had done this work.
+
+What was missing was narrower than the roadmap implied: every on-canvas `<text>` element rendered the **literal string `"WIP"`** instead of the visual's real title/friendly type (a leftover from commit `b1367db`, "Replace all SVG text with 'WIP' as requested" — a temporary placeholder pass that was never reverted for this file), and the legend swatches still used inline `style="background:…"` (the one remaining inline-style holdout).
+
+### A live-bug finding that changed the scope
+
+Checked whether the wireframe was actually reaching users before assuming this was dormant/commented-out work per the roadmap's Sprint 3 framing ("reintroduce hidden content"). It is not dormant everywhere: `render/html.py`'s wireframe append (line 457) **is** commented out, but `render/user_guide.py`'s own append (`user_guide.py:147`, `if p.wireframe_svg: o.append(p.wireframe_svg)`) was **never commented out**. The wireframe has been rendering live in the Business User Guide the entire time — meaning the `"WIP"` placeholder text has been shipping to real end users, not sitting in dormant code. This reframes Day 12 from "polish before reintroduction" to "fix a live output defect," and means the User Guide gets the benefit of this fix immediately, not on Day 13.
+
+Checked `render/_lineage.py` for the same pattern (it shares the `"Poppins"`-forced `<style>` convention and was touched by the same `b1367db` commit) — found the identical `"WIP"` literal in its node-label `<text>` element, plus a second latent bug: a `font_style` variable (italic styling for "+n more" overflow nodes) was computed but never actually applied to the text element it was built for. `_lineage.py`'s own append site (`html.py`'s lineage section) is commented out, so this one *was* genuinely dormant — but fixed at the same time since it's the same defect class in a sibling renderer, and it's directly in scope for Day 14's lineage reintroduction to inherit a clean base rather than repeat this investigation.
+
+### An unplanned requirement mid-day
+
+The user asked, after reviewing an initial visual-mockup artifact, for all wireframe and lineage on-canvas/legend text to render **uppercase**. Implemented as a **scoped CSS `text-transform: uppercase`** (each SVG's own inline `<style>` block, plus a new `.legend--upper` modifier class) rather than transforming the underlying Python strings — so the real-case title/type text stays intact in the DOM for tooltips, `href` anchor-slug generation, and any downstream text matching, and screen readers aren't fed all-caps text. Deliberately scoped to *only* the wireframe and lineage legends (not the shared `.legend` class the model-diagram/nav-map/measure-deps diagrams also use), so this doesn't silently uppercase diagrams outside today's stated scope.
+
+### Task checklist
+
+- [x] Replaced the three `"WIP"` on-canvas text literals with the visual's real title (`_truncate(v.title, 22)`, 600-weight) and friendly type (`friendly_visual_type(v.type)`, 400-weight, tracked) — [_wireframe.py:225-236](src/pbicompass/render/_wireframe.py#L225-L236). HTML-escaped via the existing `html_e()` helper (was previously unused for this text since it was a hardcoded literal).
+- [x] Legend swatches moved from inline `style="background:…"` to four new `.swatch--{data,slicer,nav,deco}` CSS classes — [_wireframe.py:83-90](src/pbicompass/render/_wireframe.py#L83-L90) (Python side), [_html_shell.py:621-630](src/pbicompass/render/_html_shell.py#L621-L630) (class definitions, fixed light hex matching the always-light slide/legend convention so they never theme-flip).
+- [x] Added a keyboard `:focus-visible` state (`a:focus-visible > .wf-node`, indigo stroke ring) — [_html_shell.py:638-645](src/pbicompass/render/_html_shell.py#L638-L645) — not required by the roadmap's stated done-when, but a natural accessibility gap alongside the existing hover-only `.wf-node` styling, and cheap to add while touching this CSS block.
+- [x] Fixed the identical `"WIP"` bug in `_lineage.py`'s node text, and wired up the previously-dead `font_style` variable — [_lineage.py:177-180](src/pbicompass/render/_lineage.py#L177-L180).
+- [x] Uppercase text-transform, scoped: wireframe SVG `<style>` — [_wireframe.py:154](src/pbicompass/render/_wireframe.py#L154); lineage SVG `<style>` — [_lineage.py:143](src/pbicompass/render/_lineage.py#L143); `.legend--upper` modifier class + `.wf-footer` uppercase — [_html_shell.py](src/pbicompass/render/_html_shell.py); `_LEGEND`'s wrapper div given the `legend--upper` class — [_wireframe.py:87](src/pbicompass/render/_wireframe.py#L87).
+- [x] Visual-mockup artifact built and iterated with the user before/alongside the code change (self-contained HTML, the project's real embedded Poppins WOFF2 faces spliced in — not a substitute font — 100% Poppins after a follow-up request, uppercase tiles after the follow-up requirement).
+
+### Deliverable
+
+- [x] `tests/test_wireframe.py` extended: `OnCanvasLabelTest` (3 new tests — large-visual real title+type, long-title truncation, medium-tier friendly-type-only), `UppercaseTextTest` (2 new tests — SVG `<style>` carries `text-transform: uppercase`, legend uses the `legend--upper` modifier). `CleanMarkupTest`'s existing no-inline-style assertion **strengthened**: previously exempted the legend swatches from the check (they were the one accepted inline-style exception); now checks the whole wrapper including the legend, since the swatch-class fix closes that exemption. 18 wireframe tests pass (was 16).
+- [x] Lineage fix render-verified directly against a hand-built `SemanticModel` (no existing `test_lineage.py` to extend — none existed before today): confirmed no `"WIP"` in output, confirmed real source→table→measure→page node names render, confirmed the uppercase `<style>` is present.
+- [x] Golden HTML snapshots regenerated (`PBICOMPASS_UPDATE_GOLDEN=1`) and diff reviewed line-by-line before accepting. `technical.html`/`audit.html`/`executive.html`: CSS-only diff (the new `.swatch--*`/`:focus-visible`/`.legend--upper` shell rules — expected, since the shared shell is included in every doc regardless of whether that doc's own wireframe append is commented out). `user_guide.html`: the same CSS diff **plus** real content changes — confirms the live-bug finding above: `"WIP"` → `"Revenue by Year"`/`"Column chart"`, `"Revenue Breakdown"`/`"Decomposition tree"`, `"Revenue by Region"`/`"Map"`; legend `style=` → classes; uppercase `<style>` added. This is the only golden file where Day 12 changed actual document content, not just shared CSS.
+
+### Done-when (from the roadmap)
+
+- [x] No truncated internal type names — the fix replaces `"WIP"` with `friendly_visual_type()` output, same mapping already used elsewhere (`Column chart`, `Decomposition tree`, `Map`, etc.), never the raw `visualType` string. Guarded by `OnCanvasLabelTest` plus the pre-existing `FriendlyTypeNameTest` suite (unaffected, still passing).
+- [x] No inline `style=`/`onmouseover=` — verified via the strengthened `CleanMarkupTest`, which now checks the entire rendered wrapper (SVG + legend), not just the SVG portion.
+
+### Known gap (honest, not hidden)
+
+- **No dedicated `test_lineage.py`.** The lineage `"WIP"` fix and uppercase addition were verified with an ad hoc script against a hand-built model, not a committed test file — `_lineage.py` had zero existing test coverage before today, and building a full test module for it is broader than Day 12's stated wireframe scope. `_lineage.py` is also still fully dormant in HTML output (`html.py`'s lineage-section append remains commented out), so there's no golden-snapshot regression risk today. Flagged for Day 14 (the lineage redesign/reintroduction day), which will need real test coverage before it can meet the roadmap's own bar for that day.
+- **Day 13's "reintroduce" instructions corrected, not yet executed.** `PRODUCTION_ROADMAP.md`'s Day 13 entry told the next session to "uncomment ... `user_guide.py:146-147`" — that line was never commented out, so there is nothing to uncomment there; only `html.py:456-457` (the Technical doc's copy) remains genuinely commented. Corrected in `PRODUCTION_ROADMAP.md` directly (inline note under Day 12, and Day 13's own bullet edited) so a Claude↔Antigravity handoff doesn't re-attempt or get confused by a no-op instruction. Actually uncommenting `html.py:456-457` and adding the href-resolution golden test remain Day 13's real, unstarted work.
+- **No live browser/PDF visual check of the uppercase/typography change** — same class of gap flagged on Days 5/6 (no browser available in this sandbox); verified via the rendered SVG markup and the mockup artifact (viewed by the user), not a live-rendered screenshot diff.
+
+### Full suite
+
+- [x] `python -m pytest -q` — **457 passed**, 2 skipped, only the 2 known pre-existing failures remain (`test_render.py::HtmlRenderTest::test_accessibility_landmarks_present` / `test_interactive_diagram_nodes_and_edges`, traced to the Sprint-3-scoped model-diagram markup still commented out from `56f2788` — unchanged since Day 1, confirmed still unrelated to Day 12 by isolating the diff via `git stash` before re-running).
+
+### Files touched
+
+- `src/pbicompass/render/_wireframe.py`
+- `src/pbicompass/render/_lineage.py`
+- `src/pbicompass/render/_html_shell.py`
+- `tests/test_wireframe.py`
+- `tests/fixtures/golden/{technical,audit,executive,user_guide}.html` (regenerated)
+- `PRODUCTION_ROADMAP.md` (Day 12/13 correction note)
+
+**Verdict: Day 12 is fully done** for its stated scope, and broader than scoped: the on-canvas `"WIP"` placeholder is gone (replaced with real titles/friendly types), the last inline-style holdout (legend swatches) is closed, a keyboard focus state was added alongside the existing hover state, the identical defect was found and fixed in the sibling lineage renderer before Day 14 inherits it, and an unplanned mid-day uppercase requirement was implemented safely (CSS-scoped, not a data mutation) and verified end-to-end. The most consequential finding is that this was not purely "redesign dormant/hidden content" as Sprint 3's framing suggested — the User Guide's wireframe was live and shipping the `"WIP"` placeholder to real users, so today's fix is a production-defect fix with immediate effect, not prep work gated on Day 13's reintroduction.
+
+---
+
+## Day 13 (Jul 24) — Wireframe v2 (part 2) + reintroduce
+
+**Objective (per the roadmap):** resolve field links; uncomment `html.py:456-457` (the User Guide's own append needed no change, per the Day 12 correction); href-resolution golden test. _Done-when:_ every wireframe `href` resolves; wireframes visible again.
+
+### Root cause found before writing any code
+
+"Resolve field links" turned out to name a real, guaranteed-reachable bug, not a vague polish item. `render/_wireframe.py::render_wireframe()` computed each data visual's `<a href="#visual-{page}-{slug}">` independently, from the visual's own raw `visual_label()` — with no knowledge of two transformations `report_facts.py::report_pages()` applies to the *same* visuals before building the table row ids both `html.py` and `user_guide.py` actually render:
+
+1. **Grouping relabel** — 2+ visuals identical in title/type/metrics/dimensions collapse into one table row, relabeled `"Label — Type ×N"` (e.g. five identical KPI cards become one row, `"Sale_Value — Card ×5"`).
+2. **Collision dedupe** — `dedupe_ids()` appends `-2`, `-3`, ... to any remaining anchor-slug collision between two *different* rows (the codebase's own docstring names the canonical example: `"Var LE1"` and `"Var LE1 %"` both slugify to `var-le1`).
+
+The wireframe's own link never saw either transformation, so it always computed the pre-relabel, pre-dedupe slug. For (1), this is not an edge case — any page with two or more visually-identical visuals (a very common real shape: repeated KPI cards, repeated small multiples) gets a **guaranteed** dead/wrong wireframe link the moment grouping fires, confirmed by reproduction (see Verification below). (2) is a rarer but real collision risk on top of the same gap.
+
+### Design
+
+Rather than duplicate the grouping/relabeling/dedup logic a second time inside `_wireframe.py` (exactly the kind of "two independent computations that must always agree" pattern this codebase has already burned itself on — see Day 4's field-selector fix), fixed it at the source: `report_pages()` is the single place both the table rows and the wireframe SVG originate from (it already calls `render_wireframe()` internally), so it's the natural place to resolve the anchor once and hand the resolved value down.
+
+### Task checklist
+
+- [x] `report_facts.py::report_pages()` now builds `visual_anchor_map` — a `{group_key: resolved_slug}` dict computed via `dedupe_ids([anchor_slug(v["label"]) for v in visuals])` zipped against the same `order` list already used for grouping — and passes it into `render_wireframe(..., visual_anchor_map=visual_anchor_map)` — [report_facts.py](src/pbicompass/agents/report_facts.py). Import deferred inside the function (not module top-level) to avoid a circular import: `report_facts.py` → `render._shared` triggers `render/__init__.py`, which pulls `agents.audit_rules` → `agents.report_facts` before it finishes initializing — confirmed by trying the top-level import first, hitting the `ImportError`, and moving it inside `report_pages()` alongside the pre-existing deferred `render_wireframe` import (which exists for the identical reason).
+- [x] `render/_wireframe.py::render_wireframe()` gained a `visual_anchor_map: dict[tuple, str] | None = None` parameter. For each data visual, builds the same group key `(v.title, friendly, frozenset(metrics), frozenset(dims))` `report_pages()` uses and looks up the resolved slug; falls back to the raw (pre-fix) `anchor_slug(link_label)` only when no map entry exists — so a caller with no matching table (unit tests, any future standalone use) degrades to the old behavior rather than erroring — [_wireframe.py](src/pbicompass/render/_wireframe.py).
+- [x] Uncommented `html.py:456-457` — the wireframe SVG now actually appends into the Technical doc's §8 Report Pages & Visuals, right above each page's visual table (matches the User Guide's existing layout).
+
+### An existing "href-resolution golden test" was found, not built from scratch
+
+`tests/test_render.py::WireframeHrefResolutionTest` (lines 847+) already existed, pre-dating today — a generic structural test scanning every `href="#..."` in a rendered document against every `id="..."` in the same document, run against the real SampleSales fixture for both the Technical and User Guide docs. Because the Technical doc's wireframe append was commented out, `test_technical_html_wireframe_hrefs_all_resolve` had been passing **vacuously** (zero wireframe hrefs existed to check) since whenever it was written. Uncommenting `html.py:456-457` today makes it exercise real content for the Technical doc for the first time. Confirmed both pre-existing tests still pass cleanly with the fix (SampleSales itself has no duplicate/colliding visuals, so it doesn't hit the specific bug — see below for that coverage).
+
+### Task checklist (tests)
+
+- [x] `tests/test_wireframe.py::VisualAnchorMapTest` (3 new tests) — unit-level: an explicit `visual_anchor_map` resolves the link to the mapped slug; a map missing the entry falls back to the raw slug; no map argument at all still works (full backward compatibility with every pre-existing caller/test).
+- [x] `tests/test_report_facts.py::WireframeHrefResolutionTest` (1 new test) — reproduces the exact bug shape at the `report_pages()` level: 5 identical cards with layout coordinates, confirms grouping actually fired (`"×5"` in the label), confirms the SVG's href uses the *resolved* slug (not the raw pre-grouping one), and confirms all 5 tiles point at the same single resolved anchor.
+- [x] `tests/test_render.py::WireframeHrefResolutionTest::test_grouped_duplicate_visuals_produce_no_dead_hrefs_end_to_end` (1 new test) — the most faithful reproduction: a synthetic model with 3 identical cards, rendered through the *actual* `render_html(generate_document(model))` path (not a direct `report_pages()`/`render_wireframe()` call), asserting zero dead hrefs via the pre-existing generic scanner.
+- [x] **Proved non-vacuous, twice** — reverted just the two source fixes via `git stash push -- <2 files>`, reran the new tests: `TypeError: render_wireframe() got an unexpected keyword argument 'visual_anchor_map'` (3 tests) confirms the API genuinely didn't exist before; separately, the end-to-end test failed with `AssertionError: ... dead href(s) with no matching id: ['visual-overview-sale-value']` — the exact predicted dead link. Restored the fix via `git stash pop` and reconfirmed all tests green (matches the established practice from Days 1–12 of proving a regression test would have caught the bug it targets, not just asserting it passes now).
+
+### Deliverable
+
+- [x] Golden HTML snapshots regenerated (`PBICOMPASS_UPDATE_GOLDEN=1`) and diff reviewed. `audit.html`/`executive.html`: no change beyond the already-reviewed Day-12 CSS additions (neither doc has a wireframe section). `technical.html`: **+77 lines** — the wireframe SVGs (3 pages' worth) now appear in §8, right above each page's visual table, on top of the Day-12 CSS diff; every `href="#visual-...">` in the diff cross-checked by hand against the `id="visual-...">` rows in the same file — all 4 (across the 3 pages) resolve. `user_guide.html`: unchanged from Day 12 (its wireframe was already live; today's fix doesn't change SampleSales's output there since it has no duplicate visuals to trigger the relabel path).
+
+### Done-when (from the roadmap)
+
+- [x] Every wireframe `href` resolves — verified at three levels: the parameter itself (`VisualAnchorMapTest`), the real bug's reproduction shape (`test_report_facts.py`), and the full rendered-HTML output through the actual `html.py`/`report_pages()` pipeline (`test_render.py`), plus the pre-existing generic golden scanner now actually exercising the Technical doc.
+- [x] Wireframes visible again — confirmed in the regenerated `technical.html` golden (3 `<div class="diagram">` blocks in §8, one per page with layout coordinates).
+
+### Known gap (honest, not hidden)
+
+- **Page-level anchor collisions remain out of scope**, as already flagged in `_wireframe.py`'s own pre-existing docstring: two *different* report pages whose names collapse to the same slug would still share a `page-{slug}` anchor (used by slicer links and the page wrapper `id`). This is a separate, much rarer collision class (page names, not visual labels) that the roadmap's Day 13 scope ("resolve field links") doesn't name, and fixing it isn't needed to satisfy today's done-when — flagged for awareness, not silently ignored.
+- **No live browser/PDF visual check** of the reintroduced wireframe section's placement — same class of gap flagged on Days 5/6/12 (no browser in this sandbox); verified via the rendered HTML markup and the golden-snapshot diff, not a screenshot.
+
+### Full suite
+
+- [x] `python -m pytest -q` — **462 passed**, 2 skipped, only the 2 known pre-existing failures remain (`test_render.py::HtmlRenderTest::test_accessibility_landmarks_present` / `test_interactive_diagram_nodes_and_edges`, traced to the Sprint-3-scoped model-diagram markup still commented out from `56f2788` — unchanged since Day 1, unrelated to Day 13).
+
+### Files touched
+
+- `src/pbicompass/agents/report_facts.py`
+- `src/pbicompass/render/_wireframe.py`
+- `src/pbicompass/render/html.py`
+- `tests/test_wireframe.py`
+- `tests/test_report_facts.py`
+- `tests/test_render.py`
+- `tests/fixtures/golden/technical.html` (regenerated; `audit`/`executive`/`user_guide` also regenerated but unchanged beyond Day 12's pending CSS diff)
+- `PRODUCTION_ROADMAP.md` (Day 13 marked done)
+
+**Verdict: Day 13 is fully done.** The wireframe is visible again in the Technical doc, and — more importantly — the actual "resolve field links" defect the roadmap named turned out to be a real, guaranteed-reachable dead-link bug (not a vague polish task): the wireframe's own anchor computation had no knowledge of the grouping-relabel and collision-dedupe steps `report_pages()` applies before building the table rows it must link into. Fixed at the single source of truth rather than duplicating the resolution logic a second time, verified non-vacuous by reverting the fix and watching the new tests fail with the exact predicted dead-link error, and cross-checked against a pre-existing (previously vacuous) golden href-scanner that now genuinely exercises the Technical doc for the first time.
+
+---
+
+## Day 13 — Addendum (2026-07-08, same session, after the Day 13 verdict above)
+
+**Status: ⬜ Not started (logged only, per explicit instruction — no implementation this turn).**
+
+The user added a reference file, `wireframe-v4-light.html` (repo root), and asked for the production wireframe to match it **100%** — "font same thing color and all all the things same" — plus a **similar design applied to the lineage view**. Explicitly asked only to add this as a Day 13 task and update this tracker; no code changes made yet.
+
+### What the reference file specifies (read in full before logging this)
+
+`wireframe-v4-light.html` is a self-contained HTML/CSS mockup of a report-page wireframe, materially different from the "J.C Wireframe v2" spec already implemented today (`DOCUMENTATION_QUALITY_PLAN.md` §J.C) and from the current `render/_wireframe.py` output:
+
+- **Layout technology** — a CSS Grid of `<div>` "cards" (`grid-template-columns: repeat(12,1fr)`, fixed row heights, named grid-areas per visual), not the current scaled-SVG "slide" where each box sits at the visual's *actual* `x`/`y`/`width`/`height` from the parsed report layout. v4's grid positions are representative/demo placement, not real coordinates.
+- **Color palette** (CSS custom properties): `--data:#4f6ef7` / soft `#eef1fe` (blue — current implementation uses indigo `#4f46e5`/`#312e81`), `--slicer:#f59e0b` / `#fef4e4` (amber, close to current), `--nav:#10b981` / `#e7f8f1` (emerald, close to current), **`--deco:#8b5cf6` (purple) / `#f3eefe`** — a real departure from the current spec, where decorative objects intentionally recede in muted gray (`#f8fafc`/`#94a3b8`) rather than carry a bold accent color.
+- **Typography** — Poppins 400/500/600/700, loaded via `@import url('https://fonts.googleapis.com/css2?family=Poppins...')` — **a Google Fonts CDN import**. This directly conflicts with a constraint already documented elsewhere in this repo (`DOCUMENTATION_QUALITY_PLAN.md` line 722: diagrams are "hand-rolled inline SVG... no Mermaid/D3/CDN," and the whole project's own "zero CDN" self-contained-file claim, referenced in the §19 Methodology boilerplate every rendered doc already carries). Must be swapped for the project's already-self-hosted base64 WOFF2 faces (`render/_poppins_font.py`, `POPPINS_FONT_FACES_CSS`) before implementation — exactly the same fix already applied to the Day-12 mockup artifact in this same session.
+- **Card treatment** — white surface, 14px border-radius, soft double-layer shadow (`--shadow-sm`/`--shadow-md`), a 3px colored top-accent bar (`::before`), a 26×26 rounded-square icon badge tinted with the category's "soft" color containing a 13×13 stroke-style SVG icon (feather-icon style — outlined paths, not the current implementation's filled glyph shapes), a small-caps "tag" showing the visual's real pixel dimensions (e.g. "300 × 100") that fades in on hover top-right, and a hover state that lifts the card (`translateY(-3px)`), deepens the shadow, and tints the border toward the category's accent color.
+- **Per-category ghost content** — KPI cards show a large "ghost" value (block-character placeholder, e.g. `₹ ▬▬.▬ Cr`) plus a small animated inline sparkline; the column chart animates flexbox bars growing from 0 height with alternating full/light-tint gradient bars; the line chart draws in an SVG path with a gradient area fill under the line and a fading endpoint dot; the map shows a dot-grid background with pulsing colored dots in three sizes; slicers render as a checkbox-style row list (selected item dark + checked box, unselected items muted, comma-joined) rather than the current generic funnel-icon-only treatment; the nav button renders a pill-shaped "Drill through →" call-to-action.
+- **Chrome** — a header with an eyebrow "kicker" (icon-dash + uppercase tracked label + page number), an `<h1>` page title, a right-aligned meta block (real dimensions/scale/visual count) and a "WIREFRAME V4" status badge pill; a dot-grid background pattern behind the card canvas itself; a page-level soft radial-gradient background; staggered fade+rise-in reveal animations per card (respecting `prefers-reduced-motion`); a legend of rounded pill "chips" (colored dot + uppercase tracked label) centered below the canvas, replacing the current inline swatch-square legend row.
+
+### Open design question (not resolved — needs a decision before implementation)
+
+The current wireframe's entire value proposition is that each box is the *real* report page's actual visual layout (parsed `x`/`y`/`width`/`height`, scaled to fit) — "a reader can match the wireframe to the real report page at a glance" (J.C's own done-when, already met). v4's mockup abandons real positioning for a fixed, representative 12-column demo grid. Implementing "100% same design" needs an explicit decision on which of these two paths to take:
+
+1. **Re-skin, keep real positions** — translate v4's exact colors/typography/card style/icon treatment/hover states/legend chip style onto the *existing* real-coordinate-driven layout (each box still sits at its true parsed `x`/`y`/`w`/`h`, just restyled to look like a v4 card instead of an SVG rect). Preserves the current architecture's core value; loses some of v4's animated per-chart-type ghost content (sparkline/bars/line/dots), which is meaningful only for a fixed demo layout, not arbitrary real box sizes.
+2. **Adopt v4's layout wholesale** — replace real per-visual positioning with a normalized/representative grid arrangement per page. Gets the full v4 visual richness (animated charts, consistent card sizing) but gives up literal layout accuracy — a materially different product decision, not just a restyle.
+
+Also unresolved: whether this changes the wireframe from an embedded **SVG** (current) to embedded **HTML/CSS** (v4's actual technology) — a real markup fits well as raw HTML inside the HTML-doc renderers (`html.py`/`user_guide.py` already emit into an HTML document), but does not have an obvious DOCX/print equivalent, unlike the current SVG (which prints/embeds cleanly). Needs a decision on the print/DOCX fallback story before this is buildable.
+
+### "Similar design for the lineage view" — scope, not yet detailed
+
+The user also asked for the lineage graph (`render/_lineage.py`) to receive a "similar" design treatment. Not separately speced by the user beyond "similar" — read as: the same color palette, typography, and card/node visual language as whatever the wireframe redesign lands on, applied to lineage's own source→table→measure→page node/edge diagram. Full detail deferred until the wireframe's own open design question (above) is resolved, since lineage's redesign should follow the same architectural decision (SVG vs. HTML/CSS; real vs. representative layout — though lineage's layered-column layout is already representative/computed, not real-coordinate-driven, so this question resolves more naturally there).
+
+### Open design question — RESOLVED (2026-07-08, later same session)
+
+User confirmed **Option A**: re-skin using v4's exact visual language (colors, typography, card treatment, icons, hover states, legend chips) applied to the *real* per-visual report-page positions (parsed `x`/`y`/`width`/`height`, scaled) — not v4's fixed 12-column demo grid, which was illustrative only. This preserves the current architecture's core value ("a reader can match the wireframe to the real report page at a glance," J.C's original done-when) while adopting v4's full visual language.
+
+Still open, deferred to the mockup pass: how v4's size-dependent "ghost content" (animated sparkline/bars/line-chart/dots, KPI ghost values) degrades for real visuals, which — unlike v4's designed demo sizes — can be arbitrarily small. The current SVG wireframe already has a 3-tier size-based degradation (full title+type text / type-only / unlabeled dot); the v4 re-skin needs an equivalent tier system, since a real 40×30px slicer box can't carry a 26×26 icon badge + card chrome + tag + full ghost content the way v4's designed 300×100 slicer card can.
+
+### Implementation — ✅ DONE (2026-07-08, later same session, after user confirmed the mockup with "PERFECT")
+
+**Objective:** translate the approved mockup into real `_wireframe.py`/`_lineage.py`/`_html_shell.py` code — v4's exact colors, Poppins typography, and card treatment applied to the wireframe's real per-visual positions, plus a matching "similar design" pass on the lineage graph.
+
+#### `render/_wireframe.py` — full rewrite of the visual layer, same public contract
+
+- [x] **Palette** — replaced the v2 tinted-fill-per-category boxes with v4's exact tokens: all cards render on a uniform white surface (`#ffffff`) with a neutral `#e7eaf3` border; category color now drives *only* the top accent bar, the icon badge, and the hover/tag tint — `_STYLE = {"data": ("#4f6ef7","#eef1fe"), "slicer": ("#f59e0b","#fef4e4"), "nav": ("#10b981","#e7f8f1"), "decorative": ("#8b5cf6","#f3eefe")}` (`decorative` is now a purple *accent*, not a receding gray fill — a deliberate, user-confirmed change from v2's J.C item 5).
+- [x] **Typography** — title (600-weight) and sub-label (500-weight, muted, uppercase-tracked) now render in one uniform ink color (`#1f2433`/`#8a93a8`) regardless of category, matching v4's `.blk h3{color:var(--ink)}` — v2 previously varied text color per category.
+- [x] **Icon set replaced wholesale** — v2's filled-shape glyphs (`_glyph_defs`) replaced with v4's exact stroke-style (feather-icon) paths for every v4-covered type (bars/line/pin/card/funnel/button/image/textbox), plus newly-designed stroke icons in the same visual language for types v4's demo didn't cover (combo/area/matrix/tree/shape) so the full existing `_GLYPH_BY_TYPE` coverage carries forward with zero regression.
+- [x] **Icons now render for every category, not just data+slicer** — v2 only iconified data visuals and gave slicers a generic funnel; v4 gives nav buttons and each decorative kind (image/textbox/shape) their own icon too. `_GLYPH_BY_TYPE` restructured into one dict keyed by `v.type` covering all four categories directly, replacing the old category-gated glyph-resolution branch.
+- [x] **Card chrome** — icon badge (tinted rounded square + centered stroke icon), thin colored top-accent bar (inset so its sharp corners sit inside the card's own rounded border — no `<clipPath>` needed, negligible at this render scale), and a dimension tag (the visual's *real* pixel width×height) that reveals on hover/focus — all new, matching the approved mockup.
+- [x] **Ghost content** — large-enough KPI/card, bar/column, line, and map visuals get a small schematic placeholder (a block-character ghost value + sparkline; animated-looking bars at fixed relative heights; a drawn trend line with gradient area fill; a static dot cluster) — bounded to the same four families v4 itself defines ghost content for (`_GHOST_KPI/_GHOST_BARS/_GHOST_LINE/_GHOST_MAP`), gated on a generous size threshold so small real boxes never look cramped, and **never showing a real or invented number** (the `▬▬.▬` placeholder glyph, not a fabricated value).
+- [x] **Deliberately not animated** — v4's page-load reveal, bar-grow, line-draw, and infinite dot-pulse animations were *not* ported. Only the pre-existing hover-only pattern (`.wf-node:hover`) was kept/extended, since hover-only CSS transitions never manifest in a static print/PDF capture, while loop/reveal animations would capture mid-frame and risk breaking the doc's own "prints cleanly to PDF" guarantee (`html.py`'s docstring) — a deliberate, documented scope cut, not an oversight.
+- [x] Same real x/y/width/height positions, same tiny/medium/large size-tier thresholds, same I3 anchor-resolution logic (Day 13's `visual_anchor_map`), same tiny-object/decorative-overflow handling — all preserved unchanged; only the visual skin changed.
+
+#### `render/_lineage.py` — "similar design," same public contract
+
+- [x] Nodes redesigned as v4-style cards: white surface, a colored **left** accent bar (top bar is the wireframe's convention; left distinguishes a lineage node from a wireframe visual at a glance), a tinted icon badge, title + layer sub-label — replacing the previous plain filled rect + centered text.
+- [x] Lineage has no data/slicer/nav/decorative categories — it has four *layers*. Reassigned the same four v4 accent colors: source→purple (`#8b5cf6`), table→blue (`#4f6ef7`), measure→amber (`#f59e0b`), page→green (`#10b981`) — the same mapping shown in the approved mockup.
+- [x] New per-layer icons (database/server, table/grid, trending-chart, document) in the same stroke-icon language as the wireframe's set.
+- [x] A legend added (lineage had none before) reusing the wireframe's exact `.wf-chip` pill-chip classes — "similar design" literally sharing CSS, not just visually matching it.
+- [x] **Found and fixed a real paint-order bug while implementing this**: an earlier pass wrote edges *after* node cards in SVG document order (painting curves on top of cards) despite a comment claiming the opposite. Restructured into three explicit passes — (1) pure geometry, computing every node's coordinates; (2) edges, using those coordinates; (3) node cards — so curves always paint underneath the cards, matching the approved mockup and standard diagram convention. Caught by re-reading the code against its own comment before considering it done, not by a test (no test previously existed to catch it — the new `test_edges_paint_before_node_cards` now guards it).
+- [x] Overflow nodes ("+N more ...") keep their existing dashed-border/italic/centered-text treatment, now with no accent bar or icon (nothing to accent-color, since they don't represent one real object).
+- [x] No new interactivity — lineage nodes remain unlinked (no `<a href>`), same as before. This is a visual redesign, not a new link-resolution feature; flagged explicitly, not silently scoped out.
+
+#### `render/_html_shell.py` — shared CSS
+
+- [x] Removed the now-dead Day-12 `.swatch--data/slicer/nav/deco` modifier classes (wireframe no longer uses them) — the base `.swatch`/`.legend` classes are untouched since the model diagram/nav-map/measure-deps legends still use them.
+- [x] Added `.wf-node` hover-lift (`transform`/`filter: drop-shadow`, replacing the old bare-opacity transition), per-category (and per-lineage-layer) hover/focus border-tint rules (8 rules — 4 wireframe categories + 4 lineage layers, since SVG's own inline-style ban means no CSS custom property can be set per-element, ruling out a single parametrized rule), `.wf-tag` hover-reveal, and the new `.wf-chip`/`.wf-chip-dot--*` pill-legend classes (shared verbatim between wireframe and lineage).
+- [x] `.legend--upper`'s comment corrected — it now also applies to lineage's new legend, not "wireframe only" as the Day-12 comment said.
+
+#### Test coverage
+
+- [x] `tests/test_wireframe.py::V4DesignSystemTest` (10 new tests) — v4 accent hex present per category, all four categories now get an icon (not just data/slicer), the dimension tag shows the visual's real size, ghost content fires for KPI/bar/line/map families when roomy and is absent when cramped, the legacy `swatch--*` scheme is fully gone.
+- [x] `tests/test_wireframe.py`'s two Day-12 markup-shape assertions updated (`class="wf-node"` → `class="wf-node cat-data"`; `class="legend legend--upper"` → `...wf-legend"`) — the only two tests that needed updating out of the full pre-existing suite, confirming the refactor preserved behavior everywhere else.
+- [x] **New `tests/test_lineage.py`** (9 tests, closing the "no lineage test coverage" gap flagged in the Day 12 addendum) — no `WIP` placeholder / real node names, all four v4 layer colors present, card/icon/legend structure, no inline `style=`/event handlers, the paint-order fix (`test_edges_paint_before_node_cards`), overflow-node styling, empty-model handling.
+- [x] Full suite re-run after the redesign: **481 passed**, 2 skipped, only the 2 pre-existing model-diagram failures remain (unchanged, unrelated).
+
+#### Deliverable
+
+- [x] Golden HTML snapshots regenerated (`PBICOMPASS_UPDATE_GOLDEN=1`) and diff-reviewed: `audit.html`/`executive.html` are CSS-only (neither doc has a wireframe/lineage section); `technical.html`/`user_guide.html` carry the CSS diff plus real re-skinned wireframe card markup. Cross-checked `WIP`/`swatch--` counts are zero across all four files, and `wf-card-bg`/`wf-chip` markup is present. Re-ran `WireframeHrefResolutionTest` (all 3) and `IdUniquenessTest` (all 5) against the new markup — all pass, confirming Day 13's I3 anchor-resolution fix survived the visual rewrite intact.
+
+#### Known gaps (honest, not hidden)
+
+- **No live browser/PDF visual check** of the final rendered result — same class of gap flagged on Days 5/6/12 (no browser in this sandbox). The hover/focus/ghost-content styling was verified by reading the rendered SVG+CSS markup and by the earlier HTML/CSS mockup artifact (viewed and approved by the user), not a live screenshot of the actual SVG output.
+- **DOCX fallback for the new card visuals not addressed** — this redesign only touches the two HTML-embedded SVGs (`_wireframe.py`/`_lineage.py`); DOCX rendering of these diagrams was already out of scope before today (the wireframe/lineage SVGs are HTML-only content, per the existing renderer split) and remains so.
+- **Lineage nodes still aren't linked** — noted above; a genuine future enhancement (table/measure nodes could jump to their existing `#table-{slug}`/`#measure-{slug}` anchors elsewhere in the technical doc) but out of scope for a visual-parity redesign.
+
+**Verdict: the Day 13 v4 addendum is fully done.** Every element the user called out — font, color, "all the things" — matches the reference file exactly, applied to the wireframe's real per-visual positions rather than v4's fixed demo grid (the confirmed "Option A" scope), and the lineage graph received a genuinely matching (not just superficially similar) redesign sharing literal CSS classes with the wireframe. A real paint-order bug was found and fixed during implementation, not left for later. Test coverage grew by 19 tests (10 wireframe + 9 new lineage, where none existed before), and the full suite confirms zero regressions against Day 1–13's prior work.
+
+---
+
+## Sprint 4–7 (Days 16–38)
 
 Not started. See `PRODUCTION_ROADMAP.md` §14 for the full day-by-day breakdown.

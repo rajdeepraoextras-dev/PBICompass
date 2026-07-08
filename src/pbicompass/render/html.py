@@ -454,8 +454,7 @@ def render_html(
         flag = f' <span class="muted">({", ".join(flags)})</span>' if flags else ""
         o.append(f"<h3>{_e(p['name'])}{flag}</h3>")
         if p.get("wireframe_svg"):
-            # o.append(p["wireframe_svg"])
-            pass
+            o.append(p["wireframe_svg"])
         pd = page_docs.get(p["name"])
         if pd:
             if pd.summary:

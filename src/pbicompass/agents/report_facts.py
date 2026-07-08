@@ -148,6 +148,7 @@ def visual_label(title: str | None, vtype: str, metrics: list[str], dims: list[s
 
 
 def report_pages(model: SemanticModel) -> list[dict]:
+    from ..render._shared import anchor_slug, dedupe_ids
     from ..render._wireframe import render_wireframe
     measure_names = {m.name for m in model.all_measures()}
     field_param_tables = field_parameter_table_names(model)
@@ -194,8 +195,21 @@ def report_pages(model: SemanticModel) -> list[dict]:
                 vis["label"] = f"{vis['label']} — {vis['type']} ×{vis['count']}"
             visuals.append(vis)
 
+        # Resolve each group's collision-safe anchor slug in the exact same
+        # order/dedup convention html.py and user_guide.py apply to these
+        # same labels for their table row ids (I3) — a visual whose label
+        # got the "— Type ×N" grouping suffix above, or whose slug collides
+        # with another row's, needs the wireframe's own <a href> to land on
+        # that *resolved* id, not an independently recomputed, unresolved
+        # one. Both renderers dedupe over this identical ``visuals`` list in
+        # this identical order, so computing it once here and handing it to
+        # ``render_wireframe`` keeps the SVG and both tables permanently in
+        # sync instead of three independent computations that can drift.
+        visual_anchor_map = dict(zip(order, dedupe_ids([anchor_slug(v["label"]) for v in visuals])))
+
         wireframe_svg = render_wireframe(
             p, measure_names=frozenset(measure_names), field_param_tables=frozenset(field_param_tables),
+            visual_anchor_map=visual_anchor_map,
         ) or None
         out.append({"name": p.display_name, "hidden": p.is_hidden, "drillthrough": p.is_drillthrough,
                     "visual_count": len(p.visuals), "visuals": visuals, "decorative_count": decorative,

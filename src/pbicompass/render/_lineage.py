@@ -7,6 +7,42 @@ from ._shared import anchor_slug, html_e
 from ..agents.usage import measure_usage
 from ..agents.report_facts import find_referenced_tables, data_source_summaries
 
+# v4 design (2026-07-08) — "similar design" to the page wireframe (same
+# session, user-supplied wireframe-v4-light.html, Option A): a white card
+# per node with a colored *left* accent bar (top bar is the wireframe's own
+# convention; left distinguishes a lineage node from a wireframe visual at
+# a glance) instead of a plain filled rect, a tinted icon badge per layer,
+# and the same hover-lift .wf-node treatment. Lineage has no data/slicer/
+# nav/decorative categories — it has four *layers* — so the same four v4
+# accent colors are reassigned: source=purple, table=blue, measure=amber,
+# page=green.
+_INK = "#1f2433"
+_MUTED = "#8a93a8"
+_EDGE = "#e7eaf3"
+_SURFACE = "#ffffff"
+_LAYER_STYLE = [
+    ("source", "#8b5cf6", "#f3eefe", "Source"),
+    ("table", "#4f6ef7", "#eef1fe", "Table"),
+    ("measure", "#f59e0b", "#fef4e4", "Measure"),
+    ("page", "#10b981", "#e7f8f1", "Page"),
+]
+_LAYER_ICON = {
+    "source": '<ellipse cx="12" cy="5" rx="8" ry="3" fill="none" stroke-width="1.8"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" fill="none" stroke-width="1.8"/>',
+    "table": '<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke-width="1.8"/><path d="M3 10h18M9 10v10" fill="none" stroke-width="1.8"/>',
+    "measure": '<path d="M4 19V5M4 19h16M8 15l3-4 3 3 4-6" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    "page": '<rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke-width="1.8"/><path d="M3 9h18" fill="none" stroke-width="1.8"/>',
+}
+
+_LEGEND = (
+    '<div class="legend legend--upper wf-legend">'
+    '<span class="wf-chip"><i class="wf-chip-dot wf-chip-dot--source"></i>Source</span>'
+    '<span class="wf-chip"><i class="wf-chip-dot wf-chip-dot--table"></i>Table</span>'
+    '<span class="wf-chip"><i class="wf-chip-dot wf-chip-dot--measure"></i>Measure</span>'
+    '<span class="wf-chip"><i class="wf-chip-dot wf-chip-dot--page"></i>Page</span>'
+    "</div>"
+)
+
+
 def get_source_label(ds) -> str:
     target = ds.server or ds.detail or ""
     if ds.database:
@@ -133,76 +169,106 @@ def build_lineage_data(model: SemanticModel) -> tuple[list[dict[str, str]], str]
     W = 960
     
     col_x = [60, 320, 580, 840]
-    box_w = 180
-    box_h = 30
-    
+    box_w = 190
+    box_h = 38
+
     node_coords: dict[str, tuple[float, float]] = {}
-    
+
     svg = [
         f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" '
-        f'role="img" aria-labelledby="lineage-diagram-title">\n<style>text {{ font-family: "Poppins", sans-serif !important; }}</style>'
+        f'role="img" aria-labelledby="lineage-diagram-title">\n<style>text {{ font-family: "Poppins", sans-serif !important; text-transform: uppercase; }}</style>'
     ]
     svg.append('<title id="lineage-diagram-title">Data lineage graph: sources to pages</title>')
-    
-    # Render nodes in columns
+    svg.append(f'''<defs>
+<pattern id="wf-dotbg-lineage" width="7" height="7" patternUnits="userSpaceOnUse">
+  <rect width="7" height="7" fill="#ffffff"/><circle cx="1" cy="1" r="0.55" fill="#dfe4f0"/>
+</pattern>
+<symbol id="wf-i-lin-source" viewBox="0 0 24 24">{_LAYER_ICON["source"]}</symbol>
+<symbol id="wf-i-lin-table" viewBox="0 0 24 24">{_LAYER_ICON["table"]}</symbol>
+<symbol id="wf-i-lin-measure" viewBox="0 0 24 24">{_LAYER_ICON["measure"]}</symbol>
+<symbol id="wf-i-lin-page" viewBox="0 0 24 24">{_LAYER_ICON["page"]}</symbol>
+</defs>''')
+    svg.append(
+        f'<rect x="0" y="0" width="{W}" height="{H}" fill="url(#wf-dotbg-lineage)" rx="10" stroke="{_EDGE}" stroke-width="1"/>'
+    )
+
+    # Pass 1: pure geometry -- compute every node's (x, y) up front, so
+    # edges can be drawn *before* (underneath) the node cards in pass 3.
     for col_idx, nodes in enumerate(layers):
         n_count = len(nodes)
         if n_count == 0:
             continue
-        
         y_start = (H - (n_count * box_h + (n_count - 1) * 15)) / 2
         for i, name in enumerate(nodes):
-            cx = col_x[col_idx]
-            cy = y_start + i * 45
-            node_coords[name] = (cx, cy)
-            
-            is_overflow = name.startswith("+")
-            
-            fill = "#f1f5f9" if is_overflow else "#eff6ff"
-            stroke = "#cbd5e1" if is_overflow else "#3b82f6"
-            text_color = "#64748b" if is_overflow else "#1e3a8a"
-            font_style = ' font-style="italic"' if is_overflow else ""
-            
-            svg.append(f'  <g class="lineage-node">')
-            svg.append(
-                f'    <rect x="{cx:.1f}" y="{cy:.1f}" width="{box_w}" height="{box_h}" rx="6" '
-                f'fill="{fill}" stroke="{stroke}" stroke-width="1.2"/>'
-            )
-            
-            # Text truncate
-            display_name = name
-            if len(display_name) > 22:
-                display_name = display_name[:20] + "..."
-                
-            svg.append(
-                f'    <text x="{cx + box_w/2:.1f}" y="{cy + box_h/2 + 3:.1f}" font-size="9" '
-                f'fill="{text_color}" text-anchor="middle" font-weight="500">WIP</text>'
-            )
-            svg.append(f'  </g>')
-            
-    # Render edges
+            node_coords[name] = (col_x[col_idx], y_start + i * (box_h + 15))
+
+    # Pass 2: edges, so node cards paint on top of the curves feeding
+    # into/out of them.
     for me in mapped_edges:
-        n_from, n_to = me["from"], me["to"]
-        p1 = node_coords.get(n_from)
-        p2 = node_coords.get(n_to)
-        
+        p1 = node_coords.get(me["from"])
+        p2 = node_coords.get(me["to"])
         if not p1 or not p2:
             continue
-            
+
         x1 = p1[0] + box_w
         y1 = p1[1] + box_h / 2
         x2 = p2[0]
         y2 = p2[1] + box_h / 2
-        
+
         dx = (x2 - x1) / 2
         svg.append(
             f'  <path d="M {x1:.1f} {y1:.1f} C {x1 + dx:.1f} {y1:.1f}, {x1 + dx:.1f} {y2:.1f}, {x2:.1f} {y2:.1f}" '
-            f'fill="none" stroke="#94a3b8" stroke-width="1.2" stroke-linecap="round"/>'
+            f'fill="none" stroke="#c7ccdb" stroke-width="1.3" stroke-linecap="round"/>'
         )
-        
+
+    # Pass 3: node cards -- each a v4-style card: white surface, a colored
+    # *left* accent bar, a tinted icon badge, title + layer sub-label. (I3:
+    # no per-node <a> link yet -- this is a visual redesign, not a new
+    # interactivity feature.)
+    for col_idx, nodes in enumerate(layers):
+        if not nodes:
+            continue
+        layer_key, accent, soft, layer_label = _LAYER_STYLE[col_idx]
+
+        for name in nodes:
+            cx, cy = node_coords[name]
+            is_overflow = name.startswith("+")
+
+            display_name = name
+            if len(display_name) > 24:
+                display_name = display_name[:22] + "…"
+
+            svg.append(f'  <g class="wf-node cat-{layer_key}">')
+            svg.append(
+                f'    <rect x="{cx:.1f}" y="{cy:.1f}" width="{box_w}" height="{box_h}" rx="8" '
+                f'class="wf-card-bg" fill="{_SURFACE}" stroke="{_EDGE}" '
+                f'stroke-width="1" stroke-dasharray="{"3,2" if is_overflow else "0"}"/>'
+            )
+            if not is_overflow:
+                svg.append(
+                    f'    <rect x="{cx:.1f}" y="{cy + 0.6:.1f}" width="1.6" height="{box_h - 1.2:.1f}" fill="{accent}"/>'
+                )
+                svg.append(
+                    f'    <rect x="{cx + 8:.1f}" y="{cy + 8:.1f}" width="16" height="16" rx="4" fill="{soft}"/>'
+                    f'    <use href="#wf-i-lin-{layer_key}" x="{cx + 12:.1f}" y="{cy + 12:.1f}" width="8" height="8" '
+                    f'fill="none" stroke="{accent}"/>'
+                )
+                svg.append(
+                    f'    <text x="{cx + 32:.1f}" y="{cy + 16:.1f}" font-size="8.5" font-weight="600" '
+                    f'fill="{_INK}">{html_e(display_name)}</text>'
+                    f'    <text x="{cx + 32:.1f}" y="{cy + 27:.1f}" font-size="6" letter-spacing="0.16em" '
+                    f'fill="{_MUTED}">{html_e(layer_label)}</text>'
+                )
+            else:
+                svg.append(
+                    f'    <text x="{cx + box_w / 2:.1f}" y="{cy + box_h / 2 + 3:.1f}" font-size="8" '
+                    f'text-anchor="middle" fill="{_MUTED}" font-style="italic">{html_e(display_name)}</text>'
+                )
+            svg.append(f'  </g>')
+
     svg.append('</svg>')
 
-    svg_str = f'<div class="diagram">{"".join(svg)}</div>'
+    svg_str = f'<div class="diagram">{"".join(svg)}{_LEGEND}</div>'
     return edges, svg_str
 
 def get_tables_fed(ds, model) -> list[str]:
