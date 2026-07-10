@@ -29,6 +29,7 @@ RUN useradd --create-home app && mkdir -p /data && chown app /data
 USER app
 
 ENV PBICOMPASS_DB=/data/pbicompass.db \
+    PBICOMPASS_JOBS_DB=/data/pbicompass_jobs.db \
     PBICOMPASS_SANDBOX_ROOT=/tmp/pbicompass \
     PBICOMPASS_MAX_UPLOAD_MB=100
 # Auth is OFF by default (public tenant). For a hosted SaaS set:
