@@ -453,10 +453,7 @@ def render_html(
         flag = f' <span class="muted">({", ".join(flags)})</span>' if flags else ""
         o.append(f"<h3>{_e(p['name'])}{flag}</h3>")
         if p.get("wireframe_svg"):
-            # Hidden for now at the user's request (2026-07-08) while the
-            # lineage graph is reviewed first — re-enable by uncommenting.
-            # o.append(p["wireframe_svg"])
-            pass
+            o.append(p["wireframe_svg"])
         pd = page_docs.get(p["name"])
         if pd:
             if pd.summary:

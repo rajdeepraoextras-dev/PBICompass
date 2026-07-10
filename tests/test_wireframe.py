@@ -82,8 +82,8 @@ class OnCanvasLabelTest(unittest.TestCase):
                              width=300, height=200, fields=["Sales.Revenue", "Date.Month"])])
         svg = render_wireframe(page)
         self.assertNotIn("WIP", svg)
-        self.assertIn(">Revenue by Month</text>", svg)   # on-canvas title (600-weight)
-        self.assertIn(">Column chart</text>", svg)        # on-canvas friendly type
+        self.assertIn(">Revenue by Month</text>", svg)   # real-case title in the pill
+        self.assertIn(">COLUMN CHART</text>", svg)        # friendly type, small-caps caption
 
     def test_long_title_is_truncated_on_canvas(self):
         page = _page([Visual(id="v1", type="columnChart",
@@ -93,27 +93,29 @@ class OnCanvasLabelTest(unittest.TestCase):
         self.assertIn("…</text>", svg)                    # truncated with an ellipsis
         self.assertNotIn("Product Line</text>", svg)      # tail dropped on-canvas
 
-    def test_medium_visual_renders_friendly_type_not_wip(self):
-        # Thresholds are in *scaled* units (x0.375 at 1280px wide): 120x55 px
-        # -> 45x20.6, the medium tier (>=35x18, <60x24): friendly type only.
+    def test_compact_visual_renders_its_title_not_wip(self):
+        # A mid-size region (compact tier: too small for the pill+caption, big
+        # enough for an icon badge + title) shows the visual's own title.
         page = _page([Visual(id="v1", type="lineChart", title="Trend", x=0, y=0, z=0,
                              width=120, height=55, fields=["Sales.Revenue"])])
         svg = render_wireframe(page)
         self.assertNotIn("WIP", svg)
-        self.assertIn(">Line chart</text>", svg)
+        self.assertIn(">Trend</text>", svg)
 
 
-class UppercaseTextTest(unittest.TestCase):
-    """All on-canvas + legend text renders uppercase (scoped to the wireframe
-    via CSS text-transform, so the underlying titles/anchors keep real case)."""
+class RealCaseTextTest(unittest.TestCase):
+    """v5 (2026-07-10): the wireframe no longer force-uppercases its on-canvas
+    text — a global text-transform was shouting every visual title. Titles
+    render in their real case (Poppins) now; only the legend keeps its own
+    uppercase modifier (short category labels, not proper names)."""
 
-    def test_svg_style_uppercases_on_canvas_text(self):
+    def test_on_canvas_text_is_not_force_uppercased(self):
         page = _page([Visual(id="v1", type="columnChart", title="Revenue by Month", x=0, y=0, z=0,
                              width=300, height=200, fields=["Sales.Revenue", "Date.Month"])])
         svg = render_wireframe(page)
-        self.assertIn("text-transform: uppercase", svg)
-        # CSS-only: the DOM text keeps its real case (tooltips/anchors depend on it)
-        self.assertIn(">Revenue by Month</text>", svg)
+        self.assertNotIn("text-transform", svg)             # no shout-everything rule
+        self.assertIn('font-family: "Poppins"', svg)         # Poppins still enforced
+        self.assertIn(">Revenue by Month</text>", svg)       # real-case title on canvas
 
     def test_legend_uses_the_uppercase_modifier(self):
         page = _page([Visual(id="v1", type="columnChart", title="Revenue", x=0, y=0, z=0,
@@ -122,87 +124,71 @@ class UppercaseTextTest(unittest.TestCase):
         self.assertIn('class="legend legend--upper wf-legend"', svg)
 
 
-class V4DesignSystemTest(unittest.TestCase):
-    """Day 13 addendum: the wireframe re-skinned in the user-supplied
-    wireframe-v4-light.html's exact visual language (colors, cards, icons)
-    applied to real per-visual positions ("Option A", confirmed by the
-    user against a mockup artifact) — replacing v2's tinted-fill boxes."""
+class BlueprintDesignTest(unittest.TestCase):
+    """v5 (2026-07-10) "Blueprint" direction, user-selected from three
+    proposed styles: each visual is a dashed, category-tinted region with a
+    solid pill label (white icon + real-case title) and, on big regions, a
+    small-caps friendly-type caption. No white cards, no ghost chart content,
+    no per-card dimension tag."""
 
-    def test_data_visual_uses_the_v4_accent_and_card_structure(self):
+    def test_region_is_dashed_and_tinted_in_the_category_accent(self):
         page = _page([Visual(id="v1", type="columnChart", title="Revenue", x=0, y=0, z=0,
                              width=300, height=200, fields=["Sales.Revenue"])])
         svg = render_wireframe(page)
-        self.assertIn('class="wf-card-bg cat-data" fill="#ffffff"', svg)  # neutral white surface
-        self.assertIn('fill="#4f6ef7"', svg)  # v4's exact data accent (top bar / icon)
-        self.assertIn('fill="#eef1fe"', svg)  # v4's exact data icon-badge tint
+        self.assertIn('class="wf-card-bg cat-data"', svg)
+        self.assertIn('stroke-dasharray="5 4"', svg)   # dashed outline
+        self.assertIn('stroke="#4f6ef7"', svg)          # data accent on the region
+        self.assertIn('fill="#4f6ef7"', svg)            # solid pill fill
 
-    def test_every_category_gets_its_own_v4_accent(self):
+    def test_pill_shows_real_case_title_with_a_white_icon(self):
+        page = _page([Visual(id="v1", type="columnChart", title="Revenue by Month", x=0, y=0, z=0,
+                             width=300, height=200, fields=["Sales.Revenue"])])
+        svg = render_wireframe(page)
+        self.assertIn(">Revenue by Month</text>", svg)  # real case, inside the pill
+        self.assertIn('stroke="#ffffff"', svg)           # icon knocked out white
+
+    def test_big_region_gets_a_small_caps_type_caption(self):
+        page = _page([Visual(id="v1", type="columnChart", title="Revenue by Month", x=0, y=0, z=0,
+                             width=300, height=200, fields=["Sales.Revenue"])])
+        svg = render_wireframe(page)
+        self.assertIn(">COLUMN CHART</text>", svg)
+
+    def test_every_category_gets_its_own_accent(self):
         page = _page([
             Visual(id="v1", type="slicer", is_slicer=True, title="Region", x=0, y=0, z=0, width=150, height=100, fields=["Geo.Region"]),
-            Visual(id="v2", type="actionButton", title="Go", x=160, y=0, z=0, width=150, height=60),
-            Visual(id="v3", type="textbox", title="Note", x=320, y=0, z=0, width=150, height=60),
+            Visual(id="v2", type="actionButton", title="Go", x=160, y=0, z=0, width=150, height=90),
+            Visual(id="v3", type="textbox", title="Note", x=320, y=0, z=0, width=150, height=90),
         ])
         svg = render_wireframe(page)
         self.assertIn('fill="#f59e0b"', svg)  # slicer accent
         self.assertIn('fill="#10b981"', svg)  # nav accent
         self.assertIn('fill="#8b5cf6"', svg)  # decorative accent
 
-    def test_every_category_now_gets_an_icon_not_just_data_and_slicer(self):
-        # v2 only iconified data visuals (+ a generic slicer funnel); v4
-        # gives nav buttons and each decorative kind their own icon too.
+    def test_every_category_gets_an_icon(self):
+        # nav buttons and each decorative kind carry their own icon, not just
+        # data visuals and slicers.
         page = _page([
-            Visual(id="v1", type="actionButton", title="View Details", x=0, y=0, z=0, width=150, height=60),
+            Visual(id="v1", type="actionButton", title="View Details", x=0, y=0, z=0, width=150, height=90),
             Visual(id="v2", type="image", title="Logo", x=160, y=0, z=0, width=150, height=150),
-            Visual(id="v3", type="textbox", title="Note", x=320, y=0, z=0, width=150, height=60),
+            Visual(id="v3", type="textbox", title="Note", x=320, y=0, z=0, width=150, height=90),
         ])
         svg = render_wireframe(page)
         self.assertIn("wf-i-button-", svg)
         self.assertIn("wf-i-image-", svg)
         self.assertIn("wf-i-textbox-", svg)
 
-    def test_dimension_tag_shows_the_real_box_size(self):
+    def test_no_ghost_content_or_dimension_tag(self):
+        # The Blueprint style dropped v4's schematic ghost charts and the
+        # hover dimension tag — a region is an outline + label, nothing more.
         page = _page([Visual(id="v1", type="card", title="Total Revenue", x=0, y=0, z=0,
                              width=277, height=123, fields=["Sales.Revenue"])])
         svg = render_wireframe(page)
-        self.assertIn('class="wf-tag"', svg)
-        self.assertIn(">277 × 123<", svg)
-
-    def test_kpi_card_gets_ghost_value_when_roomy(self):
-        page = _page([Visual(id="v1", type="card", title="Total Revenue", x=0, y=0, z=0,
-                             width=277, height=123, fields=["Sales.Revenue"])])
-        svg = render_wireframe(page)
-        self.assertIn("▬▬.▬", svg)  # placeholder — never a real/invented number
-
-    def test_bar_chart_gets_ghost_bars_when_roomy(self):
-        page = _page([Visual(id="v1", type="columnChart", title="Revenue by Region", x=0, y=0, z=0,
-                             width=450, height=400, fields=["Sales.Revenue", "Geo.Region"])])
-        svg = render_wireframe(page)
-        self.assertIn("wf-dotbg-", svg)
-        self.assertGreaterEqual(svg.count('rx="0.8" fill="#4f6ef7"'), 4)  # multiple bars
-
-    def test_line_chart_gets_a_ghost_line_when_roomy(self):
-        page = _page([Visual(id="v1", type="lineChart", title="Monthly Trend", x=0, y=0, z=0,
-                             width=420, height=200, fields=["Sales.Revenue"])])
-        svg = render_wireframe(page)
-        self.assertIn("wf-line-grad-", svg)
-
-    def test_map_gets_ghost_dots_when_roomy(self):
-        page = _page([Visual(id="v1", type="map", title="Sales by State", x=0, y=0, z=0,
-                             width=420, height=250, fields=["Sales.Revenue", "Geo.State"])])
-        svg = render_wireframe(page)
-        # multiple dots beyond the tiny-object-collapse circle
-        self.assertGreaterEqual(svg.count('fill="#4f6ef7" opacity='), 3)
-
-    def test_small_kpi_card_gets_no_ghost_content(self):
-        # A real, small KPI card (below the ghost-content room threshold)
-        # still gets the card chrome but no cramped mini-sparkline.
-        page = _page([Visual(id="v1", type="card", title="Orders", x=0, y=0, z=0,
-                             width=90, height=50, fields=["Sales.Orders"])])
-        svg = render_wireframe(page)
-        self.assertNotIn("▬▬.▬", svg)
+        self.assertNotIn("▬", svg)             # no ghost KPI value
+        self.assertNotIn("wf-tag", svg)         # no per-card dimension tag
+        self.assertNotIn("wf-line-grad", svg)   # no ghost line gradient
+        self.assertNotIn("wf-dotbg", svg)       # no ghost dot-grid fill
 
     def test_no_legacy_swatch_modifier_classes_survive(self):
-        # Day-12's swatch--* scheme is fully replaced by wf-chip pills.
         page = _page([Visual(id="v1", type="columnChart", title="Revenue", x=0, y=0, z=0,
                              width=300, height=200, fields=["Sales.Revenue"])])
         self.assertNotIn("swatch--", render_wireframe(page))
