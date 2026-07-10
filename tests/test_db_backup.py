@@ -65,7 +65,8 @@ class AccountStoreDumpRestoreTest(unittest.TestCase):
         self.addCleanup(store.close)
         snapshot = store.dump()
         self.assertEqual(snapshot, {
-            "version": 3, "accounts": [], "usage": [], "api_keys": [],
+            # v4 (Day 33): accounts now carry company/role profile fields.
+            "version": 4, "accounts": [], "usage": [], "api_keys": [],
             "account_users": [], "admin_users": [],
         })
 

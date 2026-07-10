@@ -1492,6 +1492,49 @@ is that plan's first phase — billing/admin are Sprints 7–8, not yet started)
 
 ---
 
-## Sprint 7–8 (Days 33–39) — Stripe billing + full admin app
+## Sprint 7 (revised) — Onboarding, self-serve plans & UI unification (Day 33)
 
-Not started. See the go-live plan (`docs/planning/GO_LIVE_PLAN.md`) for the day-by-day breakdown.
+**Supersedes** the original Sprint 7 ("Stripe billing"). Billing stays deferred;
+this session's owner decision was to ship the actual next milestone first: a
+consistent, gated, self-serve onboarding flow (landing → sign up/sign in with
+a bit of profile info + a plan choice → uploader → profile page). Stripe is a
+later sprint and nothing here blocks it — `accounts.plan`/`PLAN_LIMITS` are
+exactly what it will eventually drive.
+
+**Objective (from the user):** "Make the site live. Landing page tells about
+the product and asks the user to sign up/sign in, then shows the document
+uploader. On sign-up, ask a few things about the user and let them choose a
+plan. All the UI should be the same. A profile page shows how much limit/usage
+is left." Billing left for later.
+
+### Locked-in decisions (2026-07-10)
+1. **Require sign-in to upload** — anonymous/no-signup generation removed from the primary flow.
+2. **Plan picker is trust-based** — a user can pick Free/Pro/Enterprise at signup (or later from Profile) and is granted that plan's quota immediately; no payment collected until billing ships.
+3. **Signup collects name, company, role** beyond email/password.
+
+### What changed, concretely
+- **`accounts.py`**: new `accounts.company`/`accounts.role` columns (idempotent `_ensure_column` ALTER, same pattern as `quota_override`); `create_account` and `get_or_create_account_for_supabase_user` extended with `company`/`role`/`plan` (applied on first creation only — JIT-*create*, never an upsert-every-request, so a returning user's own later edits aren't clobbered; an unrecognized `plan` falls back to `free`); new `set_plan(account_id, plan)` for self-serve changes (rejects an unknown plan); `dump()`/`restore()` bumped to snapshot **version 4** (additive, tolerant of a v3 snapshot lacking the fields).
+- **`app.py`**: new `_onboarding_fields(claims)` reads name/company/role/plan from the verified JWT's own `user_metadata` (no second round-trip, no email-confirmation-timing race); wired into both `resolve_tenant()` and `_require_user()`; `GET /app/api/me` now returns `company`/`role`; new `POST /app/api/plan` (JWT-authed self-serve plan change); `/app/api/config` now exposes `plan_limits` so the picker shows real quota numbers. New `GET /theme.css` route serves the shared stylesheet (same read-once-into-memory pattern as the HTML pages).
+- **`static/theme.css` (new)**: shared design system (tokens, liquid-glass, Poppins/Source-Serif, form/tab/table primitives) extracted from `index.html` so `/` and `/app` render as one product. `index.html` keeps its own proven inline CSS (theme.css is a verbatim extract, so they match); `app.html` consumes theme.css. `/admin` left on its own gold theme (internal-only, out of scope — flag if unification wanted).
+- **`static/app.html` (full rebuild)** on theme.css: signed-out = Sign in tab + a **3-step progressive signup** (login → about-you → plan picker cards reading real `PLAN_LIMITS`, all extra fields ride into `supabase.auth.signUp()`'s `options.data`); signed-in = a 4-view app shell — **Generate** (the uploader console, moved here from `index.html`), **Profile** (email/verify badge, plan badge, usage meter+remaining, company/role, self-serve "Change plan"), **API Keys** (existing CRUD, restyled), **Jobs** (existing table, restyled).
+- **`static/index.html` (trimmed)**: the functional `#generate` console (form + ~430 lines of upload JS) removed; replaced with a marketing CTA card → `/app`. Hero CTA and menu/footer anchors repoint to `/app`; a compact signed-in-header script personalizes the "Sign in" button to the user's email. Meta copy off "Free to try, no signup."
+- **`.env`**: `PBICOMPASS_REQUIRE_AUTH` flipped `0 → 1` (the gated-upload rollout; `.env` is gitignored, so the deploy target's own env must be set the same way).
+
+### Testing
+- `tests/test_dashboard.py`: new `OnboardingProfileStoreTest` (company/role persistence, `set_plan`, JIT create-once semantics, unknown-plan fallback, v4 round-trip, v3-legacy-restore tolerance); `DashboardApiTest` extended with signup-metadata→account, unknown-plan-falls-back, metadata-applied-once-only, `POST /app/api/plan` (success/unknown-plan-400/requires-auth), and `plan_limits` in config.
+- `tests/test_supabase_upload_security.py`: new gated-upload cases — anonymous `/jobs` POST hard-401s under `require_auth=True`, signed-in still sails through.
+- `tests/test_accounts_postgres.py`: company/role + `set_plan` + v4 snapshot over the Postgres branch (fake-psycopg-backed-by-sqlite).
+- `tests/test_db_backup.py` / `tests/test_service.py`: updated for the v4 snapshot version and the marketing-vs-app split (uploader wiring now asserted on `/app`, not `/`).
+- Full suite: **621 passed, 2 skipped**, only the 2 pre-existing `test_render.py` diagram-markup failures remain (unchanged since Day 1, unrelated). Both HTML files' inline JS syntax-checked with `node --check`; app boot + all new routes (`/`, `/app`, `/theme.css`, `/app/api/config`) driven via `TestClient`.
+
+### Honest gaps
+- **No live browser smoke test** — none available in this session. Still owed once on a machine with a browser + the live Supabase project: sign up (company/role/plan) → confirm email → sign in → Generate → upload `tests/fixtures/SampleSales` → download → Profile shows plan/usage → change plan → confirm anonymous `/jobs` now 401s.
+- **Go-live infra still outstanding** (tracked in the plan file `recursive-soaring-penguin.md`): set `PBICOMPASS_ADMIN_TOKEN` (empty ⇒ `/admin` unreachable), configure custom SMTP (`PBICOMPASS_SMTP_*` empty ⇒ Supabase's low-volume default sender), pick/confirm a hosting target and deploy, ensure `PBICOMPASS_JOBS_DB` sits on a persistent volume.
+
+---
+
+## Sprint 7b / 8 (later) — Stripe billing + full admin app
+
+Not started. See `docs/planning/GO_LIVE_PLAN.md` for the day-by-day breakdown.
+Billing plugs into `accounts.plan`/`set_plan`/`PLAN_LIMITS`, which Day 33
+already put in place as the seam.

@@ -194,6 +194,21 @@ class SupabaseUploadTest(unittest.TestCase):
         self.assertEqual(self._upload(client=self._strict_client(), headers=headers).status_code, 401)
         self.assertEqual(self.client.get("/me", headers=headers).json()["tenant"], "public")
 
+    # -- gated upload (Day 33): require_auth=True is the hosted default ------
+    def test_anonymous_upload_is_rejected_when_auth_required(self):
+        # The Day 33 rollout flips PBICOMPASS_REQUIRE_AUTH=1: the marketing
+        # landing page no longer uploads anonymously, and the /jobs endpoint
+        # must hard-401 a no-credential request rather than run it as public.
+        res = self._upload(client=self._strict_client())
+        self.assertEqual(res.status_code, 401, res.text)
+
+    def test_signed_in_upload_still_works_when_auth_required(self):
+        # ...but a real signed-in user sails straight through the same gate.
+        strict = self._strict_client()
+        headers = self._headers("gated@example.com")
+        res = self._upload(client=strict, headers=headers)
+        self.assertEqual(res.status_code, 200, res.text)
+
     # -- tenant isolation, extended from API keys to Supabase users ----------
     def test_another_users_jwt_cannot_see_this_users_job(self):
         a_headers = self._headers("a@example.com")

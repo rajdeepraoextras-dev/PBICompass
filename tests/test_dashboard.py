@@ -97,6 +97,86 @@ class ApiKeyManagementTest(unittest.TestCase):
         self.assertIsNone(self.store.verify(raw))
 
 
+class OnboardingProfileStoreTest(unittest.TestCase):
+    """Day 33: company/role columns, set_plan(), and the v4 snapshot — all
+    pure-stdlib AccountStore behavior, no service/auth extras needed."""
+
+    def setUp(self):
+        self.store = AccountStore(":memory:")
+        self.addCleanup(self.store.close)
+
+    def test_create_account_persists_company_and_role(self):
+        acct, _ = self.store.create_account("acme", name="Dana", plan="pro",
+                                            company="Acme Analytics", role="Head of BI")
+        self.assertEqual(acct.company, "Acme Analytics")
+        self.assertEqual(acct.role, "Head of BI")
+        # round-trips through verify() (a fresh row read, not the in-memory obj)
+        reread = self.store.verify(_)
+        self.assertEqual(reread.company, "Acme Analytics")
+        self.assertEqual(reread.role, "Head of BI")
+
+    def test_profile_fields_default_to_empty(self):
+        acct, _ = self.store.create_account("plain")
+        self.assertEqual(acct.company, "")
+        self.assertEqual(acct.role, "")
+
+    def test_get_or_create_seeds_profile_and_plan_on_first_call_only(self):
+        first = self.store.get_or_create_account_for_supabase_user(
+            "sub-1", "a@x.com", name="A", company="Co", role="Analyst", plan="pro")
+        self.assertEqual(first.plan, "pro")
+        self.assertEqual(first.company, "Co")
+        # second call with different values returns the SAME account unchanged
+        second = self.store.get_or_create_account_for_supabase_user(
+            "sub-1", "a@x.com", company="Different", plan="free")
+        self.assertEqual(second.id, first.id)
+        self.assertEqual(second.plan, "pro")
+        self.assertEqual(second.company, "Co")
+
+    def test_get_or_create_unknown_plan_falls_back_to_free(self):
+        acct = self.store.get_or_create_account_for_supabase_user(
+            "sub-2", "b@x.com", plan="enterprise-plus-unknown")
+        self.assertEqual(acct.plan, "free")
+
+    def test_set_plan_changes_the_plan(self):
+        acct, _ = self.store.create_account("acme")
+        self.assertTrue(self.store.set_plan(acct.id, "pro"))
+        self.assertEqual(self.store.verify(_).plan, "pro")
+
+    def test_set_plan_rejects_unknown_plan(self):
+        acct, _ = self.store.create_account("acme")
+        with self.assertRaises(ValueError):
+            self.store.set_plan(acct.id, "not-a-plan")
+
+    def test_set_plan_on_missing_account_returns_false(self):
+        self.assertFalse(self.store.set_plan("nonexistent", "pro"))
+
+    def test_v4_snapshot_round_trips_company_and_role(self):
+        acct, _ = self.store.create_account("acme", company="Acme", role="Lead")
+        snap = self.store.dump()
+        self.assertEqual(snap["version"], 4)
+        restored = AccountStore(":memory:")
+        self.addCleanup(restored.close)
+        restored.restore(snap)
+        got = restored.list_accounts()[0]
+        self.assertEqual(got.company, "Acme")
+        self.assertEqual(got.role, "Lead")
+
+    def test_restore_tolerates_a_v3_snapshot_without_profile_fields(self):
+        # A snapshot taken before Day 33 has no company/role keys — restore
+        # must default them rather than KeyError.
+        legacy = {
+            "version": 3,
+            "accounts": [{"id": "a1", "tenant": "t1", "name": "n", "key_hash": "h",
+                          "plan": "free", "created_at": 1.0, "quota_override": None}],
+        }
+        restored = AccountStore(":memory:")
+        self.addCleanup(restored.close)
+        restored.restore(legacy)
+        got = restored.list_accounts()[0]
+        self.assertEqual(got.company, "")
+        self.assertEqual(got.role, "")
+
+
 class JobHistoryTest(unittest.TestCase):
     def test_list_for_tenant_is_scoped_and_newest_first(self):
         jobs = JobStore()
@@ -153,19 +233,27 @@ class DashboardApiTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def _token_for(self, email: str, sub: str | None = None) -> str:
+    def _token_for(self, email: str, sub: str | None = None,
+                   user_metadata: dict | None = None) -> str:
         """Mint a fresh, fully-signed Supabase-shaped access token for a
         (new or existing) user -- the sub claim is the stable identity
         get_or_create_account_for_supabase_user() JIT-provisions an account
-        against, exactly as a real Supabase-issued token would."""
+        against, exactly as a real Supabase-issued token would.
+
+        ``user_metadata`` mirrors the ``options.data`` a real signUp() call
+        stashes (name/company/role/plan, Day 33) — Supabase copies it into
+        the issued JWT's ``user_metadata`` claim, which is where app.py's
+        ``_onboarding_fields`` reads it from."""
         claims = {
             "sub": sub or uuid.uuid4().hex, "email": email, "aud": "authenticated",
             "iss": self.cfg.issuer, "exp": time.time() + 3600,
         }
+        if user_metadata is not None:
+            claims["user_metadata"] = user_metadata
         return jwt.encode(claims, self._private_pem, algorithm="RS256", headers={"kid": self.KID})
 
-    def _headers(self, email="dash@example.com", sub=None):
-        return {"Authorization": "Bearer " + self._token_for(email, sub=sub)}
+    def _headers(self, email="dash@example.com", sub=None, user_metadata=None):
+        return {"Authorization": "Bearer " + self._token_for(email, sub=sub, user_metadata=user_metadata)}
 
     # -- auth gating --------------------------------------------------------
     def test_dashboard_apis_require_a_token(self):
@@ -179,6 +267,9 @@ class DashboardApiTest(unittest.TestCase):
         self.assertTrue(body["supabase_enabled"])
         self.assertEqual(body["supabase_url"], self._URL)
         self.assertIn("byok_enabled", body)
+        # Day 33: the plan picker reads real quota numbers from here
+        self.assertEqual(body["plan_limits"]["free"], 10)
+        self.assertIn("pro", body["plan_limits"])
 
     def test_app_page_is_served(self):
         res = self.client.get("/app")
@@ -194,6 +285,64 @@ class DashboardApiTest(unittest.TestCase):
         self.assertEqual(body["plan"], "free")
         self.assertIn("remaining", body)
         self.assertEqual(body["used_today"], 0)
+        # Day 33: profile fields are always present (empty when not supplied)
+        self.assertEqual(body["company"], "")
+        self.assertEqual(body["role"], "")
+
+    # -- onboarding profile + plan-at-signup (Day 33) -----------------------
+    def test_signup_metadata_seeds_company_role_and_plan(self):
+        headers = self._headers(
+            "founder@acme.com", sub="u-onboard-1",
+            user_metadata={"name": "Dana Founder", "company": "Acme Analytics",
+                           "role": "Head of BI", "plan": "pro"},
+        )
+        body = self.client.get("/app/api/me", headers=headers).json()
+        self.assertEqual(body["company"], "Acme Analytics")
+        self.assertEqual(body["role"], "Head of BI")
+        self.assertEqual(body["plan"], "pro")  # trust-based plan grant, no billing
+        # Pro quota is reflected in the usage limit, not just the label
+        self.assertEqual(body["daily_limit"], 200)
+
+    def test_unknown_plan_in_metadata_falls_back_to_free(self):
+        headers = self._headers(
+            "weird@example.com", sub="u-onboard-2",
+            user_metadata={"plan": "platinum-deluxe"},  # not a real plan
+        )
+        body = self.client.get("/app/api/me", headers=headers).json()
+        self.assertEqual(body["plan"], "free")  # never blocks account creation
+
+    def test_metadata_only_applied_on_first_creation_not_re_upserted(self):
+        # First request creates the account on the "pro" plan from metadata.
+        sub = "u-onboard-3"
+        first = self.client.get("/app/api/me", headers=self._headers(
+            "p@example.com", sub=sub, user_metadata={"plan": "pro"})).json()
+        self.assertEqual(first["plan"], "pro")
+        # A later token from the same user carrying different metadata must
+        # NOT silently overwrite the account (JIT-create, not upsert-always).
+        second = self.client.get("/app/api/me", headers=self._headers(
+            "p@example.com", sub=sub, user_metadata={"plan": "free"})).json()
+        self.assertEqual(second["plan"], "pro")
+
+    # -- self-serve plan change (Day 33) ------------------------------------
+    def test_change_plan_endpoint_updates_the_account(self):
+        headers = self._headers("switch@example.com", sub="u-plan-1")
+        self.assertEqual(self.client.get("/app/api/me", headers=headers).json()["plan"], "free")
+        res = self.client.post("/app/api/plan", json={"plan": "pro"}, headers=headers)
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual(res.json()["plan"], "pro")
+        after = self.client.get("/app/api/me", headers=headers).json()
+        self.assertEqual(after["plan"], "pro")
+        self.assertEqual(after["daily_limit"], 200)
+
+    def test_change_plan_rejects_unknown_plan(self):
+        headers = self._headers("bad@example.com", sub="u-plan-2")
+        res = self.client.post("/app/api/plan", json={"plan": "not-a-plan"}, headers=headers)
+        self.assertEqual(res.status_code, 400)
+        # account is untouched, still free
+        self.assertEqual(self.client.get("/app/api/me", headers=headers).json()["plan"], "free")
+
+    def test_change_plan_requires_auth(self):
+        self.assertEqual(self.client.post("/app/api/plan", json={"plan": "pro"}).status_code, 401)
 
     # -- API keys -----------------------------------------------------------
     def test_list_keys_shows_the_default_key(self):

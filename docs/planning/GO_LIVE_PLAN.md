@@ -3,11 +3,21 @@
 > **Status (2026-07-10): Sprint 6 (Days 26–32, Supabase Auth migration) is
 > done.** See `ROADMAP_PROGRESS.md`'s "Sprint 6 — Supabase Auth migration"
 > entry for what shipped and how it was verified (606 passed, 2 pre-existing
-> unrelated failures). Sprints 7–9 (Stripe billing, full admin app,
-> hardening/launch) below are **not started**. This file was originally
-> approved as a Claude Code plan-mode plan; copied into the repo so the
-> day-by-day detail survives a multi-tool handoff (Claude ↔ Antigravity/
-> Gemini), per this project's standing convention.
+> unrelated failures).
+>
+> **Sprint 7 was re-scoped (Day 33, 2026-07-10).** The owner chose to ship a
+> gated, self-serve **onboarding flow** (landing → sign up/sign in with
+> profile info + trust-based plan choice → uploader → profile page; UI
+> unified via a shared `static/theme.css`) *before* Stripe billing. That work
+> is done and tested (621 passed) — see `ROADMAP_PROGRESS.md`'s "Sprint 7
+> (revised) — Onboarding, self-serve plans & UI unification (Day 33)" entry
+> and the plan file `.claude/plans/recursive-soaring-penguin.md`. The original
+> Sprint 7 (Stripe billing, Days 33–36 below) is therefore **deferred, not
+> done** — `accounts.plan`/`set_plan`/`PLAN_LIMITS` are the seam it plugs
+> into. Sprints 8–9 (full admin app, hardening/launch) are **not started**.
+> This file was originally approved as a Claude Code plan-mode plan; copied
+> into the repo so the day-by-day detail survives a multi-tool handoff
+> (Claude ↔ Antigravity/Gemini), per this project's standing convention.
 
 ## Context
 

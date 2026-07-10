@@ -134,6 +134,37 @@ class AccountStorePostgresBackendTest(unittest.TestCase):
             self.assertIsNone(store.verify(key))
             self.assertFalse(store.revoke_account(acct.id))
 
+    def test_onboarding_profile_and_set_plan_over_the_postgres_branch(self):
+        # Day 33: company/role columns (added via _ensure_column's ALTER on
+        # the Postgres branch) and self-serve set_plan(), proven end-to-end
+        # over the same fake-psycopg-backed-by-sqlite path as the lifecycle
+        # test above.
+        fake_module, _ = _install_fake_psycopg()
+        with patch.dict(sys.modules, {"psycopg": fake_module}):
+            store = AccountStore("postgres://user:pw@host/db")
+            self.addCleanup(store.close)
+
+            acct, key = store.create_account("acme", name="Acme BI", plan="free",
+                                             company="Acme Analytics", role="Head of BI")
+            verified = store.verify(key)
+            self.assertEqual(verified.company, "Acme Analytics")
+            self.assertEqual(verified.role, "Head of BI")
+
+            # JIT-provision path carries profile + plan on first creation only
+            jit = store.get_or_create_account_for_supabase_user(
+                "sub-pg-1", "u@acme.com", company="Co", role="Analyst", plan="pro")
+            self.assertEqual(jit.plan, "pro")
+            self.assertEqual(jit.company, "Co")
+
+            # self-serve plan change
+            self.assertTrue(store.set_plan(acct.id, "pro"))
+            self.assertEqual(store.verify(key).plan, "pro")
+            with self.assertRaises(ValueError):
+                store.set_plan(acct.id, "not-a-plan")
+
+            # v4 snapshot carries the new columns
+            self.assertEqual(store.dump()["version"], 4)
+
     def test_quota_upsert_blocks_over_the_postgres_branch(self):
         fake_module, _ = _install_fake_psycopg()
         with patch.dict(sys.modules, {"psycopg": fake_module}):

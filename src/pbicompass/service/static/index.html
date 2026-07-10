@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1a15">
 <title>PBICompass — AI Documentation & Governance for Power BI</title>
-<meta name="description" content="Turn any Power BI semantic model into enterprise-grade technical, audit, executive and business documentation — automatically, in minutes. Metadata only. Zero retention. Free to try, no signup.">
+<meta name="description" content="Turn any Power BI semantic model into enterprise-grade technical, audit, executive and business documentation — automatically, in minutes. Metadata only. Zero retention. Create a free account to get started.">
 <meta property="og:title" content="PBICompass — AI Documentation & Governance for Power BI">
 <meta property="og:description" content="Upload a .pbix or .pbip. Get four enterprise-ready documents in about a minute. Metadata only — nothing stored.">
 <meta property="og:type" content="website">
@@ -856,6 +856,29 @@ button[type=submit] .spin {
 }
 
 /* ==============================================================
+   CTA PANEL (replaces the old functional console — the uploader
+   now lives at /app behind sign-in)
+   ============================================================== */
+.cta-panel {
+  border-radius: 2.5rem; padding: 40px 44px;
+  display: grid; grid-template-columns: 1.2fr .8fr; gap: 36px; align-items: center;
+}
+.cta-copy h3 { font-size: clamp(1.5rem, 3vw, 2.1rem); letter-spacing: -.03em; color: #fff; margin-bottom: 12px; }
+.cta-copy p { color: hsl(0 0% 100% / .82); font-size: .92rem; font-weight: 300; line-height: 1.7; max-width: 44ch; }
+.cta-actions { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-top: 24px; }
+.cta-signin { font-size: .84rem; color: hsl(0 0% 100% / .72); }
+.cta-signin b { color: #fff; font-weight: 500; }
+.cta-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.cta-list li { position: relative; padding-left: 26px; font-size: .86rem; color: hsl(0 0% 100% / .88); }
+.cta-list li::before {
+  content: ""; position: absolute; left: 0; top: 6px; width: 14px; height: 8px;
+  border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg);
+}
+@media (max-width: 860px) {
+  .cta-panel { grid-template-columns: 1fr; gap: 26px; padding: 32px 26px; }
+}
+
+/* ==============================================================
    FOOTER
    ============================================================== */
 .site-foot { margin: 0 24px 24px; border-radius: 28px; padding: 26px 32px; }
@@ -902,7 +925,7 @@ button[type=submit] .spin {
 </head>
 <body>
 
-<a class="skip-link" href="#generate">Skip to the generator</a>
+<a class="skip-link" href="#generate">Skip to get started</a>
 
 <!-- page backdrop: quiet black gradient + grain (the video lives inside the hero) -->
 <div class="bg-base" aria-hidden="true"></div>
@@ -957,8 +980,8 @@ button[type=submit] .spin {
 
       <p class="hero-sub reveal d2">Upload a <b>.pbix</b> or <b>.pbip</b> — PBICompass reads the entire semantic model and generates enterprise-grade technical, audit, executive and business documentation automatically. <b>Nothing stored, ever.</b></p>
 
-      <a class="hero-cta liquid-glass-strong scale-hover cta-press reveal d3" href="#generate">
-        Document your model — free
+      <a class="hero-cta liquid-glass-strong scale-hover cta-press reveal d3" href="/app">
+        Get started — free
         <span class="cta-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></span>
       </a>
 
@@ -1405,193 +1428,37 @@ button[type=submit] .spin {
   </div>
 </section>
 
-<!-- ==================== GENERATOR (functional) ==================== -->
+<!-- ==================== CTA (marketing) ==================== -->
 <section class="generator" id="generate">
   <div class="wrap">
     <div class="sec-head">
-      <span class="sec-eyebrow liquid-glass reveal">Live console · free · no signup</span>
+      <span class="sec-eyebrow liquid-glass reveal">Ready when you are</span>
       <h2 class="sec-title reveal d1">One upload. <em>Four documents.</em></h2>
-      <p class="sec-sub reveal d2">Pick an AI engine or run fully offline. Your file is parsed in a sealed sandbox and shredded the moment your documents are rendered.</p>
+      <p class="sec-sub reveal d2">Create a free account, upload a <b>.pbix</b> or <b>.pbip</b>, and get enterprise-grade documentation in about a minute. Your file is parsed in a sealed sandbox and shredded the moment your documents are rendered.</p>
     </div>
 
-    <div class="console liquid-glass-strong reveal d2" id="container">
-      <div class="console-head">
-        <span class="console-live">secure sandbox · shredded after render</span>
-        <h3>Power BI Knowledge Studio</h3>
-        <p>Metadata only — row data is never read. Choose one document or generate all four.</p>
-      </div>
-
-      <!-- Signed-in account strip (Day 25, §7.6/§10) — hidden until /app/api/me
-           confirms a live session; a signed-out visitor sees nothing extra
-           here and the form behaves exactly as it always has. -->
-      <div id="account-strip" style="display:none; padding:22px 40px 0;">
-        <div class="liquid-glass" style="border-radius:18px; padding:16px 20px; display:flex; flex-direction:column; gap:10px;">
-          <div class="row" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-            <span class="pill liquid-glass" id="account-plan-badge">plan</span>
-            <span style="font-size:.82rem; color:hsl(0 0% 100% / .9)" id="account-email"></span>
-            <span style="font-size:.78rem; color:hsl(0 0% 100% / .68)" id="account-usage"></span>
-            <span style="margin-left:auto; display:flex; gap:14px; align-items:center;">
-              <button type="button" class="link-btn" id="toggle-recent-jobs">Recent jobs</button>
-              <a class="link-btn" href="/app">Dashboard</a>
-              <button type="button" class="link-btn" id="account-signout">Sign out</button>
-            </span>
-          </div>
-          <div id="recent-jobs-panel" style="display:none; font-size:.78rem; color:hsl(0 0% 100% / .82); border-top:1px solid hsl(0 0% 100% / .1); padding-top:10px;"></div>
+    <div class="cta-panel liquid-glass-strong reveal d2">
+      <div class="cta-copy">
+        <h3>Start documenting your models</h3>
+        <p>Free to start · no credit card · pick a plan at sign-up and change it anytime. Metadata only, nothing stored.</p>
+        <div class="cta-actions">
+          <a class="hero-cta liquid-glass-strong scale-hover cta-press" href="/app">
+            Create free account
+            <span class="cta-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+          </a>
+          <a class="cta-signin" href="/app">Already have an account? <b>Sign in</b></a>
         </div>
       </div>
-
-      <div class="console-body">
-        <noscript><p style="text-align:center; padding: 20px 0;">The generator needs JavaScript enabled.</p></noscript>
-        <form id="form">
-          <div class="tabs liquid-glass">
-            <button type="button" class="tab-btn active" data-tab="tab-config"><span class="tn">1</span><span class="txt">Source &amp; Engine</span></button>
-            <button type="button" class="tab-btn" data-tab="tab-control"><span class="tn">2</span><span class="txt">Document Control</span></button>
-            <button type="button" class="tab-btn" data-tab="tab-details"><span class="tn">3</span><span class="txt">Details &amp; Notes</span></button>
-          </div>
-
-          <!-- Tab 1 -->
-          <div class="tab-content active" id="tab-config">
-            <div class="form-group">
-              <label>Power BI Report File</label>
-              <div class="file-dropzone liquid-glass" onclick="document.getElementById('file').click()">
-                <div class="dz-row">
-                  <div class="dz-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 16.6A4.5 4.5 0 0 0 17.5 8.5h-1.3A7 7 0 1 0 4 15"/><path d="M12 12v9M8 17l4-4 4 4"/></svg></div>
-                  <div class="dz-copy">
-                    <p class="dz-main">Drop your Power BI report here</p>
-                    <p class="dz-sub">.pbix — or a .zip of a .pbip project folder · drag &amp; drop or browse</p>
-                  </div>
-                  <span class="dz-btn">Browse files</span>
-                </div>
-                <input type="file" id="file" accept=".pbix,.zip,.pbip">
-                <div class="file-name" id="file-name"></div>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>Documents to Generate</label>
-              <div class="doctype-grid">
-                <label class="doctype-option liquid-glass">
-                  <input type="checkbox" class="doctype-checkbox" value="technical" checked>
-                  <span class="doctype-text">
-                    <span class="doctype-name">Technical Documentation</span>
-                    <span class="doctype-desc">Full model, DAX &amp; architecture reference</span>
-                  </span>
-                </label>
-                <label class="doctype-option liquid-glass">
-                  <input type="checkbox" class="doctype-checkbox" value="audit">
-                  <span class="doctype-text">
-                    <span class="doctype-name">Audit &amp; Health Report</span>
-                    <span class="doctype-desc">Health score, best-practice checks, risks</span>
-                  </span>
-                </label>
-                <label class="doctype-option liquid-glass">
-                  <input type="checkbox" class="doctype-checkbox" value="executive">
-                  <span class="doctype-text">
-                    <span class="doctype-name">Executive Summary</span>
-                    <span class="doctype-desc">A 10-minute read for leaders &amp; stakeholders</span>
-                  </span>
-                </label>
-                <label class="doctype-option liquid-glass">
-                  <input type="checkbox" class="doctype-checkbox" value="user-guide">
-                  <span class="doctype-text">
-                    <span class="doctype-name">Business User Guide</span>
-                    <span class="doctype-desc">Plain-English walkthrough, zero jargon</span>
-                  </span>
-                </label>
-              </div>
-              <button type="button" class="link-btn" id="select-all-docs">Select all four</button>
-            </div>
-
-            <div class="grid-2">
-              <div class="form-group">
-                <label>Documentation Engine</label>
-                <select id="provider">
-                  <option value="none">Offline Engine (Deterministic Fallback)</option>
-                  <option value="anthropic">Claude (Opus 4.8 / Thinking)</option>
-                  <option value="gemini">Gemini (3.5 Flash)</option>
-                  <option value="cohere">Cohere (Command A)</option>
-                  <option value="meshapi">MeshAPI (one key, 1000+ models)</option>
-                </select>
-              </div>
-              <div class="form-group" id="provider-key-row">
-                <label>Engine API Key <small>(your Claude/Gemini/Cohere/MeshAPI key — used for this job only, never stored)</small></label>
-                <input type="text" id="provider-apikey" autocomplete="off" placeholder="Enter Claude/Gemini/Cohere/MeshAPI (rsk_...) key...">
-              </div>
-            </div>
-
-            <div class="grid-2" id="effort-row">
-              <div class="form-group">
-                <label>AI Thinking Effort <small>(higher takes longer, writes better prose)</small></label>
-                <select id="effort">
-                  <option value="low">Low — fastest, lighter reasoning</option>
-                  <option value="medium">Medium — balanced</option>
-                  <option value="high" selected>High — recommended</option>
-                  <option value="xhigh">X-High — deeper reasoning, slower</option>
-                  <option value="max">Max — best possible output, slowest</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-group" id="apikey-group">
-              <label>Account API Key <small>(optional — only if your PBICompass account requires it; unrelated to the engine key above)</small></label>
-              <input type="text" id="apikey" autocomplete="off" placeholder="Enter your PBICompass account API key...">
-              <p id="apikey-signedin-note" style="display:none; font-size:.76rem; color:hsl(0 0% 100% / .68); margin-top:8px;">Signed in — this upload will use your account automatically. Leave this blank unless you're using a separate API key.</p>
-            </div>
-          </div>
-
-          <!-- Tab 2 -->
-          <div class="tab-content" id="tab-control">
-            <div class="grid-2">
-              <div class="form-group"><label>Report Owner <small>(e.g. Sales Team)</small></label><input type="text" id="owner" placeholder="Specify owner..."></div>
-              <div class="form-group"><label>Target Audience</label><input type="text" id="audience" placeholder="BI developers, sales executives..."></div>
-            </div>
-            <div class="grid-2">
-              <div class="form-group"><label>Document Author</label><input type="text" id="author" placeholder="John Doe"></div>
-              <div class="form-group"><label>Document Reviewer / Approver</label><input type="text" id="reviewer" placeholder="Jane Smith"></div>
-            </div>
-            <div class="grid-2">
-              <div class="form-group"><label>Version</label><input type="text" id="version" placeholder="v1.0"></div>
-              <div class="form-group"><label>Status</label><input type="text" id="status-field" placeholder="Draft / Approved"></div>
-            </div>
-            <div class="grid-2">
-              <div class="form-group"><label>Refresh Schedule</label><input type="text" id="refresh" placeholder="Daily 8 AM EST"></div>
-              <div class="form-group"><label>Data Classification</label><input type="text" id="classification" placeholder="Internal Only / Restricted"></div>
-            </div>
-          </div>
-
-          <!-- Tab 3 -->
-          <div class="tab-content" id="tab-details">
-            <div class="form-group"><label>Primary Business Decision / Impact</label><textarea id="business_decision" placeholder="What key business decision or operational process does this report drive? (e.g. weekly inventory restocking checks)"></textarea></div>
-            <div class="form-group"><label>Business Requirements</label><textarea id="requirements" placeholder="Enter the business requirements/KPI definitions traceabilities (one per line)..."></textarea></div>
-            <div class="form-group"><label>Security &amp; RLS Validation Notes</label><textarea id="security_notes" placeholder="Notes on RLS/OLS validation methods, tested roles, active rules..."></textarea></div>
-            <div class="form-group"><label>Gateway, Latency &amp; Refresh Details</label><textarea id="refresh_notes" placeholder="Describe the gateway configuration, scheduled refresh intervals, typical runtime, and performance optimizations..."></textarea></div>
-            <div class="form-group"><label>Workspaces &amp; App Deployment</label><textarea id="deployment_notes" placeholder="Specify the environments (Dev, Test, Prod), app workspace links, deployment pipelines..."></textarea></div>
-            <div class="form-group"><label>Permissions &amp; Workspace Access Control</label><textarea id="access_notes" placeholder="Outline active user groups, workspace roles, app permissions..."></textarea></div>
-            <div class="form-group"><label>Glossary of Key Business Terms</label><textarea id="glossary" placeholder="Define any specific calculations, acronyms, or business rules used (e.g. Active Lead = contacted in last 30 days)..."></textarea></div>
-            <div class="form-group"><label>Business Assumptions &amp; Data Limitations</label><textarea id="assumptions" placeholder="Detail any constraints (e.g. data latency of 24h, currency conversion rates, excluded divisions)..."></textarea></div>
-            <div class="form-group"><label>Support Escalation &amp; Maintenance Policy</label><textarea id="support_notes" placeholder="First line support contacts, SLA policies, code backups, decommissioning plan..."></textarea></div>
-          </div>
-
-          <button type="submit" id="submit"><span class="spin" id="spin"></span><span id="submit-label">Generate documentation</span></button>
-        </form>
-
-        <div id="status" role="status" aria-live="polite"></div>
-        <div id="job-warnings"></div>
-        <div id="job-notes"></div>
-        <div id="progress-wrap" style="display:none">
-          <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-          <div id="progress-text" class="progress-text"></div>
-        </div>
-        <div id="downloads"></div>
-      </div>
-
-      <div class="console-foot">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        Files are processed in a secure sandbox. Uploaded metadata is shredded immediately after rendering.
-      </div>
+      <ul class="cta-list">
+        <li>Technical, Audit, Executive &amp; Business docs</li>
+        <li>Markdown · HTML · DOCX · PDF · JSON</li>
+        <li>Claude, Gemini, Cohere — or the offline engine</li>
+        <li>Zero retention · metadata only</li>
+      </ul>
     </div>
   </div>
 </section>
+
 
 <!-- ==================== FOOTER ==================== -->
 <footer class="site-foot liquid-glass">
@@ -1811,435 +1678,33 @@ document.querySelectorAll("[data-count]").forEach(el => cio.observe(el));
   }, { threshold: .5 }).observe(ring.closest(".sheet"));
 })();
 
-/* ============ APP LOGIC (functional — talks to the backend) ============ */
-const $ = (id) => document.getElementById(id);
-
-// File selection handler
-$("file").addEventListener("change", (e) => {
-  const f = e.target.files[0];
-  const fn = $("file-name");
-  fn.textContent = f ? f.name : "";
-  fn.classList.toggle("show", !!f);
-});
-
-// Drag and drop
-const dropzone = document.querySelector(".file-dropzone");
-dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag"); });
-dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
-dropzone.addEventListener("drop", (e) => {
-  e.preventDefault(); dropzone.classList.remove("drag");
-  if (e.dataTransfer.files.length) {
-    $("file").files = e.dataTransfer.files;
-    const fn = $("file-name");
-    fn.textContent = e.dataTransfer.files[0].name; fn.classList.add("show");
-  }
-});
-
-// Tabs
-const tabs = document.querySelectorAll(".tab-btn");
-tabs.forEach(tab => {
-  tab.addEventListener("click", () => {
-    tabs.forEach(t => t.classList.remove("active"));
-    document.querySelectorAll(".tab-content").forEach(tc => tc.classList.remove("active"));
-    tab.classList.add("active");
-    $(tab.dataset.tab).classList.add("active");
-  });
-});
-
-// Account API key persistence (hosted accounts/quotas — unrelated to the LLM engine key)
-const apikey = $("apikey");
-apikey.value = localStorage.getItem("pbicompass_key") || "";
-apikey.addEventListener("change", () => localStorage.setItem("pbicompass_key", apikey.value.trim()));
-// Bearer auth for /jobs and friends (Day 31): either a typed Account API
-// Key (anonymous/programmatic use) or a Supabase access token once signed
-// in — a live Supabase session always wins so a stale pasted key can't
-// shadow it. Bearer auth (of either kind) is never an ambient browser
-// credential, so unlike the retired session-cookie model, no CSRF token
-// is needed on top of it.
-let supaAccessToken = null;
-const authHeaders = () => {
-  const k = supaAccessToken || (apikey.value || "").trim();
-  return k ? { "Authorization": "Bearer " + k } : {};
-};
-
-// Signed-in account state (Day 25 -> Day 31, Supabase Auth) — reuses the
-// same /app/api/* endpoints the account dashboard (/app) already exposes,
-// now Bearer-token-authenticated instead of session-cookie-authenticated.
-// A signed-out visitor never has a token, so the strip stays hidden and
-// the page behaves exactly as it always has for anonymous/BYOK use.
-function fmtJobDate(ts) { return ts ? new Date(ts * 1000).toLocaleString() : "—"; }
-let byokEnabled = false;
-let supa = null;
-
-async function loadAccountStrip() {
-  let res;
-  try { res = await fetch("/app/api/me", { headers: authHeaders() }); }
-  catch { return; }
-  if (!res.ok) {
-    $("account-strip").style.display = "none";
-    $("apikey-group").style.display = "";
-    $("apikey-signedin-note").style.display = "none";
-    return; // signed out (or accounts not configured) — nothing to show
-  }
-  const me = await res.json();
-
-  $("rp-account-btn").textContent = me.email;
-  $("account-strip").style.display = "";
-  $("account-plan-badge").textContent = me.plan + " plan";
-  $("account-email").textContent = me.email;
-  $("account-usage").textContent = `${me.used_today} / ${me.daily_limit} documents today · ${me.remaining} remaining`;
-  $("apikey-group").style.display = "none";
-  $("apikey-signedin-note").style.display = "block";
-
-  $("account-signout").addEventListener("click", async () => {
-    if (supa) await supa.auth.signOut();
-    location.reload();
-  });
-
-  const jobsPanel = $("recent-jobs-panel");
-  let jobsLoaded = false;
-  $("toggle-recent-jobs").addEventListener("click", async () => {
-    const showing = jobsPanel.style.display !== "none";
-    if (showing) { jobsPanel.style.display = "none"; return; }
-    if (!jobsLoaded) {
-      try {
-        const jr = await fetch("/app/api/jobs", { headers: authHeaders() });
-        const { jobs } = await jr.json();
-        jobsPanel.innerHTML = jobs.length
-          ? jobs.slice(0, 8).map(j =>
-              `<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0;">
-                 <span>${escHtml(j.filename || "—")}</span>
-                 <span style="color:hsl(0 0% 100% / .6)">${escHtml(j.status)} · ${fmtJobDate(j.created_at)}</span>
-               </div>`).join("")
-          : "No jobs yet.";
-      } catch { jobsPanel.textContent = "Could not load recent jobs."; }
-      jobsLoaded = true;
-    }
-    jobsPanel.style.display = "block";
-  });
-}
-
-// Runs once at load: reads /app/api/config for the BYOK-UI flag (always)
-// and, when this deployment has Supabase configured, wires up the client
-// and re-checks the account strip on every auth-state change (sign-in,
-// sign-out, and the redirect back from an OAuth provider).
-(async function initAccount() {
+/* ============ SIGNED-IN HEADER (marketing page — no upload here) ============
+   The landing page is pure marketing now; the uploader, profile, keys and
+   jobs all live at /app. This only personalizes the header: if a Supabase
+   session already exists, the "Sign in" button becomes the user's email and
+   the eco-card heading greets them. Everything still points at /app — a
+   signed-out visitor sees the page exactly as before. */
+(async function initHeader() {
   const cfg = await fetch("/app/api/config").then(r => r.json()).catch(() => ({}));
-  byokEnabled = !!cfg.byok_enabled;
-  syncEffortVisibility();
-  if (!cfg.supabase_enabled) return; // self-host / API-key-only deployment
-  supa = supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
-  supa.auth.onAuthStateChange((_event, session) => {
-    supaAccessToken = session ? session.access_token : null;
-    loadAccountStrip();
-  });
+  if (!cfg.supabase_enabled || !window.supabase) return;
+  const supa = supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
+  const paint = (session) => {
+    const btn = document.getElementById("rp-account-btn");
+    if (!btn) return;
+    if (session && session.user) {
+      btn.textContent = session.user.email || "Your account";
+      btn.setAttribute("aria-label", "Go to your dashboard");
+      const eco = document.querySelector(".eco-card h3");
+      if (eco) eco.textContent = "Welcome back";
+    } else {
+      btn.textContent = "Sign in";
+    }
+  };
+  supa.auth.onAuthStateChange((_e, session) => paint(session));
   const { data: { session } } = await supa.auth.getSession();
-  supaAccessToken = session ? session.access_token : null;
-  loadAccountStrip();
+  paint(session);
 })();
 
-// Engine (Claude/Gemini) API key persistence — sent as a form field per job,
-// never as an auth header, never stored server-side.
-const providerApikey = $("provider-apikey");
-providerApikey.value = localStorage.getItem("pbicompass_provider_key") || "";
-providerApikey.addEventListener("change", () => localStorage.setItem("pbicompass_provider_key", providerApikey.value.trim()));
-
-// Effort is offered for every LLM engine — hide it only for the offline
-// engine; the engine key field only makes sense once an LLM engine is
-// selected. Every provider maps effort to its own native reasoning knob
-// where the configured model supports one (Anthropic always; Gemini via a
-// thinking budget; Cohere/MeshAPI only for reasoning-capable models, e.g.
-// command-a-reasoning / openai/gpt-5) — where it doesn't, the server-side
-// client accepts and ignores it rather than risk a rejected call (see
-// llm.py).
-const EFFORT_CAPABLE_PROVIDERS = ["anthropic", "gemini", "cohere", "meshapi"];
-function syncEffortVisibility() {
-  const isOffline = $("provider").value === "none";
-  $("effort-row").style.display = EFFORT_CAPABLE_PROVIDERS.includes($("provider").value) ? "" : "none";
-  // Day 31: the hosted default runs every job on the server's own provider
-  // key (PBICOMPASS_BYOK_UI unset/0) -- a visitor is never asked for their
-  // own Claude/Gemini/etc. key. Self-host deployments that still want
-  // per-job BYOK opt back in via that env var (byokEnabled, from
-  // /app/api/config, set by initAccount() above).
-  $("provider-key-row").style.display = (isOffline || !byokEnabled) ? "none" : "";
-}
-$("provider").addEventListener("change", syncEffortVisibility);
-syncEffortVisibility();
-
-// Document-type selection ("Select all four" toggle)
-const doctypeBoxes = () => [...document.querySelectorAll(".doctype-checkbox")];
-$("select-all-docs").addEventListener("click", () => {
-  const boxes = doctypeBoxes();
-  const allChecked = boxes.every(b => b.checked);
-  boxes.forEach(b => b.checked = !allChecked);
-  $("select-all-docs").textContent = allChecked ? "Select all four" : "Reset to Technical only";
-});
-
-// Elapsed time / estimated-completion progress bar.
-// The backend doesn't report per-agent progress, so this is a best-effort
-// estimate based on typical durations for the chosen engine/effort — it
-// approaches but never reaches 100% until the job actually completes.
-const ESTIMATED_SECONDS = {
-  none: 4,
-  anthropic: { low: 18, medium: 35, high: 60, xhigh: 100, max: 150 },
-  gemini: { low: 15, medium: 25, high: 40, xhigh: 65, max: 90 },
-  cohere: { low: 20, medium: 30, high: 45, xhigh: 65, max: 65 },
-  meshapi: { low: 20, medium: 30, high: 50, xhigh: 80, max: 80 },
-};
-let progressTimer = null;
-
-function estimatedSeconds() {
-  const provider = $("provider").value;
-  if (EFFORT_CAPABLE_PROVIDERS.includes(provider)) return ESTIMATED_SECONDS[provider][$("effort").value] || 60;
-  return ESTIMATED_SECONDS[provider] || 10;
-}
-
-function startProgress() {
-  const startedAt = Date.now();
-  const estimate = estimatedSeconds();
-  const wrap = $("progress-wrap"), fill = $("progress-fill"), text = $("progress-text");
-  fill.classList.remove("done");
-  wrap.style.display = "";
-  function tick() {
-    const elapsed = (Date.now() - startedAt) / 1000;
-    const pct = Math.min(96, (elapsed / estimate) * 100);
-    fill.style.width = pct + "%";
-    text.textContent = `Elapsed ${elapsed.toFixed(0)}s · estimated ~${estimate}s total (${EFFORT_CAPABLE_PROVIDERS.includes($("provider").value) ? $("effort").value + " effort" : $("provider").options[$("provider").selectedIndex].text})`;
-  }
-  tick();
-  progressTimer = setInterval(tick, 500);
-}
-
-function finishProgress(success) {
-  if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
-  const fill = $("progress-fill"), text = $("progress-text");
-  fill.style.width = "100%";
-  fill.classList.toggle("done", success);
-  const elapsed = text.textContent.match(/Elapsed (\d+)s/);
-  if (elapsed) text.textContent = `Finished in ${elapsed[1]}s`;
-}
-
-const FORMATS = {
-  html: "HTML Document", docx: "Word Document", pdf: "PDF Report", md: "Markdown",
-  json: "Raw JSON Schema", zip: "Download All (.zip)",
-};
-const DOC_TYPE_LABELS = {
-  technical: "Technical Documentation", audit: "Audit & Health Report",
-  executive: "Executive Summary", "user-guide": "Business User Guide",
-  index: "Documentation Hub",
-};
-const DL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>';
-
-function setStatus(msg, cls) {
-  const s = $("status"); s.textContent = msg; s.className = cls || "";
-}
-// Only these mean a section actually fell back to the deterministic/offline
-// engine instead of the selected AI provider — everything else the backend
-// warns about (the critic's unknown-name check, the grounding pass flagging
-// or correcting a claim, an enrichment/rules-file issue) is the AI engine
-// running normally and doing its job, not a degradation. Keeping the two
-// separated avoids telling a user "the offline engine was used" every time
-// the grounding pass (working as designed) has a note for them.
-const FALLBACK_MARKERS = [
-  "LLM call failed", "AI narrative unavailable", "malformed response", "provider unavailable",
-];
-function isFallbackWarning(w) {
-  return FALLBACK_MARKERS.some(m => w.includes(m));
-}
-function escHtml(s) {
-  return s.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
-}
-function renderWarnings(warnings) {
-  const fallbackBox = $("job-warnings"), noteBox = $("job-notes");
-  if (!Array.isArray(warnings) || !warnings.length) {
-    fallbackBox.classList.remove("show"); fallbackBox.innerHTML = "";
-    noteBox.classList.remove("show"); noteBox.innerHTML = "";
-    return;
-  }
-  const fallback = warnings.filter(isFallbackWarning);
-  const notes = warnings.filter(w => !isFallbackWarning(w));
-
-  if (fallback.length) {
-    const items = fallback.map(w => `<li>${escHtml(w)}</li>`).join("");
-    fallbackBox.innerHTML = `<strong>Some sections used the offline engine instead of the selected AI engine:</strong><ul>${items}</ul>`;
-    fallbackBox.classList.add("show");
-  } else {
-    fallbackBox.classList.remove("show"); fallbackBox.innerHTML = "";
-  }
-
-  if (notes.length) {
-    const items = notes.map(w => `<li>${escHtml(w)}</li>`).join("");
-    noteBox.innerHTML = `<strong>Notes from this run (the AI engine ran normally):</strong><ul>${items}</ul>`;
-    noteBox.classList.add("show");
-  } else {
-    noteBox.classList.remove("show"); noteBox.innerHTML = "";
-  }
-}
-function setBusy(busy) {
-  $("submit").disabled = busy;
-  $("spin").style.display = busy ? "inline-block" : "none";
-  $("submit-label").textContent = busy ? "Working…" : "Generate documentation";
-}
-
-$("form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const f = $("file").files[0];
-  if (!f) { setStatus("Please select a Power BI report file.", "err"); return; }
-  const selectedDocs = doctypeBoxes().filter(b => b.checked).map(b => b.value);
-  if (!selectedDocs.length) { setStatus("Select at least one document to generate.", "err"); return; }
-  setBusy(true);
-  $("downloads").innerHTML = "";
-  renderWarnings(null);
-  setStatus("Uploading and analyzing report structure...");
-
-  const fd = new FormData();
-  fd.append("file", f);
-  fd.append("provider", $("provider").value);
-  if (EFFORT_CAPABLE_PROVIDERS.includes($("provider").value)) fd.append("effort", $("effort").value);
-  if (byokEnabled && $("provider").value !== "none") {
-    const engineKey = providerApikey.value.trim();
-    if (engineKey) fd.append("provider_api_key", engineKey);
-  }
-  // Omit when it's just the default ["technical"] so single-document jobs stay
-  // on the exact same code path (flat "html"/"md" keys) as before this feature.
-  if (!(selectedDocs.length === 1 && selectedDocs[0] === "technical")) {
-    fd.append("document_types", selectedDocs.join(","));
-  }
-
-  const fields = [
-    "owner", "audience", "refresh", "author", "reviewer", "version",
-    "classification", "business_decision", "requirements", "security_notes",
-    "refresh_notes", "deployment_notes", "access_notes", "glossary",
-    "assumptions", "support_notes"
-  ];
-
-  const statusVal = $("status-field").value.trim();
-  if (statusVal) fd.append("status", statusVal);
-
-  fields.forEach(k => {
-    const el = $(k);
-    if (el) { const v = el.value.trim(); if (v) fd.append(k, v); }
-  });
-
-  let res;
-  try { res = await fetch("/jobs", { method: "POST", body: fd, headers: authHeaders() }); }
-  catch { setStatus("Connection failed. Is the backend service running?", "err"); setBusy(false); return; }
-  if (!res.ok) {
-    const j = await res.json().catch(() => ({}));
-    setStatus("Error: " + (j.detail || "Upload failed"), "err");
-    setBusy(false); return;
-  }
-  startProgress();
-  poll((await res.json()).job_id);
-});
-
-async function poll(jobId) {
-  setStatus("Generating your documents...");
-  // Client-side safety net: if the server-side watchdog (PBICOMPASS_JOB_TIMEOUT_SECONDS,
-  // default 600s) somehow never resolves the job, don't poll forever either.
-  const deadline = Date.now() + 15 * 60 * 1000;
-  for (;;) {
-    if (Date.now() > deadline) {
-      setStatus("Generation is taking unusually long and timed out client-side. It may still finish — check /jobs/" + jobId + " later, or try again.", "err");
-      finishProgress(false);
-      setBusy(false);
-      return;
-    }
-    await new Promise(r => setTimeout(r, 1200));
-    let res, job;
-    try {
-      res = await fetch("/jobs/" + jobId, { headers: authHeaders() });
-      job = await res.json();
-    } catch { continue; }
-    if (!res.ok) {
-      // e.g. 404 if the job record vanished (container restart, expired TTL),
-      // 401 if the key stopped working mid-poll — either way, stop looping.
-      setStatus("Error: " + (job.detail || ("Request failed (" + res.status + ")")), "err");
-      finishProgress(false);
-      setBusy(false);
-      return;
-    }
-    if (job.status === "done") {
-      const warnings = Array.isArray(job.warnings) ? job.warnings : [];
-      const hasFallback = warnings.some(isFallbackWarning);
-      const hasNotes = warnings.some(w => !isFallbackWarning(w));
-      setStatus(
-        hasFallback ? "Documentation compiled — with fallback notes below."
-          : hasNotes ? "Documentation compiled — with review notes below."
-          : "Documentation compiled successfully!",
-        hasFallback ? "warn" : "ok"
-      );
-      renderWarnings(job.warnings);
-      finishProgress(true);
-      renderDownloads(jobId, job.formats);
-      setBusy(false);
-      return;
-    }
-    if (job.status === "failed") {
-      setStatus("Generation failed: " + (job.error || "Execution error"), "err");
-      finishProgress(false);
-      setBusy(false);
-      return;
-    }
-  }
-}
-
-// ``formats`` is either flat keys ("html", "md", ...) when a single document
-// type was requested, or composite "type.format" keys ("audit.html") when
-// more than one was — group the download buttons by document type so
-// multi-document jobs read clearly.
-function renderDownloads(jobId, formats) {
-  const container = $("downloads");
-  container.innerHTML = "";
-  const groups = {};
-  formats.forEach(fmt => {
-    const dot = fmt.indexOf(".");
-    const type = dot === -1 ? null : fmt.slice(0, dot);
-    const shortFmt = dot === -1 ? fmt : fmt.slice(dot + 1);
-    (groups[type || "_single"] ||= { type, fmts: [] }).fmts.push(shortFmt);
-  });
-  let delay = 0;
-  Object.values(groups).forEach(({ type, fmts }) => {
-    const wrap = document.createElement("div");
-    wrap.className = "dl-group";
-    if (type) {
-      const h = document.createElement("div");
-      h.className = "dl-group-title";
-      h.textContent = DOC_TYPE_LABELS[type] || type;
-      wrap.appendChild(h);
-    }
-    const row = document.createElement("div");
-    row.className = "dl-group-row";
-    fmts.forEach(shortFmt => {
-      const key = type ? `${type}.${shortFmt}` : shortFmt;
-      const a = document.createElement("a");
-      a.href = "/jobs/" + jobId + "/download?format=" + key;
-      a.className = "download-btn";
-      a.style.animationDelay = (delay++ * 0.06) + "s";
-      a.innerHTML = DL_ICON + "<span>" + (FORMATS[shortFmt] || shortFmt.toUpperCase()) + "</span>";
-      a.addEventListener("click", (ev) => { ev.preventDefault(); downloadFile(a.href, key); });
-      row.appendChild(a);
-    });
-    wrap.appendChild(row);
-    container.appendChild(wrap);
-  });
-}
-
-async function downloadFile(url, fmt) {
-  try {
-    const r = await fetch(url, { headers: authHeaders() });
-    if (!r.ok) { alert("Download failed (" + r.status + ")."); return; }
-    const blob = await r.blob();
-    let name = "documentation." + fmt;
-    const cd = r.headers.get("content-disposition");
-    const mm = cd && cd.match(/filename="?([^"]+)"?/);
-    if (mm) name = mm[1];
-    const u = URL.createObjectURL(blob);
-    const t = document.createElement("a");
-    t.href = u; t.download = name; document.body.appendChild(t); t.click(); t.remove();
-    URL.revokeObjectURL(u);
-  } catch { alert("Download failed."); }
-}
 </script>
 </body>
 </html>

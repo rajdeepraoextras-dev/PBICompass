@@ -28,7 +28,7 @@ from fastapi import (BackgroundTasks, FastAPI, File, Form, HTTPException, Query,
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from . import supabase_auth
-from .accounts import AccountStore
+from .accounts import PLAN_LIMITS, AccountStore
 from .admin import AdminGuard, verify_admin_token
 from .supabase_auth import SupabaseAuthConfig
 from .jobs import JobStatus, JobStore
@@ -99,6 +99,25 @@ def _api_key(request: Request) -> str | None:
     return request.headers.get("x-api-key")
 
 
+def _onboarding_fields(claims: "supabase_auth.SupabaseClaims") -> dict:
+    """Extract the Day 33 onboarding fields (name/company/role/plan) a
+    signup form stashed in Supabase's own ``user_metadata`` at
+    ``supabase.auth.signUp()`` time -- they ride along in the verified JWT
+    with no extra round trip and no dependency on email-confirmation
+    timing. Only consulted by AccountStore on account *creation*; a
+    returning user's metadata is never re-applied over their own later
+    self-serve changes (e.g. a plan change from the Profile page)."""
+    metadata = claims.raw.get("user_metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+    return {
+        "name": str(metadata.get("name") or "").strip(),
+        "company": str(metadata.get("company") or "").strip(),
+        "role": str(metadata.get("role") or "").strip(),
+        "plan": str(metadata.get("plan") or "").strip(),
+    }
+
+
 def create_app(
     store: JobStore | None = None,
     *,
@@ -167,6 +186,10 @@ def create_app(
     index_html = (_STATIC / "index.html").read_text(encoding="utf-8")
     admin_html = (_STATIC / "admin.html").read_text(encoding="utf-8")
     app_html = (_STATIC / "app.html").read_text(encoding="utf-8")
+    # Shared design system (Day 33) — one stylesheet for / and /app so they
+    # render as one product instead of two visually unrelated pages. Same
+    # read-once-into-memory pattern as the HTML pages above.
+    theme_css = (_STATIC / "theme.css").read_text(encoding="utf-8")
     # Vendored (not CDN-loaded) supabase-js (Day 30, §2) -- a CDN outage
     # shouldn't be able to block sign-in. Read once at startup, same
     # in-memory-string pattern as the HTML pages above.
@@ -224,7 +247,7 @@ def create_app(
                     claims = None
                 if claims is not None:
                     acct = account_store.get_or_create_account_for_supabase_user(
-                        claims.sub, claims.email or ""
+                        claims.sub, claims.email or "", **_onboarding_fields(claims)
                     )
                     return acct.tenant, acct.plan
             else:
@@ -258,7 +281,9 @@ def create_app(
             claims = supabase_auth.verify_jwt(token, supabase_config)
         except supabase_auth.SupabaseAuthError as exc:
             raise HTTPException(status_code=401, detail="Not signed in.") from exc
-        acct = account_store.get_or_create_account_for_supabase_user(claims.sub, claims.email or "")
+        acct = account_store.get_or_create_account_for_supabase_user(
+            claims.sub, claims.email or "", **_onboarding_fields(claims)
+        )
         return claims, acct
 
     def _require_admin(request: Request) -> None:
@@ -281,6 +306,10 @@ def create_app(
     @app.get("/vendor/supabase.js")
     def vendor_supabase_js_route() -> Response:
         return Response(content=vendor_supabase_js, media_type="application/javascript")
+
+    @app.get("/theme.css")
+    def theme_css_route() -> Response:
+        return Response(content=theme_css, media_type="text/css")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -433,6 +462,9 @@ def create_app(
             "supabase_url": supabase_config.url if supabase_config else None,
             "supabase_anon_key": supabase_config.anon_key if supabase_config else None,
             "byok_enabled": _byok_ui_enabled(),
+            # Day 33: lets the signup/profile plan picker render real quota
+            # numbers instead of hardcoding them in the frontend.
+            "plan_limits": PLAN_LIMITS,
         }
 
     @app.get("/app/api/me")
@@ -445,10 +477,29 @@ def create_app(
             "email_verified": claims.email_verified,
             "tenant": acct.tenant,
             "plan": acct.plan,
+            "company": acct.company,
+            "role": acct.role,
             "used_today": used,
             "daily_limit": limit,
             "remaining": max(0, limit - used),
         }
+
+    @app.post("/app/api/plan")
+    async def app_set_plan(request: Request) -> dict:
+        """Self-serve plan change (Day 33) — trust-based, no payment step;
+        billing stays out of scope until a later sprint. Any signed-in
+        user can move themselves between plans in PLAN_LIMITS."""
+        _claims, acct = _require_user(request)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        plan = (body.get("plan") or "").strip() if isinstance(body, dict) else ""
+        try:
+            account_store.set_plan(acct.id, plan)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"plan": plan}
 
     @app.get("/app/api/keys")
     def app_list_keys(request: Request) -> dict:

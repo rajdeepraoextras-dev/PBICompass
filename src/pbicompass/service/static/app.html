@@ -1,280 +1,973 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Account — PBICompass</title>
+<meta name="theme-color" content="#0f1a15">
+<meta name="robots" content="noindex, nofollow">
+<title>Your Workspace — PBICompass</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M15 42V8h10a13 13 0 0 1 0 26h-6' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M32.5 15.5 20 21l5.5 2.5L28 29z' fill='white'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Source+Serif+4:ital,opsz,wght@1,8..60,300;1,8..60,400;1,8..60,500&display=swap" rel="stylesheet">
+<!-- Shared design system (Day 33) — same tokens/components as the landing page -->
+<link rel="stylesheet" href="/theme.css">
+<!-- Vendored (not CDN-loaded), same as / -- see static/vendor/supabase.js -->
 <script src="/vendor/supabase.js"></script>
 <style>
-  :root { --indigo:#4f46e5; --indigo-dark:#4338ca; --slate:#1e293b; --muted:#64748b;
-          --line:#e2e8f0; --bg:#f8fafc; --card:#fff; --ok:#059669; --warn:#b45309; --err:#dc2626; }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-         background:var(--bg); color:var(--slate); }
-  a { color:var(--indigo); }
-  .wrap { max-width: 880px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
-  header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; }
-  .brand { font-weight:700; font-size:1.15rem; }
-  .brand span { color:var(--indigo); }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:.75rem;
-          padding:1.25rem 1.35rem; margin-bottom:1.15rem; }
-  h1 { font-size:1.35rem; margin:.2rem 0 1rem; }
-  h2 { font-size:1rem; margin:0 0 .85rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
-  label { display:block; font-size:.85rem; color:var(--muted); margin:.6rem 0 .25rem; }
-  input { width:100%; padding:.6rem .7rem; border:1px solid var(--line); border-radius:.45rem; font-size:.95rem; }
-  button { font:inherit; cursor:pointer; border:0; border-radius:.45rem; padding:.55rem .95rem;
-           background:var(--indigo); color:#fff; font-weight:600; }
-  button:hover { background:var(--indigo-dark); }
-  button.ghost { background:transparent; color:var(--indigo); border:1px solid var(--line); }
-  button.danger { background:transparent; color:var(--err); border:1px solid var(--line); padding:.35rem .7rem; font-size:.85rem; }
-  button.ms { background:#2f2f2f; }
-  .row { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
-  .spacer { flex:1; }
-  table { width:100%; border-collapse:collapse; font-size:.9rem; }
-  th,td { text-align:left; padding:.5rem .4rem; border-bottom:1px solid var(--line); }
-  th { color:var(--muted); font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.03em; }
-  .badge { display:inline-block; font-size:.72rem; font-weight:700; padding:.12rem .5rem; border-radius:1rem; }
-  .badge.plan { background:#eef2ff; color:var(--indigo-dark); }
-  .badge.pri { background:#ecfdf5; color:var(--ok); }
-  .badge.ok { background:#ecfdf5; color:var(--ok); }
-  .badge.no { background:#fef3c7; color:var(--warn); }
-  .badge.st-done { background:#ecfdf5; color:var(--ok); }
-  .badge.st-failed { background:#fee2e2; color:var(--err); }
-  .badge.st-processing,.badge.st-queued { background:#eef2ff; color:var(--indigo-dark); }
-  .meter { height:.5rem; background:var(--line); border-radius:1rem; overflow:hidden; margin:.35rem 0; }
-  .meter > span { display:block; height:100%; background:var(--indigo); }
-  .muted { color:var(--muted); font-size:.85rem; }
-  .keybox { background:#0f172a; color:#e2e8f0; padding:.6rem .75rem; border-radius:.45rem;
-            font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82rem; word-break:break-all; margin:.5rem 0; }
-  .err { color:var(--err); font-size:.85rem; min-height:1.1rem; }
-  .info { color:var(--ok); font-size:.85rem; min-height:1.1rem; }
-  .hidden { display:none; }
-  .tabs { display:flex; gap:.5rem; margin-bottom:1rem; }
-  .tabs button { background:transparent; color:var(--muted); border:1px solid var(--line); }
-  .tabs button.active { background:var(--indigo); color:#fff; border-color:var(--indigo); }
+/* ==============================================================
+   /app — layout on top of the shared theme.css primitives
+   ============================================================== */
+.wrap { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+/* top bar (both signed-out and signed-in) */
+.appbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 26px 0 18px; }
+.appbar .brand-name { font-size: 1.3rem; }
+.appbar-right { display: inline-flex; align-items: center; gap: 12px; }
+.appbar-email { font-size: .82rem; color: hsl(0 0% 100% / .82); }
+
+/* ---- auth (signed-out) ---- */
+.auth-shell { max-width: 460px; margin: 4vh auto 6vh; }
+.auth-card { border-radius: 26px; padding: 30px 30px 34px; }
+.auth-head { text-align: center; margin-bottom: 22px; }
+.auth-head h1 { font-size: 1.7rem; letter-spacing: -.03em; color: #fff; margin-bottom: 8px; }
+.auth-head p { color: hsl(0 0% 100% / .74); font-size: .88rem; font-weight: 300; }
+.auth-tabs { margin-bottom: 24px; }
+.ms-row { margin-top: 18px; text-align: center; }
+.ms-row .or { display: flex; align-items: center; gap: 12px; color: hsl(0 0% 100% / .5); font-size: .74rem; margin: 6px 0 14px; }
+.ms-row .or::before, .ms-row .or::after { content: ""; flex: 1; height: 1px; background: hsl(0 0% 100% / .12); }
+.ms-btn {
+  width: 100%; padding: 13px; border-radius: 100px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  background: hsl(0 0% 100% / .08); color: #fff; border: none;
+  font-family: inherit; font-size: .88rem; font-weight: 500; transition: background .2s;
+}
+.ms-btn:hover { background: hsl(0 0% 100% / .14); }
+.ms-btn svg { width: 16px; height: 16px; }
+
+/* progressive signup steps */
+.signup-step { display: none; }
+.signup-step.active { display: block; animation: fadeUp .35s var(--ease); }
+.step-track { display: flex; gap: 6px; margin-bottom: 20px; }
+.step-dot { flex: 1; height: 4px; border-radius: 100px; background: hsl(0 0% 100% / .14); transition: background .3s; }
+.step-dot.on { background: #fff; }
+.step-title { font-size: .68rem; letter-spacing: .18em; text-transform: uppercase; color: hsl(0 0% 100% / .68); margin-bottom: 14px; }
+.step-nav { display: flex; gap: 10px; margin-top: 8px; }
+.step-nav .btn-ghost, .step-nav .btn-primary { margin-top: 0; flex: 1; width: auto; }
+
+/* plan picker cards */
+.plan-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 6px; }
+.plan-card {
+  border-radius: 18px; padding: 16px 18px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 4px; position: relative;
+  transition: transform .25s var(--ease), background .2s;
+}
+.plan-card:hover { transform: scale(1.015); }
+.plan-card.sel { background: hsl(0 0% 100% / .1); }
+.plan-card .radio {
+  position: absolute; top: 16px; right: 16px; width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid hsl(0 0% 100% / .35);
+}
+.plan-card.sel .radio { border-color: #fff; background: radial-gradient(circle at center, #fff 0 5px, transparent 6px); }
+.plan-card .p-name { font-size: .98rem; font-weight: 600; color: #fff; }
+.plan-card .p-quota { font-size: .8rem; color: hsl(0 0% 100% / .82); }
+.plan-card .p-note { font-size: .72rem; color: hsl(0 0% 100% / .6); }
+
+/* ---- signed-in app shell ---- */
+#app-shell { display: none; }
+.shell-nav { display: flex; gap: 6px; padding: 6px; border-radius: 100px; margin: 8px 0 26px; overflow-x: auto; }
+.nav-btn {
+  flex: 1; min-width: max-content; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  background: none; border: none; cursor: pointer; white-space: nowrap;
+  color: hsl(0 0% 100% / .78); padding: 11px 18px; border-radius: 100px;
+  font-family: inherit; font-size: .84rem; font-weight: 500;
+  transition: color .2s, background .25s;
+}
+.nav-btn:hover { color: #fff; }
+.nav-btn.active { color: #000; background: #fff; }
+.nav-btn svg { width: 15px; height: 15px; }
+.view { display: none; }
+.view.active { display: block; animation: fadeUp .35s var(--ease); }
+
+/* profile */
+.profile-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.profile-top .who h1 { font-size: 1.4rem; letter-spacing: -.02em; color: #fff; margin-bottom: 4px; }
+.usage-big { font-size: 2rem; font-weight: 600; letter-spacing: -.03em; color: #fff; }
+.usage-big small { font-size: .9rem; font-weight: 400; color: hsl(0 0% 100% / .6); }
+.kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; font-size: .88rem; }
+.kv dt { color: hsl(0 0% 100% / .6); }
+.kv dd { color: hsl(0 0% 100% / .92); }
+
+/* generator (moved from index.html) */
+.console-head { padding: 4px 0 18px; text-align: center; display: flex; flex-direction: column; gap: 6px; }
+.console-head h3 { font-size: 1.35rem; letter-spacing: -.03em; color: #fff; }
+.console-head p { color: hsl(0 0% 100% / .74); font-size: .85rem; font-weight: 300; }
+
+.file-dropzone { border-radius: 20px; padding: 20px 22px; cursor: pointer; transition: transform .3s var(--ease); }
+.file-dropzone:hover, .file-dropzone.drag { transform: scale(1.01); }
+.file-dropzone.drag { background: hsl(0 0% 100% / .06); }
+.dz-row { display: flex; align-items: center; gap: 16px; text-align: left; }
+.dz-ico { width: 46px; height: 46px; flex: none; border-radius: 50%; background: hsl(0 0% 100% / .1); color: #fff; display: flex; align-items: center; justify-content: center; }
+.dz-ico svg { width: 21px; height: 21px; }
+.dz-copy { flex: 1; min-width: 0; }
+.dz-main { font-size: .93rem; font-weight: 500; color: #fff; }
+.dz-sub { font-size: .73rem; color: hsl(0 0% 100% / .72); margin-top: 2px; }
+.dz-btn { flex: none; padding: 9px 18px; border-radius: 100px; font-size: .78rem; font-weight: 500; color: #fff; background: hsl(0 0% 100% / .1); transition: background .25s, color .25s; }
+.file-dropzone:hover .dz-btn, .file-dropzone.drag .dz-btn { background: #fff; color: #000; }
+.file-dropzone input[type=file] { display: none; }
+.file-name { font-size: .78rem; font-weight: 500; color: #fff; margin-top: 14px; padding-top: 12px; border-top: 1px solid hsl(0 0% 100% / .12); display: none; align-items: center; gap: 8px; }
+.file-name.show { display: flex; }
+.file-name::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #fff; flex: none; }
+@media (max-width: 560px) { .dz-row { flex-direction: column; text-align: center; gap: 12px; } .dz-btn { display: none; } }
+
+.doctype-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px; }
+@media (max-width: 640px) { .doctype-grid { grid-template-columns: 1fr; } }
+.doctype-option { display: flex; align-items: flex-start; gap: 10px; padding: 13px 15px; border-radius: 18px; cursor: pointer; margin-bottom: 0; transition: background .2s, transform .3s var(--ease); }
+.doctype-option:hover { transform: scale(1.02); }
+.doctype-option:has(input:checked) { background: hsl(0 0% 100% / .09); }
+.doctype-option input[type=checkbox] { margin-top: 3px; accent-color: #fff; width: 15px; height: 15px; flex: none; cursor: pointer; }
+.doctype-text { display: flex; flex-direction: column; gap: 2px; }
+.doctype-name { font-size: .85rem; font-weight: 500; color: #fff; }
+.doctype-desc { font-size: .72rem; color: hsl(0 0% 100% / .72); line-height: 1.45; }
+
+.progress-track { margin-top: 16px; height: 5px; border-radius: 100px; background: hsl(0 0% 100% / .1); overflow: hidden; }
+.progress-fill { height: 100%; width: 0%; border-radius: 100px; background: hsl(0 0% 100% / .85); transition: width .4s var(--ease); }
+.progress-fill.done { background: #fff; }
+.progress-text { margin-top: 9px; text-align: center; font-size: .68rem; letter-spacing: .05em; color: hsl(0 0% 100% / .72); }
+
+#job-warnings, #job-notes { margin-top: 12px; padding: 13px 16px; border-radius: 16px; display: none; font-size: .8rem; line-height: 1.55; text-align: left; background: hsl(0 0% 100% / .05); }
+#job-warnings { color: var(--status-warn); }
+#job-notes { color: hsl(0 0% 100% / .9); }
+#job-warnings.show, #job-notes.show { display: block; }
+#job-warnings ul, #job-notes ul { margin: 6px 0 0 18px; }
+
+#downloads { display: flex; flex-direction: column; margin-top: 6px; }
+.dl-group { margin-top: 16px; }
+.dl-group-title { font-size: .64rem; font-weight: 500; color: hsl(0 0% 100% / .78); text-transform: uppercase; letter-spacing: .2em; margin-bottom: 9px; text-align: center; }
+.dl-group-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.download-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 100px; background: hsl(0 0% 100% / .07); color: #fff; font-size: .8rem; font-weight: 500; transition: transform .3s var(--ease), background .2s; animation: fadeUp .4s var(--ease) backwards; }
+.download-btn:hover { transform: scale(1.05); background: hsl(0 0% 100% / .14); }
+.download-btn svg { width: 14px; height: 14px; }
+
+.err-text { color: var(--status-err); font-size: .84rem; min-height: 1.1rem; margin-top: 4px; }
+.ok-text { color: var(--status-ok); font-size: .84rem; min-height: 1.1rem; margin-top: 4px; }
+.site-foot-mini { text-align: center; padding: 30px 0 40px; color: hsl(0 0% 100% / .5); font-size: .74rem; }
+.site-foot-mini a { color: hsl(0 0% 100% / .7); }
 </style>
 </head>
 <body>
+<div class="bg-base" aria-hidden="true"></div>
+<div class="bg-grain" aria-hidden="true"></div>
+
+<div class="page">
 <div class="wrap">
-  <header>
-    <div class="brand">PBI<span>Compass</span></div>
-    <div id="hdr-right"></div>
-  </header>
 
-  <!-- Signed-out view -->
-  <section id="auth" class="hidden">
-    <div class="card" style="max-width:26rem;margin:2rem auto;">
-      <div class="tabs">
-        <button id="tab-login" class="active" onclick="showTab('login')">Sign in</button>
-        <button id="tab-signup" onclick="showTab('signup')">Create account</button>
+  <div class="appbar">
+    <a class="brand" href="/" aria-label="PBICompass home">
+      <svg class="brand-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <path d="M15 42V8h10a13 13 0 0 1 0 26h-6" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M33 14.5 19.5 20.6l6 2.7 2.7 6z" fill="currentColor" stroke="none"/>
+      </svg>
+      <span class="brand-name">PBI<span>Compass</span></span>
+    </a>
+    <div class="appbar-right" id="appbar-right">
+      <a class="account-btn liquid-glass scale-hover" href="/">← Back to site</a>
+    </div>
+  </div>
+
+  <!-- =============================================================
+       SIGNED-OUT — sign in / sign up
+       ============================================================= -->
+  <section id="auth" class="auth-shell hidden">
+    <div class="auth-card liquid-glass-strong">
+      <div class="auth-head">
+        <h1 id="auth-title">Welcome back</h1>
+        <p id="auth-sub">Sign in to generate documentation and manage your account.</p>
       </div>
+
+      <div class="tabs auth-tabs liquid-glass">
+        <button type="button" class="tab-btn active" id="tab-login" onclick="showAuthTab('login')">Sign in</button>
+        <button type="button" class="tab-btn" id="tab-signup" onclick="showAuthTab('signup')">Create account</button>
+      </div>
+
+      <!-- Sign in -->
       <form id="login-form">
-        <label>Email</label><input type="email" name="email" required>
-        <label>Password</label><input type="password" name="password" required>
-        <div class="err" id="login-err"></div>
-        <div class="row"><button type="submit">Sign in</button></div>
+        <div class="form-group"><label>Email</label><input type="email" name="email" autocomplete="email" required></div>
+        <div class="form-group"><label>Password</label><input type="password" name="password" autocomplete="current-password" required></div>
+        <div class="err-text" id="login-err"></div>
+        <button type="submit" class="btn-primary"><span class="spin" id="login-spin"></span><span>Sign in</span></button>
       </form>
+
+      <!-- Sign up — progressive, 3 steps -->
       <form id="signup-form" class="hidden">
-        <label>Email</label><input type="email" name="email" required>
-        <label>Name (optional)</label><input type="text" name="name">
-        <label>Password (min 8 characters)</label><input type="password" name="password" required minlength="8">
-        <div class="err" id="signup-err"></div>
-        <div class="info" id="signup-info"></div>
-        <div class="row"><button type="submit">Create account</button></div>
-      </form>
-      <div id="ms-wrap" class="hidden" style="margin-top:1rem;text-align:center;">
-        <div class="muted" style="margin:.5rem 0;">or</div>
-        <button type="button" class="ms" id="ms-btn">Sign in with Microsoft</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- Signed-in dashboard -->
-  <section id="dash" class="hidden">
-    <div class="card">
-      <div class="row">
-        <div>
-          <h1 style="margin:0" id="d-email"></h1>
-          <div class="muted" id="d-verify"></div>
+        <div class="step-track">
+          <div class="step-dot on" data-dot="0"></div>
+          <div class="step-dot" data-dot="1"></div>
+          <div class="step-dot" data-dot="2"></div>
         </div>
-        <div class="spacer"></div>
-        <span class="badge plan" id="d-plan"></span>
+
+        <!-- Step 1: account -->
+        <div class="signup-step active" data-step="0">
+          <div class="step-title">Step 1 — Your login</div>
+          <div class="form-group"><label>Email</label><input type="email" name="email" autocomplete="email" required></div>
+          <div class="form-group"><label>Password <small>(min 8 characters)</small></label><input type="password" name="password" autocomplete="new-password" minlength="8" required></div>
+          <div class="step-nav"><button type="button" class="btn-primary" data-next="1">Continue</button></div>
+        </div>
+
+        <!-- Step 2: about you -->
+        <div class="signup-step" data-step="1">
+          <div class="step-title">Step 2 — About you</div>
+          <div class="form-group"><label>Full name</label><input type="text" name="name" autocomplete="name" placeholder="Jane Smith"></div>
+          <div class="form-group"><label>Company <small>(optional)</small></label><input type="text" name="company" autocomplete="organization" placeholder="Acme Analytics"></div>
+          <div class="form-group"><label>Role / job title <small>(optional)</small></label><input type="text" name="role" autocomplete="organization-title" placeholder="BI Developer, Data Analyst…"></div>
+          <div class="step-nav">
+            <button type="button" class="btn-ghost" data-back="0">Back</button>
+            <button type="button" class="btn-primary" data-next="2">Continue</button>
+          </div>
+        </div>
+
+        <!-- Step 3: plan -->
+        <div class="signup-step" data-step="2">
+          <div class="step-title">Step 3 — Choose a plan</div>
+          <div class="plan-grid" id="signup-plans"><!-- populated from /app/api/config --></div>
+          <p class="muted" style="margin:4px 0 12px;">Paid tiers are granted instantly, no card required — billing arrives later. You can change your plan anytime from your profile.</p>
+          <div class="err-text" id="signup-err"></div>
+          <div class="ok-text" id="signup-info"></div>
+          <div class="step-nav">
+            <button type="button" class="btn-ghost" data-back="1">Back</button>
+            <button type="submit" class="btn-primary"><span class="spin" id="signup-spin"></span><span>Create account</span></button>
+          </div>
+        </div>
+      </form>
+
+      <div id="ms-wrap" class="ms-row hidden">
+        <div class="or">or</div>
+        <button type="button" class="ms-btn" id="ms-btn">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#f25022" d="M1 1h10v10H1z"/><path fill="#7fba00" d="M13 1h10v10H13z"/><path fill="#00a4ef" d="M1 13h10v10H1z"/><path fill="#ffb900" d="M13 13h10v10H13z"/></svg>
+          Continue with Microsoft
+        </button>
+      </div>
+    </div>
+    <p class="site-foot-mini">Metadata only · zero retention · <a href="/">about PBICompass →</a></p>
+  </section>
+
+  <!-- =============================================================
+       SIGNED-IN — app shell
+       ============================================================= -->
+  <section id="app-shell">
+    <nav class="shell-nav liquid-glass" role="tablist">
+      <button class="nav-btn active" data-view="generate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        Generate
+      </button>
+      <button class="nav-btn" data-view="profile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        Profile
+      </button>
+      <button class="nav-btn" data-view="keys">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.5 12.5 20 3M16 7l3 3"/></svg>
+        API Keys
+      </button>
+      <button class="nav-btn" data-view="jobs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        Jobs
+      </button>
+    </nav>
+
+    <!-- ===== GENERATE ===== -->
+    <div class="view active" id="view-generate">
+      <div class="console liquid-glass-strong panel-card" style="padding:26px 30px 32px;">
+        <div class="console-head">
+          <span class="pill liquid-glass" style="align-self:center; margin-bottom:6px;">secure sandbox · shredded after render</span>
+          <h3>Power BI Knowledge Studio</h3>
+          <p>Metadata only — row data is never read. Choose one document or generate all four.</p>
+        </div>
+
+        <form id="gen-form">
+          <div class="tabs liquid-glass" style="margin-bottom:26px;">
+            <button type="button" class="tab-btn active" data-tab="tab-config"><span class="tn">1</span><span class="txt">Source &amp; Engine</span></button>
+            <button type="button" class="tab-btn" data-tab="tab-control"><span class="tn">2</span><span class="txt">Document Control</span></button>
+            <button type="button" class="tab-btn" data-tab="tab-details"><span class="tn">3</span><span class="txt">Details &amp; Notes</span></button>
+          </div>
+
+          <!-- Tab 1 -->
+          <div class="tab-content active" id="tab-config">
+            <div class="form-group">
+              <label>Power BI Report File</label>
+              <div class="file-dropzone liquid-glass" onclick="document.getElementById('file').click()">
+                <div class="dz-row">
+                  <div class="dz-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 16.6A4.5 4.5 0 0 0 17.5 8.5h-1.3A7 7 0 1 0 4 15"/><path d="M12 12v9M8 17l4-4 4 4"/></svg></div>
+                  <div class="dz-copy">
+                    <p class="dz-main">Drop your Power BI report here</p>
+                    <p class="dz-sub">.pbix — or a .zip of a .pbip project folder · drag &amp; drop or browse</p>
+                  </div>
+                  <span class="dz-btn">Browse files</span>
+                </div>
+                <input type="file" id="file" accept=".pbix,.zip,.pbip">
+                <div class="file-name" id="file-name"></div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Documents to Generate</label>
+              <div class="doctype-grid">
+                <label class="doctype-option liquid-glass">
+                  <input type="checkbox" class="doctype-checkbox" value="technical" checked>
+                  <span class="doctype-text"><span class="doctype-name">Technical Documentation</span><span class="doctype-desc">Full model, DAX &amp; architecture reference</span></span>
+                </label>
+                <label class="doctype-option liquid-glass">
+                  <input type="checkbox" class="doctype-checkbox" value="audit">
+                  <span class="doctype-text"><span class="doctype-name">Audit &amp; Health Report</span><span class="doctype-desc">Health score, best-practice checks, risks</span></span>
+                </label>
+                <label class="doctype-option liquid-glass">
+                  <input type="checkbox" class="doctype-checkbox" value="executive">
+                  <span class="doctype-text"><span class="doctype-name">Executive Summary</span><span class="doctype-desc">A 10-minute read for leaders &amp; stakeholders</span></span>
+                </label>
+                <label class="doctype-option liquid-glass">
+                  <input type="checkbox" class="doctype-checkbox" value="user-guide">
+                  <span class="doctype-text"><span class="doctype-name">Business User Guide</span><span class="doctype-desc">Plain-English walkthrough, zero jargon</span></span>
+                </label>
+              </div>
+              <button type="button" class="link-btn" id="select-all-docs">Select all four</button>
+            </div>
+
+            <div class="grid-2">
+              <div class="form-group">
+                <label>Documentation Engine</label>
+                <select id="provider">
+                  <option value="none">Offline Engine (Deterministic Fallback)</option>
+                  <option value="anthropic">Claude (Opus 4.8 / Thinking)</option>
+                  <option value="gemini">Gemini (3.5 Flash)</option>
+                  <option value="cohere">Cohere (Command A)</option>
+                  <option value="meshapi">MeshAPI (one key, 1000+ models)</option>
+                </select>
+              </div>
+              <div class="form-group" id="provider-key-row">
+                <label>Engine API Key <small>(your Claude/Gemini/Cohere/MeshAPI key — used for this job only, never stored)</small></label>
+                <input type="text" id="provider-apikey" autocomplete="off" placeholder="Enter Claude/Gemini/Cohere/MeshAPI (rsk_...) key...">
+              </div>
+            </div>
+
+            <div class="grid-2" id="effort-row">
+              <div class="form-group">
+                <label>AI Thinking Effort <small>(higher takes longer, writes better prose)</small></label>
+                <select id="effort">
+                  <option value="low">Low — fastest, lighter reasoning</option>
+                  <option value="medium">Medium — balanced</option>
+                  <option value="high" selected>High — recommended</option>
+                  <option value="xhigh">X-High — deeper reasoning, slower</option>
+                  <option value="max">Max — best possible output, slowest</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 2 -->
+          <div class="tab-content" id="tab-control">
+            <div class="grid-2">
+              <div class="form-group"><label>Report Owner <small>(e.g. Sales Team)</small></label><input type="text" id="owner" placeholder="Specify owner..."></div>
+              <div class="form-group"><label>Target Audience</label><input type="text" id="audience" placeholder="BI developers, sales executives..."></div>
+            </div>
+            <div class="grid-2">
+              <div class="form-group"><label>Document Author</label><input type="text" id="author" placeholder="John Doe"></div>
+              <div class="form-group"><label>Document Reviewer / Approver</label><input type="text" id="reviewer" placeholder="Jane Smith"></div>
+            </div>
+            <div class="grid-2">
+              <div class="form-group"><label>Version</label><input type="text" id="version" placeholder="v1.0"></div>
+              <div class="form-group"><label>Status</label><input type="text" id="status-field" placeholder="Draft / Approved"></div>
+            </div>
+            <div class="grid-2">
+              <div class="form-group"><label>Refresh Schedule</label><input type="text" id="refresh" placeholder="Daily 8 AM EST"></div>
+              <div class="form-group"><label>Data Classification</label><input type="text" id="classification" placeholder="Internal Only / Restricted"></div>
+            </div>
+          </div>
+
+          <!-- Tab 3 -->
+          <div class="tab-content" id="tab-details">
+            <div class="form-group"><label>Primary Business Decision / Impact</label><textarea id="business_decision" placeholder="What key business decision or operational process does this report drive?"></textarea></div>
+            <div class="form-group"><label>Business Requirements</label><textarea id="requirements" placeholder="Enter the business requirements/KPI definitions (one per line)..."></textarea></div>
+            <div class="form-group"><label>Security &amp; RLS Validation Notes</label><textarea id="security_notes" placeholder="Notes on RLS/OLS validation methods, tested roles, active rules..."></textarea></div>
+            <div class="form-group"><label>Gateway, Latency &amp; Refresh Details</label><textarea id="refresh_notes" placeholder="Gateway configuration, scheduled refresh intervals, typical runtime..."></textarea></div>
+            <div class="form-group"><label>Workspaces &amp; App Deployment</label><textarea id="deployment_notes" placeholder="Environments (Dev, Test, Prod), app workspace links, deployment pipelines..."></textarea></div>
+            <div class="form-group"><label>Permissions &amp; Workspace Access Control</label><textarea id="access_notes" placeholder="Active user groups, workspace roles, app permissions..."></textarea></div>
+            <div class="form-group"><label>Glossary of Key Business Terms</label><textarea id="glossary" placeholder="Define specific calculations, acronyms, or business rules..."></textarea></div>
+            <div class="form-group"><label>Business Assumptions &amp; Data Limitations</label><textarea id="assumptions" placeholder="Constraints (data latency, currency conversion, excluded divisions)..."></textarea></div>
+            <div class="form-group"><label>Support Escalation &amp; Maintenance Policy</label><textarea id="support_notes" placeholder="First line support contacts, SLA policies, code backups..."></textarea></div>
+          </div>
+
+          <button type="submit" id="gen-submit" class="btn-primary"><span class="spin" id="gen-spin"></span><span id="gen-label">Generate documentation</span></button>
+        </form>
+
+        <div id="status" class="status-line" role="status" aria-live="polite"></div>
+        <div id="job-warnings"></div>
+        <div id="job-notes"></div>
+        <div id="progress-wrap" style="display:none">
+          <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+          <div id="progress-text" class="progress-text"></div>
+        </div>
+        <div id="downloads"></div>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Usage today</h2>
-      <div class="meter"><span id="d-meter"></span></div>
-      <div class="muted" id="d-usage"></div>
-    </div>
-
-    <div class="card">
-      <div class="row"><h2 style="margin:0">API keys</h2><div class="spacer"></div>
-        <button class="ghost" onclick="createKey()">+ New key</button></div>
-      <div id="new-key" class="hidden">
-        <div class="muted">Copy this key now — it won't be shown again:</div>
-        <div class="keybox" id="new-key-val"></div>
+    <!-- ===== PROFILE ===== -->
+    <div class="view" id="view-profile">
+      <div class="panel-card liquid-glass-strong">
+        <div class="profile-top">
+          <div class="who">
+            <h1 id="p-name">—</h1>
+            <div class="muted" id="p-email"></div>
+          </div>
+          <div style="flex:1"></div>
+          <span class="pill liquid-glass" id="p-plan-badge">plan</span>
+          <span class="badge" id="p-verify"></span>
+        </div>
       </div>
-      <table><thead><tr><th>Name</th><th>Created</th><th></th></tr></thead>
-        <tbody id="keys-body"></tbody></table>
-      <div class="muted" id="keys-empty"></div>
+
+      <div class="panel-card liquid-glass">
+        <h2>Usage today</h2>
+        <div class="usage-big"><span id="p-used">0</span><small> / <span id="p-limit">0</span> documents</small></div>
+        <div class="meter"><span id="p-meter"></span></div>
+        <div class="muted" id="p-remaining"></div>
+      </div>
+
+      <div class="panel-card liquid-glass">
+        <h2>Your details</h2>
+        <dl class="kv">
+          <dt>Company</dt><dd id="p-company">—</dd>
+          <dt>Role</dt><dd id="p-role">—</dd>
+          <dt>Account tenant</dt><dd id="p-tenant" style="font-family:ui-monospace,monospace;font-size:.8rem;">—</dd>
+        </dl>
+      </div>
+
+      <div class="panel-card liquid-glass">
+        <h2>Plan</h2>
+        <p class="muted" style="margin-bottom:12px;">Change your plan anytime. Paid tiers are granted instantly — no card required until billing launches.</p>
+        <div class="plan-grid" id="profile-plans"><!-- populated --></div>
+        <div class="err-text" id="plan-err"></div>
+        <div class="ok-text" id="plan-ok"></div>
+      </div>
     </div>
 
-    <div class="card">
-      <h2>Recent jobs</h2>
-      <table><thead><tr><th>File</th><th>Status</th><th>Created</th></tr></thead>
-        <tbody id="jobs-body"></tbody></table>
-      <div class="muted" id="jobs-empty"></div>
+    <!-- ===== API KEYS ===== -->
+    <div class="view" id="view-keys">
+      <div class="panel-card liquid-glass-strong">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+          <h2 style="margin:0;">API keys</h2>
+          <div style="flex:1"></div>
+          <button class="btn-ghost" onclick="createKey()">+ New key</button>
+        </div>
+        <p class="muted" style="margin-bottom:12px;">For programmatic access to the <code>/jobs</code> API. Your browser session doesn't need one.</p>
+        <div id="new-key" class="hidden">
+          <div class="muted">Copy this key now — it won't be shown again:</div>
+          <div class="keybox" id="new-key-val"></div>
+        </div>
+        <table class="data-table"><thead><tr><th>Name</th><th>Created</th><th></th></tr></thead>
+          <tbody id="keys-body"></tbody></table>
+        <div class="muted" id="keys-empty" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- ===== JOBS ===== -->
+    <div class="view" id="view-jobs">
+      <div class="panel-card liquid-glass-strong">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+          <h2 style="margin:0;">Recent jobs</h2>
+          <div style="flex:1"></div>
+          <button class="btn-ghost" onclick="loadJobs()">Refresh</button>
+        </div>
+        <p class="muted" style="margin-bottom:12px;">Status and timestamps only — generated documents are never retained on our servers.</p>
+        <table class="data-table"><thead><tr><th>File</th><th>Status</th><th>Created</th></tr></thead>
+          <tbody id="jobs-body"></tbody></table>
+        <div class="muted" id="jobs-empty" style="margin-top:10px;"></div>
+      </div>
     </div>
   </section>
-</div>
+
+  <p class="site-foot-mini" id="signedin-foot" style="display:none;">
+    Files are processed in a secure sandbox and shredded immediately after rendering · <a href="/">about →</a>
+  </p>
+
+</div><!-- /wrap -->
+</div><!-- /page -->
 
 <script>
-const $ = s => document.querySelector(s);
-let supa = null;      // the supabase-js client, created once /app/api/config resolves
+const $ = s => document.getElementById(s);
+let supa = null;         // supabase-js client, created once /app/api/config resolves
 let accessToken = null;
+let cfg = {};
+let planLimits = { free: 10, pro: 200, enterprise: 100000 };
+let currentPlan = "free";
 
-async function api(path, opts={}) {
+/* ---------- helpers ---------- */
+async function api(path, opts = {}) {
   opts.headers = Object.assign({}, opts.headers);
   if (accessToken) opts.headers["Authorization"] = "Bearer " + accessToken;
   if (opts.method && opts.method !== "GET") opts.headers["Content-Type"] = "application/json";
-  // Bearer auth is never an ambient browser credential (unlike the retired
-  // session cookie), so no CSRF token is needed on state-changing calls here.
   return fetch(path, opts);
 }
-function fmtDate(ts) { return ts ? new Date(ts*1000).toLocaleString() : "—"; }
-
-function showTab(which) {
-  $("#tab-login").classList.toggle("active", which==="login");
-  $("#tab-signup").classList.toggle("active", which==="signup");
-  $("#login-form").classList.toggle("hidden", which!=="login");
-  $("#signup-form").classList.toggle("hidden", which!=="signup");
+function fmtDate(ts) { return ts ? new Date(ts * 1000).toLocaleString() : "—"; }
+function escHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function planLabel(p) { return p.charAt(0).toUpperCase() + p.slice(1); }
+function quotaText(p) {
+  const n = planLimits[p];
+  return n >= 100000 ? "Unlimited documents / day" : n + " documents / day";
 }
 
-async function loadDashboard(me) {
-  $("#auth").classList.add("hidden");
-  $("#dash").classList.remove("hidden");
-  $("#hdr-right").innerHTML = '<button class="ghost" id="logout-btn">Sign out</button>';
-  $("#logout-btn").onclick = async () => {
-    await supa.auth.signOut();
-    location.reload();
-  };
-  $("#d-email").textContent = me.email || "";
-  $("#d-verify").innerHTML = me.email_verified
-    ? '<span class="badge ok">Email verified</span>'
-    : '<span class="badge no">Email not verified</span>';
-  $("#d-plan").textContent = me.plan + " plan";
-  const pct = me.daily_limit ? Math.min(100, Math.round(100*me.used_today/me.daily_limit)) : 0;
-  $("#d-meter").style.width = pct + "%";
-  $("#d-usage").textContent = `${me.used_today} / ${me.daily_limit} documents today · ${me.remaining} remaining`;
-  await loadKeys(); await loadJobs();
+/* ---------- auth tab switching ---------- */
+function showAuthTab(which) {
+  const isLogin = which === "login";
+  $("tab-login").classList.toggle("active", isLogin);
+  $("tab-signup").classList.toggle("active", !isLogin);
+  $("login-form").classList.toggle("hidden", !isLogin);
+  $("signup-form").classList.toggle("hidden", isLogin);
+  $("auth-title").textContent = isLogin ? "Welcome back" : "Create your account";
+  $("auth-sub").textContent = isLogin
+    ? "Sign in to generate documentation and manage your account."
+    : "Free to start — then upload a model and generate four documents.";
 }
 
+/* ---------- plan pickers (signup + profile) ---------- */
+function renderPlanCards(container, selected, onPick) {
+  container.innerHTML = "";
+  ["free", "pro", "enterprise"].forEach(p => {
+    const card = document.createElement("div");
+    card.className = "plan-card liquid-glass" + (p === selected ? " sel" : "");
+    const note = p === "free" ? "Always free" : "Granted instantly · billing coming soon";
+    card.innerHTML =
+      `<span class="radio"></span>
+       <span class="p-name">${planLabel(p)}</span>
+       <span class="p-quota">${quotaText(p)}</span>
+       <span class="p-note">${note}</span>`;
+    card.addEventListener("click", () => {
+      [...container.children].forEach(c => c.classList.remove("sel"));
+      card.classList.add("sel");
+      onPick(p);
+    });
+    container.appendChild(card);
+  });
+}
+
+let signupPlan = "free";
+
+/* ---------- progressive signup navigation ---------- */
+function gotoStep(n) {
+  document.querySelectorAll(".signup-step").forEach(s => s.classList.toggle("active", +s.dataset.step === n));
+  document.querySelectorAll(".step-dot").forEach(d => d.classList.toggle("on", +d.dataset.dot <= n));
+}
+document.querySelectorAll("[data-next]").forEach(b => b.addEventListener("click", () => {
+  // Validate the current step's required inputs before advancing.
+  const step = b.closest(".signup-step");
+  const invalid = [...step.querySelectorAll("input[required]")].find(i => !i.checkValidity());
+  if (invalid) { invalid.reportValidity(); return; }
+  gotoStep(+b.dataset.next);
+}));
+document.querySelectorAll("[data-back]").forEach(b => b.addEventListener("click", () => gotoStep(+b.dataset.back)));
+
+/* ---------- sign in ---------- */
+$("login-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target; $("login-err").textContent = "";
+  $("login-spin").style.display = "inline-block";
+  const { error } = await supa.auth.signInWithPassword({ email: f.email.value, password: f.password.value });
+  $("login-spin").style.display = "none";
+  if (error) $("login-err").textContent = error.message || "Sign-in failed.";
+  // On success onAuthStateChange drives the UI — no manual reload.
+});
+
+/* ---------- sign up ---------- */
+$("signup-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target; $("signup-err").textContent = ""; $("signup-info").textContent = "";
+  $("signup-spin").style.display = "inline-block";
+  const { data, error } = await supa.auth.signUp({
+    email: f.email.value,
+    password: f.password.value,
+    options: { data: {
+      name: (f.name.value || "").trim(),
+      company: (f.company.value || "").trim(),
+      role: (f.role.value || "").trim(),
+      plan: signupPlan,
+    } },
+  });
+  $("signup-spin").style.display = "none";
+  if (error) { $("signup-err").textContent = error.message || "Could not create account."; return; }
+  if (!data.session) {
+    // Email confirmation required by the project's settings before a session
+    // is issued — nothing more for this page to do until they click the link.
+    $("signup-info").textContent = "Check your email to confirm your account, then sign in.";
+  }
+  // If a session WAS issued immediately, onAuthStateChange drives the UI.
+});
+
+/* ---------- Microsoft ---------- */
+$("ms-btn").addEventListener("click", async () => {
+  await supa.auth.signInWithOAuth({ provider: "azure", options: { redirectTo: location.origin + "/app" } });
+});
+
+/* =============================================================
+   SIGNED-IN app shell
+   ============================================================= */
+function showView(name) {
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.view === name));
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
+}
+document.querySelectorAll(".nav-btn").forEach(b => b.addEventListener("click", () => showView(b.dataset.view)));
+
+async function enterApp(me) {
+  $("auth").classList.add("hidden");
+  $("app-shell").style.display = "block";
+  $("signedin-foot").style.display = "block";
+  $("appbar-right").innerHTML =
+    `<span class="appbar-email">${escHtml(me.email || "")}</span>
+     <button class="btn-ghost" id="logout-btn">Sign out</button>`;
+  $("logout-btn").onclick = async () => { await supa.auth.signOut(); location.reload(); };
+  fillProfile(me);
+  renderPlanCards($("profile-plans"), currentPlan, changePlan);
+  await loadKeys();
+  await loadJobs();
+}
+
+function fillProfile(me) {
+  currentPlan = me.plan;
+  $("p-name").textContent = me.company ? `${me.email.split("@")[0]}` : (me.email || "");
+  $("p-email").textContent = me.email || "";
+  $("p-plan-badge").textContent = planLabel(me.plan) + " plan";
+  $("p-verify").textContent = me.email_verified ? "Email verified" : "Email not verified";
+  $("p-verify").className = "badge " + (me.email_verified ? "ok" : "warn");
+  $("p-used").textContent = me.used_today;
+  $("p-limit").textContent = me.daily_limit >= 100000 ? "∞" : me.daily_limit;
+  const pct = me.daily_limit ? Math.min(100, Math.round(100 * me.used_today / me.daily_limit)) : 0;
+  $("p-meter").style.width = pct + "%";
+  $("p-remaining").textContent = (me.daily_limit >= 100000 ? "Unlimited" : me.remaining + " remaining") + " today";
+  $("p-company").textContent = me.company || "—";
+  $("p-role").textContent = me.role || "—";
+  $("p-tenant").textContent = me.tenant || "—";
+}
+
+async function refreshProfile() {
+  const r = await api("/app/api/me");
+  if (r.ok) fillProfile(await r.json());
+}
+
+async function changePlan(plan) {
+  $("plan-err").textContent = ""; $("plan-ok").textContent = "";
+  const r = await api("/app/api/plan", { method: "POST", body: JSON.stringify({ plan }) });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    $("plan-err").textContent = e.detail || "Could not change plan.";
+    return;
+  }
+  $("plan-ok").textContent = `You're now on the ${planLabel(plan)} plan.`;
+  await refreshProfile();
+}
+
+/* ---------- API keys ---------- */
 async function loadKeys() {
-  const r = await api("/app/api/keys"); const {keys} = await r.json();
-  const body = $("#keys-body"); body.innerHTML = "";
+  const r = await api("/app/api/keys"); const { keys } = await r.json();
+  const body = $("keys-body"); body.innerHTML = "";
   keys.forEach(k => {
     const tr = document.createElement("tr");
-    const primary = k.is_primary ? ' <span class="badge pri">default</span>' : "";
-    tr.innerHTML = `<td>${escapeHtml(k.name)}${primary}</td><td>${fmtDate(k.created_at)}</td>
-      <td style="text-align:right"><button class="danger" data-id="${k.id}">Revoke</button></td>`;
+    const primary = k.is_primary ? ' <span class="badge">default</span>' : "";
+    tr.innerHTML = `<td>${escHtml(k.name)}${primary}</td><td>${fmtDate(k.created_at)}</td>
+      <td style="text-align:right"><button class="btn-danger" data-id="${k.id}">Revoke</button></td>`;
     tr.querySelector("button").onclick = () => revokeKey(k.id);
     body.appendChild(tr);
   });
-  $("#keys-empty").textContent = keys.length ? "" : "No API keys yet.";
+  $("keys-empty").textContent = keys.length ? "" : "No API keys yet.";
 }
 async function createKey() {
   const name = prompt("Name this key (e.g. 'CI', 'Laptop'):", "API key");
   if (name === null) return;
-  const r = await api("/app/api/keys", {method:"POST", body: JSON.stringify({name})});
-  if (!r.ok) { const e = await r.json().catch(()=>({})); alert(e.detail || "Could not create key."); return; }
+  const r = await api("/app/api/keys", { method: "POST", body: JSON.stringify({ name }) });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.detail || "Could not create key."); return; }
   const k = await r.json();
-  $("#new-key").classList.remove("hidden");
-  $("#new-key-val").textContent = k.api_key;
+  $("new-key").classList.remove("hidden");
+  $("new-key-val").textContent = k.api_key;
   await loadKeys();
 }
 async function revokeKey(id) {
-  if (!confirm("Revoke this API key? Anything using it will stop working immediately.")) return;
-  const r = await api("/app/api/keys/"+id, {method:"DELETE"});
+  if (!confirm("Revoke this API key? Anything using it stops working immediately.")) return;
+  const r = await api("/app/api/keys/" + id, { method: "DELETE" });
   if (!r.ok) { alert("Could not revoke key."); return; }
   await loadKeys();
 }
 
+/* ---------- jobs ---------- */
 async function loadJobs() {
-  const r = await api("/app/api/jobs"); const {jobs} = await r.json();
-  const body = $("#jobs-body"); body.innerHTML = "";
+  const r = await api("/app/api/jobs"); const { jobs } = await r.json();
+  const body = $("jobs-body"); body.innerHTML = "";
   jobs.forEach(j => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${escapeHtml(j.filename||"—")}</td>
-      <td><span class="badge st-${j.status}">${j.status}</span></td>
+    tr.innerHTML = `<td>${escHtml(j.filename || "—")}</td>
+      <td><span class="badge">${escHtml(j.status)}</span></td>
       <td>${fmtDate(j.created_at)}</td>`;
     body.appendChild(tr);
   });
-  $("#jobs-empty").textContent = jobs.length ? "" : "No jobs yet.";
+  $("jobs-empty").textContent = jobs.length ? "" : "No jobs yet.";
 }
 
-function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+/* =============================================================
+   GENERATOR (moved from index.html) — talks to /jobs
+   ============================================================= */
+const authHeaders = () => (accessToken ? { "Authorization": "Bearer " + accessToken } : {});
 
-async function showSignedOut(cfg) {
-  $("#dash").classList.add("hidden");
-  $("#auth").classList.remove("hidden");
-  if (cfg && cfg.supabase_enabled) $("#ms-wrap").classList.remove("hidden");
+$("file").addEventListener("change", e => {
+  const f = e.target.files[0], fn = $("file-name");
+  fn.textContent = f ? f.name : ""; fn.classList.toggle("show", !!f);
+});
+const dropzone = document.querySelector(".file-dropzone");
+dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("drag"); });
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
+dropzone.addEventListener("drop", e => {
+  e.preventDefault(); dropzone.classList.remove("drag");
+  if (e.dataTransfer.files.length) {
+    $("file").files = e.dataTransfer.files;
+    const fn = $("file-name"); fn.textContent = e.dataTransfer.files[0].name; fn.classList.add("show");
+  }
+});
+
+document.querySelectorAll("#gen-form .tab-btn").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("#gen-form .tab-btn").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll("#gen-form .tab-content").forEach(tc => tc.classList.remove("active"));
+    tab.classList.add("active");
+    $(tab.dataset.tab).classList.add("active");
+  });
+});
+
+const providerApikey = $("provider-apikey");
+providerApikey.value = localStorage.getItem("pbicompass_provider_key") || "";
+providerApikey.addEventListener("change", () => localStorage.setItem("pbicompass_provider_key", providerApikey.value.trim()));
+
+const EFFORT_CAPABLE_PROVIDERS = ["anthropic", "gemini", "cohere", "meshapi"];
+function syncEffortVisibility() {
+  const isOffline = $("provider").value === "none";
+  $("effort-row").style.display = EFFORT_CAPABLE_PROVIDERS.includes($("provider").value) ? "" : "none";
+  // Hosted default runs every job on the server's own provider key
+  // (byok_enabled=false) — a visitor is never asked for their own key.
+  // Self-host deployments opt per-job BYOK back in via PBICOMPASS_BYOK_UI.
+  $("provider-key-row").style.display = (isOffline || !cfg.byok_enabled) ? "none" : "";
+}
+$("provider").addEventListener("change", syncEffortVisibility);
+
+const doctypeBoxes = () => [...document.querySelectorAll(".doctype-checkbox")];
+$("select-all-docs").addEventListener("click", () => {
+  const boxes = doctypeBoxes();
+  const allChecked = boxes.every(b => b.checked);
+  boxes.forEach(b => b.checked = !allChecked);
+  $("select-all-docs").textContent = allChecked ? "Select all four" : "Reset to Technical only";
+});
+
+const ESTIMATED_SECONDS = {
+  none: 4,
+  anthropic: { low: 18, medium: 35, high: 60, xhigh: 100, max: 150 },
+  gemini: { low: 15, medium: 25, high: 40, xhigh: 65, max: 90 },
+  cohere: { low: 20, medium: 30, high: 45, xhigh: 65, max: 65 },
+  meshapi: { low: 20, medium: 30, high: 50, xhigh: 80, max: 80 },
+};
+let progressTimer = null;
+function estimatedSeconds() {
+  const provider = $("provider").value;
+  if (EFFORT_CAPABLE_PROVIDERS.includes(provider)) return ESTIMATED_SECONDS[provider][$("effort").value] || 60;
+  return ESTIMATED_SECONDS[provider] || 10;
+}
+function startProgress() {
+  const startedAt = Date.now(), estimate = estimatedSeconds();
+  const wrap = $("progress-wrap"), fill = $("progress-fill"), text = $("progress-text");
+  fill.classList.remove("done"); wrap.style.display = "";
+  function tick() {
+    const elapsed = (Date.now() - startedAt) / 1000;
+    fill.style.width = Math.min(96, (elapsed / estimate) * 100) + "%";
+    text.textContent = `Elapsed ${elapsed.toFixed(0)}s · estimated ~${estimate}s total (${EFFORT_CAPABLE_PROVIDERS.includes($("provider").value) ? $("effort").value + " effort" : $("provider").options[$("provider").selectedIndex].text})`;
+  }
+  tick(); progressTimer = setInterval(tick, 500);
+}
+function finishProgress(success) {
+  if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  const fill = $("progress-fill"), text = $("progress-text");
+  fill.style.width = "100%"; fill.classList.toggle("done", success);
+  const m = text.textContent.match(/Elapsed (\d+)s/);
+  if (m) text.textContent = `Finished in ${m[1]}s`;
 }
 
-// Re-run on every Supabase auth state change (initial load, sign-in,
-// sign-out, and the redirect back from an OAuth provider like Microsoft),
-// rather than only once at page load -- this is the pattern supabase-js
-// itself expects callers to use, since a session can appear asynchronously
-// after an OAuth redirect.
+const FORMATS = { html: "HTML Document", docx: "Word Document", pdf: "PDF Report", md: "Markdown", json: "Raw JSON Schema", zip: "Download All (.zip)" };
+const DOC_TYPE_LABELS = { technical: "Technical Documentation", audit: "Audit & Health Report", executive: "Executive Summary", "user-guide": "Business User Guide", index: "Documentation Hub" };
+const DL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>';
+
+function setStatus(msg, cls) { const s = $("status"); s.textContent = msg; s.className = "status-line " + (cls || ""); }
+const FALLBACK_MARKERS = ["LLM call failed", "AI narrative unavailable", "malformed response", "provider unavailable"];
+function isFallbackWarning(w) { return FALLBACK_MARKERS.some(m => w.includes(m)); }
+function renderWarnings(warnings) {
+  const fb = $("job-warnings"), nb = $("job-notes");
+  if (!Array.isArray(warnings) || !warnings.length) {
+    fb.classList.remove("show"); fb.innerHTML = ""; nb.classList.remove("show"); nb.innerHTML = ""; return;
+  }
+  const fallback = warnings.filter(isFallbackWarning), notes = warnings.filter(w => !isFallbackWarning(w));
+  if (fallback.length) {
+    fb.innerHTML = `<strong>Some sections used the offline engine instead of the selected AI engine:</strong><ul>${fallback.map(w => `<li>${escHtml(w)}</li>`).join("")}</ul>`;
+    fb.classList.add("show");
+  } else { fb.classList.remove("show"); fb.innerHTML = ""; }
+  if (notes.length) {
+    nb.innerHTML = `<strong>Notes from this run (the AI engine ran normally):</strong><ul>${notes.map(w => `<li>${escHtml(w)}</li>`).join("")}</ul>`;
+    nb.classList.add("show");
+  } else { nb.classList.remove("show"); nb.innerHTML = ""; }
+}
+function setBusy(busy) {
+  $("gen-submit").disabled = busy;
+  $("gen-spin").style.display = busy ? "inline-block" : "none";
+  $("gen-label").textContent = busy ? "Working…" : "Generate documentation";
+}
+
+$("gen-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = $("file").files[0];
+  if (!f) { setStatus("Please select a Power BI report file.", "err"); return; }
+  const selectedDocs = doctypeBoxes().filter(b => b.checked).map(b => b.value);
+  if (!selectedDocs.length) { setStatus("Select at least one document to generate.", "err"); return; }
+  setBusy(true); $("downloads").innerHTML = ""; renderWarnings(null);
+  setStatus("Uploading and analyzing report structure...");
+
+  const fd = new FormData();
+  fd.append("file", f);
+  fd.append("provider", $("provider").value);
+  if (EFFORT_CAPABLE_PROVIDERS.includes($("provider").value)) fd.append("effort", $("effort").value);
+  if (cfg.byok_enabled && $("provider").value !== "none") {
+    const engineKey = providerApikey.value.trim();
+    if (engineKey) fd.append("provider_api_key", engineKey);
+  }
+  if (!(selectedDocs.length === 1 && selectedDocs[0] === "technical")) {
+    fd.append("document_types", selectedDocs.join(","));
+  }
+  const fields = ["owner", "audience", "refresh", "author", "reviewer", "version",
+    "classification", "business_decision", "requirements", "security_notes",
+    "refresh_notes", "deployment_notes", "access_notes", "glossary", "assumptions", "support_notes"];
+  const statusVal = $("status-field").value.trim();
+  if (statusVal) fd.append("status", statusVal);
+  fields.forEach(k => { const el = $(k); if (el) { const v = el.value.trim(); if (v) fd.append(k, v); } });
+
+  let res;
+  try { res = await fetch("/jobs", { method: "POST", body: fd, headers: authHeaders() }); }
+  catch { setStatus("Connection failed. Is the backend service running?", "err"); setBusy(false); return; }
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    setStatus("Error: " + (j.detail || "Upload failed"), "err"); setBusy(false); return;
+  }
+  startProgress();
+  poll((await res.json()).job_id);
+});
+
+async function poll(jobId) {
+  setStatus("Generating your documents...");
+  const deadline = Date.now() + 15 * 60 * 1000;
+  for (;;) {
+    if (Date.now() > deadline) {
+      setStatus("Generation timed out client-side. It may still finish — check the Jobs tab later, or try again.", "err");
+      finishProgress(false); setBusy(false); return;
+    }
+    await new Promise(r => setTimeout(r, 1200));
+    let res, job;
+    try { res = await fetch("/jobs/" + jobId, { headers: authHeaders() }); job = await res.json(); }
+    catch { continue; }
+    if (!res.ok) {
+      setStatus("Error: " + (job.detail || ("Request failed (" + res.status + ")")), "err");
+      finishProgress(false); setBusy(false); return;
+    }
+    if (job.status === "done") {
+      const warnings = Array.isArray(job.warnings) ? job.warnings : [];
+      const hasFallback = warnings.some(isFallbackWarning);
+      const hasNotes = warnings.some(w => !isFallbackWarning(w));
+      setStatus(hasFallback ? "Documentation compiled — with fallback notes below."
+        : hasNotes ? "Documentation compiled — with review notes below."
+        : "Documentation compiled successfully!", hasFallback ? "warn" : "ok");
+      renderWarnings(job.warnings);
+      finishProgress(true);
+      renderDownloads(jobId, job.formats);
+      setBusy(false);
+      refreshProfile();  // usage went up — reflect it on the profile meter
+      return;
+    }
+    if (job.status === "failed") {
+      setStatus("Generation failed: " + (job.error || "Execution error"), "err");
+      finishProgress(false); setBusy(false); return;
+    }
+  }
+}
+
+function renderDownloads(jobId, formats) {
+  const container = $("downloads"); container.innerHTML = "";
+  const groups = {};
+  formats.forEach(fmt => {
+    const dot = fmt.indexOf("."), type = dot === -1 ? null : fmt.slice(0, dot), shortFmt = dot === -1 ? fmt : fmt.slice(dot + 1);
+    (groups[type || "_single"] ||= { type, fmts: [] }).fmts.push(shortFmt);
+  });
+  let delay = 0;
+  Object.values(groups).forEach(({ type, fmts }) => {
+    const wrap = document.createElement("div"); wrap.className = "dl-group";
+    if (type) { const h = document.createElement("div"); h.className = "dl-group-title"; h.textContent = DOC_TYPE_LABELS[type] || type; wrap.appendChild(h); }
+    const row = document.createElement("div"); row.className = "dl-group-row";
+    fmts.forEach(shortFmt => {
+      const key = type ? `${type}.${shortFmt}` : shortFmt;
+      const a = document.createElement("a");
+      a.href = "/jobs/" + jobId + "/download?format=" + key;
+      a.className = "download-btn"; a.style.animationDelay = (delay++ * 0.06) + "s";
+      a.innerHTML = DL_ICON + "<span>" + (FORMATS[shortFmt] || shortFmt.toUpperCase()) + "</span>";
+      a.addEventListener("click", ev => { ev.preventDefault(); downloadFile(a.href, key); });
+      row.appendChild(a);
+    });
+    wrap.appendChild(row); container.appendChild(wrap);
+  });
+}
+async function downloadFile(url, fmt) {
+  try {
+    const r = await fetch(url, { headers: authHeaders() });
+    if (!r.ok) { alert("Download failed (" + r.status + ")."); return; }
+    const blob = await r.blob();
+    let name = "documentation." + fmt;
+    const cd = r.headers.get("content-disposition"), mm = cd && cd.match(/filename="?([^"]+)"?/);
+    if (mm) name = mm[1];
+    const u = URL.createObjectURL(blob);
+    const t = document.createElement("a"); t.href = u; t.download = name; document.body.appendChild(t); t.click(); t.remove();
+    URL.revokeObjectURL(u);
+  } catch { alert("Download failed."); }
+}
+
+/* =============================================================
+   Auth state → route between signed-out and signed-in
+   ============================================================= */
+function showSignedOut() {
+  $("app-shell").style.display = "none";
+  $("signedin-foot").style.display = "none";
+  $("auth").classList.remove("hidden");
+  $("appbar-right").innerHTML = '<a class="account-btn liquid-glass scale-hover" href="/">← Back to site</a>';
+  if (cfg.supabase_enabled) $("ms-wrap").classList.remove("hidden");
+}
+
 async function onAuthState(session) {
   accessToken = session ? session.access_token : null;
-  if (!accessToken) { await showSignedOut(await api("/app/api/config").then(r=>r.json()).catch(()=>({}))); return; }
+  if (!accessToken) { showSignedOut(); return; }
   const r = await api("/app/api/me");
-  if (r.ok) loadDashboard(await r.json());
-  else await showSignedOut();
+  if (r.ok) enterApp(await r.json());
+  else showSignedOut();
 }
 
-$("#login-form").addEventListener("submit", async e => {
-  e.preventDefault();
-  const f = e.target; $("#login-err").textContent = "";
-  const { error } = await supa.auth.signInWithPassword({email: f.email.value, password: f.password.value});
-  if (error) $("#login-err").textContent = error.message || "Sign-in failed.";
-  // On success, onAuthStateChange fires and drives the UI -- no manual reload needed.
-});
-$("#signup-form").addEventListener("submit", async e => {
-  e.preventDefault();
-  const f = e.target; $("#signup-err").textContent = ""; $("#signup-info").textContent = "";
-  const { data, error } = await supa.auth.signUp({
-    email: f.email.value, password: f.password.value,
-    options: { data: { name: f.name.value || "" } },
-  });
-  if (error) { $("#signup-err").textContent = error.message || "Could not create account."; return; }
-  if (!data.session) {
-    // Email confirmation is required by the Supabase project's own
-    // settings before a session is issued -- there is nothing more for
-    // this page to do until the user clicks the emailed link.
-    $("#signup-info").textContent = "Check your email to confirm your account, then sign in.";
-  }
-  // If a session WAS issued immediately (confirmation off), onAuthStateChange drives the UI.
-});
-$("#ms-btn").addEventListener("click", async () => {
-  await supa.auth.signInWithOAuth({ provider: "azure", options: { redirectTo: location.origin + "/app" } });
-});
+(async function init() {
+  cfg = await api("/app/api/config").then(r => r.json()).catch(() => ({}));
+  if (cfg.plan_limits) planLimits = cfg.plan_limits;
+  renderPlanCards($("signup-plans"), signupPlan, p => { signupPlan = p; });
+  syncEffortVisibility();
 
-(async function init(){
-  const cfg = await api("/app/api/config").then(r=>r.json()).catch(()=>({}));
   if (!cfg.supabase_enabled) {
-    // No Supabase project configured on this deployment -- self-host
-    // API-key-only mode. Nothing for this dashboard to sign in to.
-    $("#auth").classList.remove("hidden");
-    $("#login-form").classList.add("hidden");
-    $("#signup-form").classList.add("hidden");
-    $("#auth").querySelector(".card").insertAdjacentHTML("afterbegin",
-      '<p class="muted">Sign-in isn\'t configured on this deployment. Use an API key instead.</p>');
+    // Self-host / API-key-only deployment — nothing to sign in to.
+    $("auth").classList.remove("hidden");
+    $("login-form").classList.add("hidden");
+    $("signup-form").classList.add("hidden");
+    $("tab-login").classList.add("hidden"); $("tab-signup").classList.add("hidden");
+    $("auth-title").textContent = "Sign-in isn't configured";
+    $("auth-sub").textContent = "This deployment runs in API-key-only mode. Use an API key with the /jobs API instead.";
     return;
   }
   supa = supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
-  supa.auth.onAuthStateChange((_event, session) => onAuthState(session));
+  supa.auth.onAuthStateChange((_e, session) => onAuthState(session));
   const { data: { session } } = await supa.auth.getSession();
   await onAuthState(session);
 })();

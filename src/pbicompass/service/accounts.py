@@ -120,6 +120,8 @@ class Account:
     plan: str
     created_at: float
     quota_override: Optional[int] = None  # admin manual override (Day 28); None = use PLAN_LIMITS[plan]
+    company: str = ""   # onboarding profile field (Day 33), shown on the Profile page
+    role: str = ""       # onboarding profile field (Day 33), shown on the Profile page
 
 
 @dataclass
@@ -188,6 +190,11 @@ class AccountStore:
             # Day 28: accounts.quota_override, added to a table that may
             # already have rows -- an idempotent ALTER (see _ensure_column).
             self._ensure_column("accounts", "quota_override", "INTEGER")
+            # Onboarding plan (Day 33): profile fields captured at signup,
+            # shown back on the Profile page. Optional, additive, same
+            # idempotent-ALTER pattern as quota_override above.
+            self._ensure_column("accounts", "company", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column("accounts", "role", "TEXT NOT NULL DEFAULT ''")
             # Day 24: ``api_keys`` is the single source of truth for
             # ``verify()``, enabling per-key create/revoke from the account
             # dashboard. Backfill every existing account's primary key into
@@ -224,18 +231,21 @@ class AccountStore:
                 raise
 
     # -- accounts -----------------------------------------------------------
-    def create_account(self, tenant: str, name: str = "", plan: str = "free") -> tuple[Account, str]:
+    def create_account(self, tenant: str, name: str = "", plan: str = "free",
+                        company: str = "", role: str = "") -> tuple[Account, str]:
         """Create an account and return (account, raw_api_key). Key shown once."""
         if plan not in PLAN_LIMITS:
             raise ValueError(f"Unknown plan '{plan}'. Choose from {sorted(PLAN_LIMITS)}.")
         raw_key = KEY_PREFIX + secrets.token_urlsafe(24)
         acct = Account(id=uuid.uuid4().hex, tenant=tenant, name=name, plan=plan,
-                       created_at=time.time())
+                       created_at=time.time(), company=company, role=role)
         key_hash = _hash_key(raw_key)
         with self._lock:
             self._conn.execute(
-                "INSERT INTO accounts (id, tenant, name, key_hash, plan, created_at) VALUES (?,?,?,?,?,?)",
-                (acct.id, acct.tenant, acct.name, key_hash, acct.plan, acct.created_at),
+                "INSERT INTO accounts (id, tenant, name, key_hash, plan, created_at, company, role) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (acct.id, acct.tenant, acct.name, key_hash, acct.plan, acct.created_at,
+                 acct.company, acct.role),
             )
             # The account's first key is a managed api_keys row too (labeled
             # "Default"), so it shows up in the dashboard and can be revoked
@@ -327,20 +337,30 @@ class AccountStore:
 
     @staticmethod
     def _row_to_account(row) -> Account:
+        keys = row.keys()
         return Account(id=row["id"], tenant=row["tenant"], name=row["name"],
                        plan=row["plan"], created_at=row["created_at"],
-                       quota_override=row["quota_override"] if "quota_override" in row.keys() else None)
+                       quota_override=row["quota_override"] if "quota_override" in keys else None,
+                       company=row["company"] if "company" in keys else "",
+                       role=row["role"] if "role" in keys else "")
 
     # -- accounts for Supabase-authenticated callers (Day 28) ---------------
     def get_or_create_account_for_supabase_user(self, user_id: str, email: str,
-                                                 name: str = "") -> Account:
+                                                 name: str = "", company: str = "",
+                                                 role: str = "", plan: str = "free") -> Account:
         """JIT-provision an account for a Supabase-authenticated caller on
         their first request — no Supabase webhook needed. ``user_id`` is the
         Supabase ``sub`` claim (a UUID string); ``account_users`` maps it to
-        the tenant/account/quota entity this app has always used. A user's
-        very first authenticated request creates their account (plan
-        ``"free"``, its own tenant, and a "Default" API key for programmatic
-        access), the same way self-serve signup used to."""
+        the tenant/account/quota entity this app has always used.
+
+        ``name``/``company``/``role``/``plan`` (Day 33) come from the
+        signup form's choices, carried in the Supabase JWT's own
+        ``user_metadata`` — only applied on this first, account-creating
+        call (JIT-*create*, not an upsert on every request; a signed-in
+        user's own later edits are the only thing that should change these
+        again). An unrecognized ``plan`` value falls back to ``"free"``
+        rather than rejecting the request outright — a cosmetic signup
+        field should never be able to block account creation."""
         with self._lock:
             row = self._conn.execute(
                 "SELECT a.* FROM accounts a JOIN account_users m ON m.account_id = a.id "
@@ -350,7 +370,9 @@ class AccountStore:
         if row is not None:
             return self._row_to_account(row)
         acct, _raw_key = self.create_account(
-            tenant="u-" + secrets.token_hex(8), name=name or email, plan="free"
+            tenant="u-" + secrets.token_hex(8), name=name or email,
+            plan=plan if plan in PLAN_LIMITS else "free",
+            company=company, role=role,
         )
         with self._lock:
             self._conn.execute(
@@ -359,6 +381,21 @@ class AccountStore:
             )
             self._conn.commit()
         return acct
+
+    def set_plan(self, account_id: str, plan: str) -> bool:
+        """Self-serve plan change (Day 33) — no payment step; trust-based
+        until billing exists. Returns True if the account existed. Raises
+        ``ValueError`` for a plan not in ``PLAN_LIMITS`` (unlike the
+        signup path, an explicit self-serve change should reject an
+        unrecognized value rather than silently downgrade to free)."""
+        if plan not in PLAN_LIMITS:
+            raise ValueError(f"Unknown plan '{plan}'. Choose from {sorted(PLAN_LIMITS)}.")
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE accounts SET plan = ? WHERE id = ?", (plan, account_id)
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
 
     # -- admin roles (Day 28, wired up by service/admin_users.py) -----------
     def is_admin(self, user_id: str) -> bool:
@@ -445,7 +482,8 @@ class AccountStore:
         counts, never report data."""
         with self._lock:
             accounts = [dict(r) for r in self._conn.execute(
-                "SELECT id, tenant, name, key_hash, plan, created_at, quota_override FROM accounts"
+                "SELECT id, tenant, name, key_hash, plan, created_at, quota_override, "
+                "company, role FROM accounts"
             ).fetchall()]
             usage = [dict(r) for r in self._conn.execute(
                 "SELECT tenant, day, count FROM usage"
@@ -464,7 +502,7 @@ class AccountStore:
                 "SELECT user_id, granted_at FROM admin_users"
             ).fetchall()]
         return {
-            "version": 3, "accounts": accounts, "usage": usage, "api_keys": api_keys,
+            "version": 4, "accounts": accounts, "usage": usage, "api_keys": api_keys,
             "account_users": account_users, "admin_users": admin_users,
         }
 
@@ -477,13 +515,15 @@ class AccountStore:
         with self._lock:
             for a in snapshot.get("accounts", []):
                 self._conn.execute(
-                    "INSERT INTO accounts (id, tenant, name, key_hash, plan, created_at, quota_override) "
-                    "VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+                    "INSERT INTO accounts (id, tenant, name, key_hash, plan, created_at, "
+                    "quota_override, company, role) "
+                    "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
                     "tenant=excluded.tenant, name=excluded.name, key_hash=excluded.key_hash, "
                     "plan=excluded.plan, created_at=excluded.created_at, "
-                    "quota_override=excluded.quota_override",
+                    "quota_override=excluded.quota_override, company=excluded.company, "
+                    "role=excluded.role",
                     (a["id"], a["tenant"], a["name"], a["key_hash"], a["plan"], a["created_at"],
-                     a.get("quota_override")),
+                     a.get("quota_override"), a.get("company", ""), a.get("role", "")),
                 )
             for u in snapshot.get("usage", []):
                 self._conn.execute(

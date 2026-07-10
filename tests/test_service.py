@@ -67,8 +67,15 @@ class ServiceTest(unittest.TestCase):
         self.assertTrue(body["checks"]["queue"])  # inline mode: no external dependency
         index = self.client.get("/")
         self.assertEqual(index.status_code, 200)
-        self.assertIn("Generate documentation", index.text)  # upload card heading
-        self.assertIn("/jobs", index.text)  # upload JS wired to the API
+        # Day 33: the landing page is pure marketing; the uploader moved to
+        # /app behind sign-in, so the page CTAs point there rather than
+        # wiring /jobs inline.
+        self.assertIn("Generate documentation", index.text)  # menu/CTA copy
+        self.assertIn("/app", index.text)  # CTAs route to the signed-in workspace
+        # The functional uploader (wired to /jobs) now lives at /app.
+        app_page = self.client.get("/app")
+        self.assertEqual(app_page.status_code, 200)
+        self.assertIn("/jobs", app_page.text)  # upload JS wired to the API
 
     def test_full_flow_and_downloads(self):
         res = self._run_job()
