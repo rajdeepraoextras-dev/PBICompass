@@ -27,6 +27,7 @@ from ._shared import HEALTH_COMPONENT_LABELS
 from ._shared import anchor_slug
 from ._shared import dedupe_ids
 from ._shared import format_timestamp as _fmt_ts
+from ._shared import html_discrepancy_callout
 from ._shared import html_e as _e
 from ._shared import html_table as _table
 from ._shared import html_todo as _todo
@@ -57,6 +58,16 @@ def _render_md(text: str | None) -> str:
         else:
             out.append(f"<p>{p_esc}</p>")
     return "\n".join(out)
+
+
+# Day 4: Requirements Traceability status -> the same pill color language
+# audit.py's best-practice pass/fail pills already use (green/amber/red),
+# so "Covered"/"Partial"/"Gap" reads consistently with the rest of the bundle.
+_STATUS_PILL_CLASS = {"Covered": "pass", "Partial": "high", "Gap": "fail"}
+
+
+def _status_pill(status: str) -> str:
+    return f'<span class="pill {_STATUS_PILL_CLASS.get(status, "low")}">{_e(status)}</span>'
 
 
 def format_prose_with_code(text: str) -> str:
@@ -275,9 +286,25 @@ def render_html(
     if not md.business_decision:
         o.append(_todo("Specify the primary business decision this dashboard drives (e.g. weekly sales planning)."))
 
-    # 3. Business Requirements
+    # 3. Business Requirements. requirements_matrix (Day 4) supersedes the
+    # plain text dump whenever it's non-empty — a RAG table with working
+    # evidence links is strictly more useful than an echoed list, and is
+    # only ever empty when requirements weren't parseable in the first place.
     o.append(f'<h2 id="sec3">3. Business Requirements{_header_badge(3)}</h2>')
-    if md.requirements:
+    if doc.requirements_matrix:
+        covered = sum(1 for r in doc.requirements_matrix if r["status"] in ("Covered", "Partial"))
+        o.append(f'<p class="muted">Requirements Traceability Matrix — {covered}/{len(doc.requirements_matrix)} '
+                 f'at least partially covered by the report\'s own measures, columns, and pages.</p>')
+        rag_rows = []
+        for r in doc.requirements_matrix:
+            evidence_html = ", ".join(
+                f'<a href="#{_e(e["anchor"])}">{_e(e["name"])}</a>' for e in r.get("evidence", [])
+            ) or '<span class="muted">—</span>'
+            rag_rows.append([
+                _e(r.get("priority") or "—"), _e(r["text"]), _status_pill(r["status"]), evidence_html,
+            ])
+        o.append(_table(["Priority", "Requirement", "Status", "Evidence"], rag_rows))
+    elif md.requirements:
         o.append('<div class="card-section">')
         for req in md.requirements.split('\n'):
             if req.strip():
@@ -399,10 +426,15 @@ def render_html(
         # o.append(doc.measure_catalog.dependency_svg)
         pass
     for m in doc.measure_catalog.measures:
-        home = f" · {_e(m.table)}" if m.table else ""
         cat = f'<span class="pill">{_e(m.category)}</span>' if m.category else ""
         o.append(f'<div class="measure" id="measure-{_e(anchor_slug(m.name))}">')
-        o.append(f"<h3>{_e(m.name)}{home}{cat}</h3>")
+        o.append(f"<h3>{_e(m.name)}{cat}</h3>")
+        operates_on = [t for t in (m.operates_on or []) if t and t != m.table]
+        if m.table:
+            line = f'Home table: <strong>{_e(m.table)}</strong>'
+            if operates_on:
+                line += f' · Operates on: {_e(", ".join(operates_on))}'
+            o.append(f'<p class="usedon">{line}</p>')
         o.append(f"<p>{_e(m.plain_english)}</p>")
         if m.calculation_logic and m.calculation_logic != m.plain_english:
             o.append(f"<p><strong>Calculation:</strong> {_e(m.calculation_logic)}</p>")
@@ -499,6 +531,8 @@ def render_html(
     # 10. Row-Level Security
     sec = doc.security
     o.append(f'<h2 id="sec10">10. Row-Level Security (RLS){_header_badge(10)}</h2>')
+    if getattr(sec, "discrepancies", None):
+        o.append(html_discrepancy_callout(sec.discrepancies))
     if sec.roles:
         o.append("<h3>Roles definition</h3>")
         meta_rows = []
@@ -589,27 +623,22 @@ def render_html(
     else:
         o.append(_todo("Workspace roles and app access per group, with justification."))
 
-    # 14. Glossary
+    # 14. Glossary. doc.glossary_entries already carries the merged result
+    # (Day 3): human terms from md.glossary override a matching auto-inferred
+    # definition and append any new business term, rather than the raw text
+    # field replacing the whole inferred table the way an either/or used to.
     o.append(f'<h2 id="sec14">14. Data Dictionary / Glossary{_header_badge(14)}</h2>')
     o.append('<p class="muted">Column-level data dictionary is in section 6. Business-term definitions belong below.</p>')
-    if md.glossary:
-        o.append('<div class="card-section">')
-        for line in md.glossary.split('\n'):
-            if line.strip():
-                o.append(f"<p>{_e(line)}</p>")
-        o.append('</div>')
-    else:
-        # Render auto-inferred glossary table (Fix 6)
-        glossary_rows = []
-        for r in doc.glossary_entries:
-            typo = f'<span class="alert-inline alert-danger">⚠️ {r["typo_flag"]}</span>' if r["typo_flag"] else '<span class="muted">—</span>'
-            glossary_rows.append([
-                f'<code>{_e(r["term"])}</code>',
-                _e(r["type"]),
-                _e(r["definition"]),
-                typo
-            ])
-        o.append(_table(["Term", "Type", "Plain-English Definition", "Typo / Rename Flag"], glossary_rows))
+    glossary_rows = []
+    for r in doc.glossary_entries:
+        typo = f'<span class="alert-inline alert-danger">⚠️ {r["typo_flag"]}</span>' if r["typo_flag"] else '<span class="muted">—</span>'
+        glossary_rows.append([
+            f'<code>{_e(r["term"])}</code>',
+            _e(r["type"]),
+            _e(r["definition"]),
+            typo
+        ])
+    o.append(_table(["Term", "Type", "Plain-English Definition", "Typo / Rename Flag"], glossary_rows))
 
     # 15. Known Issues, Assumptions & Limitations
     td = doc.tech_debt
@@ -720,10 +749,10 @@ def render_html(
     recs = doc.ai_recommendations or []
     suppressed = doc.tech_debt.suppressed_rules if hasattr(doc, "tech_debt") and doc.tech_debt else []
     suppressed_count = len(suppressed)
-    total_checks = TOTAL_RULE_COUNT
-    failed_count = len(recs)
-    passed_count = max(0, total_checks - suppressed_count - failed_count)
-    
+    total_checks = doc.checks_run or TOTAL_RULE_COUNT
+    passed_count = doc.checks_passed
+    failed_count = doc.checks_failed
+
     o.append('<div class="card-section" style="margin-bottom: 1.5rem; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">')
     o.append(f'<p style="margin: 0; font-size: 0.95em;"><strong>Best Practice Rules Summary:</strong> Checks Run: <strong>{total_checks - suppressed_count}</strong> &middot; '
              f'Passed: <span style="color: #10b981; font-weight: 600;">{passed_count}</span> &middot; '
@@ -766,12 +795,15 @@ def render_html(
     o.append(f'<h2 id="sec18">18. Appendix &amp; Sign-off{_header_badge(18)}</h2>')
     o.append("<p>The model diagram is in section 6. Attach wireframes/mockups and any source-to-target mapping here.</p>")
     
-    developer_name = _e(md.owner) if md.owner else "TBC"
     generated_date = _e((md.generated_at or "")[:10])
+    # owner -> Business Owner, author -> Developer, reviewer -> Approver:
+    # each row filled from the metadata field it actually corresponds to,
+    # instead of "Business Owner" always rendering empty and "Developer"
+    # showing the owner's name (Day 3).
     sign_off_rows = [
-        ["Business Owner", "", "", ""],
-        ["Data Owner", "", "", ""],
-        ["Developer", developer_name, "BI Developer", generated_date],
+        ["Business Owner", _e(md.owner) if md.owner else "", "Business Owner", generated_date if md.owner else ""],
+        ["Developer", _e(md.author) if md.author else "TBC", "BI Developer", generated_date],
+        ["Approver", _e(md.reviewer) if md.reviewer else "", "Reviewer", generated_date if md.reviewer else ""],
     ]
     o.append(_table(["Sign-off Role", "Name", "Title / Role", "Date"], sign_off_rows))
     o.append('<p class="caveat"><strong>Reminder:</strong> Obtain sign-off before sharing with stakeholders.</p>')

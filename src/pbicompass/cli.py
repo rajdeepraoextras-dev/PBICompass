@@ -347,6 +347,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         def _warn(msg: str) -> None:
+            # Also appended to model.meta.warnings (Day 2) — a durable,
+            # structured record alongside the parse-time warnings already
+            # there, so a bundle's model.json carries every generation-time
+            # correction (e.g. the consistency pass fixing a contradicted
+            # claim) even in --quiet runs where nothing prints to stderr.
+            model.meta.warnings.append(msg)
             if not args.quiet:
                 print(f"warning: {msg}", file=sys.stderr)
 
@@ -457,49 +463,76 @@ def main(argv: list[str] | None = None) -> int:
         # ``PBICOMPASS_LLM_CACHE`` env var, same as before this phase).
         ai_context = build_job_context(model, client, _warn) if client is not None else None
 
-        # Day 8: when both "technical" and "audit" are requested in the same
-        # run, generate the Audit document first so its Audit Synthesizer
-        # clusters (Day 7) can be surfaced on the technical doc's §16 —
-        # avoids a second, potentially-inconsistent Synthesizer call and is
-        # reused below instead of regenerating "audit" in the main loop.
+        # Day 8/Day 2: when "audit" is requested alongside any other document
+        # type in the same run, generate it first so its Audit Synthesizer
+        # clusters (Day 7, technical §16 only) and its deterministic verdicts
+        # (Day 2's cross-artifact consistency check, every other doc type) are
+        # both available — avoids a second, potentially-inconsistent
+        # Synthesizer call and is reused below instead of regenerating
+        # "audit" in the main loop.
+        # Day 3: the full human intake field set — every generator now
+        # accepts it (previously only the technical document did), so it's
+        # threaded to all four here rather than the owner/audience/refresh/
+        # version/status/classification subset audit/executive/user-guide
+        # used to be limited to.
+        _meta_kwargs = dict(
+            owner=owner, audience=audience, refresh=refresh,
+            version=doc_version, status=status, classification=classification,
+            author=author, reviewer=reviewer,
+            business_decision=business_decision, requirements=requirements,
+            security_notes=security_notes, refresh_notes=refresh_notes,
+            deployment_notes=deployment_notes, access_notes=access_notes,
+            glossary=glossary, assumptions=assumptions, support_notes=support_notes,
+        )
+
+        # Day 4: the Requirements Traceability Matrix has no ordering
+        # dependency on any other document (unlike top_cluster/audit_verdicts,
+        # which need the Audit document to already exist) — model +
+        # requirements text + client are all available here, so it's
+        # computed once up front and shared with technical/audit/executive
+        # rather than each independently re-matching/re-calling the LLM.
+        from .agents.traceability import build_requirements_matrix
+        requirements_matrix = build_requirements_matrix(
+            model, requirements, client, _warn, ai_context=ai_context,
+        )
+
         pre_audit_doc = None
-        if client is not None and "technical" in document_types and "audit" in document_types:
+        if "audit" in document_types and len(document_types) > 1:
             pre_audit_doc = DOCUMENT_TYPES["audit"].generate(
-                model, client,
-                owner=owner, audience=audience, refresh=refresh,
-                version=doc_version, status=status, classification=classification,
+                model, client, **_meta_kwargs,
                 on_warning=_warn, ai_context=ai_context, plan=args.plan,
+                requirements_matrix=requirements_matrix,
             )
         top_cluster = _audit_top_cluster(pre_audit_doc) if pre_audit_doc is not None else None
+        audit_verdicts = None
+        if pre_audit_doc is not None:
+            from .agents.consistency import build_audit_verdicts
+            audit_verdicts = build_audit_verdicts(model, pre_audit_doc)
 
         def _generate_one(document_type: str):
             if document_type == "audit" and pre_audit_doc is not None:
                 return pre_audit_doc
             if document_type == "technical":
                 return generate_document(
-                    model, client,
-                    owner=owner, audience=audience, refresh=refresh,
-                    version=doc_version, status=status, author=author,
-                    reviewer=reviewer, classification=classification,
-                    business_decision=business_decision, requirements=requirements,
-                    security_notes=security_notes, refresh_notes=refresh_notes,
-                    deployment_notes=deployment_notes, access_notes=access_notes,
-                    glossary=glossary, assumptions=assumptions,
-                    support_notes=support_notes,
+                    model, client, **_meta_kwargs,
                     on_warning=_warn, ai_context=ai_context, top_cluster=top_cluster,
+                    audit_verdicts=audit_verdicts, requirements_matrix=requirements_matrix,
                 )
             if document_type == "audit":
                 return DOCUMENT_TYPES["audit"].generate(
-                    model, client,
-                    owner=owner, audience=audience, refresh=refresh,
-                    version=doc_version, status=status, classification=classification,
+                    model, client, **_meta_kwargs,
                     on_warning=_warn, ai_context=ai_context, plan=args.plan,
+                    requirements_matrix=requirements_matrix,
+                )
+            if document_type == "executive":
+                return DOCUMENT_TYPES["executive"].generate(
+                    model, client, **_meta_kwargs,
+                    on_warning=_warn, ai_context=ai_context, audit_verdicts=audit_verdicts,
+                    requirements_matrix=requirements_matrix,
                 )
             return DOCUMENT_TYPES[document_type].generate(
-                model, client,
-                owner=owner, audience=audience, refresh=refresh,
-                version=doc_version, status=status, classification=classification,
-                on_warning=_warn, ai_context=ai_context,
+                model, client, **_meta_kwargs,
+                on_warning=_warn, ai_context=ai_context, audit_verdicts=audit_verdicts,
             )
 
         docs = {dtype: _generate_one(dtype) for dtype in document_types}

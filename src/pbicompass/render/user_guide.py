@@ -17,6 +17,7 @@ from ._docx_writer import _Docx
 from ._html_shell import page_shell
 from ._shared import anchor_slug
 from ._shared import dedupe_ids
+from ._shared import doc_subtitle as _doc_subtitle
 from ._shared import format_timestamp as _fmt_ts
 from ._shared import html_e as _e
 from ._shared import html_table as _html_table
@@ -34,7 +35,7 @@ _SECTION_TITLES = [
 def render_markdown(doc: UserGuideDocument) -> str:
     md = doc.metadata
     out: list[str] = [f"# {md.report_name} — Business User Guide\n"]
-    out.append(f"_{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}_\n")
+    out.append(f"_{_doc_subtitle(md)}_\n")
 
     out.append(f"\n## {_SECTION_TITLES[0]}\n")
     out.append(doc.introduction + "\n")
@@ -209,7 +210,7 @@ def render_html(
 
     return page_shell(
         title=f"{md.report_name} — Business User Guide",
-        subtitle=f"{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}",
+        subtitle=_doc_subtitle(md),
         toc=toc, kpis=kpis, body_html="\n".join(o), doc_links=doc_links, search_index=search_index,
         owner=md.owner, version=md.version, status=md.status,
     )
@@ -223,7 +224,7 @@ def render_docx(doc: UserGuideDocument, out_path) -> Path:
     md = doc.metadata
 
     d.heading(0, f"{md.report_name} — Business User Guide")
-    d.para([d._run(f"{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}", italic=True)])
+    d.para([d._run(_doc_subtitle(md), italic=True)])
 
     def _bullets(items: list[str]) -> None:
         for item in items:

@@ -487,6 +487,64 @@ class DashboardApiTest(unittest.TestCase):
         self.assertIn("tenant-a", tenants)
         self.assertIn("tenant-b", tenants)
 
+    # -- AI-engine availability toggles (Day 36) ----------------------------
+    def test_config_exposes_provider_catalog(self):
+        providers = self.client.get("/app/api/config").json()["providers"]
+        ids = {p["id"] for p in providers}
+        self.assertEqual(ids, {"anthropic", "gemini", "cohere", "meshapi"})
+        for p in providers:
+            self.assertIn("label", p)
+            self.assertIn("enabled", p)
+
+    def test_admin_can_disable_and_reenable_a_provider(self):
+        admin = self._make_admin()
+        # Force a known baseline: enable anthropic even without a server key.
+        self.client.post("/app/api/admin/providers/anthropic",
+                         json={"enabled": True}, headers=admin)
+        enabled = {p["id"]: p["enabled"] for p in self.client.get("/app/api/config").json()["providers"]}
+        self.assertTrue(enabled["anthropic"])
+        # Disable it -> config now reports it unavailable.
+        r = self.client.post("/app/api/admin/providers/anthropic",
+                             json={"enabled": False}, headers=admin)
+        self.assertEqual(r.status_code, 200)
+        enabled = {p["id"]: p["enabled"] for p in self.client.get("/app/api/config").json()["providers"]}
+        self.assertFalse(enabled["anthropic"])
+
+    def test_admin_providers_endpoint_reports_has_key(self):
+        admin = self._make_admin()
+        body = self.client.get("/app/api/admin/providers", headers=admin).json()
+        self.assertIn("byok_enabled", body)
+        anth = next(p for p in body["providers"] if p["id"] == "anthropic")
+        self.assertIn("has_key", anth)
+        self.assertIn("overridden", anth)
+
+    def test_provider_toggle_is_admin_only(self):
+        headers = self._headers("nope@example.com", sub="nope-1")
+        self.client.get("/app/api/me", headers=headers)  # provision non-admin
+        self.assertEqual(self.client.post("/app/api/admin/providers/anthropic",
+                                          json={"enabled": False}, headers=headers).status_code, 403)
+        self.assertEqual(self.client.post("/app/api/admin/providers/anthropic",
+                                          json={"enabled": False}).status_code, 401)
+
+    def test_unknown_provider_toggle_404s(self):
+        admin = self._make_admin()
+        self.assertEqual(self.client.post("/app/api/admin/providers/bogus",
+                                          json={"enabled": True}, headers=admin).status_code, 404)
+
+    def test_disabled_provider_rejected_at_job_creation(self):
+        admin = self._make_admin()
+        self.client.post("/app/api/admin/providers/anthropic",
+                         json={"enabled": False}, headers=admin)
+        # A server-key job on a disabled engine is refused before the upload is
+        # even read, so dummy bytes with a valid suffix are enough to exercise it.
+        r = self.client.post(
+            "/jobs",
+            files={"file": ("SampleSales.zip", b"dummy", "application/zip")},
+            data={"provider": "anthropic"}, headers=admin,
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("unavailable", r.json()["detail"].lower())
+
     def test_bootstrap_admin_email_grants_admin_on_first_signin(self):
         with mock.patch.dict("os.environ", {"PBICOMPASS_BOOTSTRAP_ADMIN_EMAIL": "Boss@Example.com"}):
             app = create_app(self.store, require_auth=False, admin_token="t",

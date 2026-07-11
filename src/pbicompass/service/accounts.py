@@ -35,6 +35,7 @@ migration on startup).
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 import threading
 import time
@@ -148,6 +149,13 @@ class AccountStore:
                 CREATE TABLE IF NOT EXISTS admin_users (
                     user_id TEXT PRIMARY KEY,
                     granted_at REAL NOT NULL
+                );
+                -- Global service settings (Day 36): small key/value store for
+                -- operator toggles that aren't per-account. Currently holds the
+                -- admin's AI-engine enable/disable overrides. Values are JSON.
+                CREATE TABLE IF NOT EXISTS service_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
                 );
                 """
             )
@@ -397,6 +405,41 @@ class AccountStore:
             cur = self._conn.execute("DELETE FROM admin_users WHERE user_id = ?", (user_id,))
             self._conn.commit()
             return cur.rowcount > 0
+
+    # -- service settings (Day 36): global operator toggles --------------------
+    def _get_setting(self, key: str) -> Optional[str]:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM service_settings WHERE key = ?", (key,)
+            ).fetchone()
+        return row["value"] if row else None
+
+    def _set_setting(self, key: str, value: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO service_settings (key, value) VALUES (?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+            self._conn.commit()
+
+    def get_provider_overrides(self) -> dict[str, bool]:
+        """Admin enable/disable overrides for AI engines, keyed by provider id.
+        A provider absent from this map falls back to its key-based default
+        (see app._provider_enabled). Corrupt/legacy JSON degrades to ``{}``."""
+        raw = self._get_setting("provider_overrides")
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            return {}
+        return {str(k): bool(v) for k, v in data.items()} if isinstance(data, dict) else {}
+
+    def set_provider_enabled(self, provider: str, enabled: bool) -> None:
+        overrides = self.get_provider_overrides()
+        overrides[str(provider)] = bool(enabled)
+        self._set_setting("provider_overrides", json.dumps(overrides))
 
     def set_blocked(self, account_id: str, blocked: bool) -> bool:
         """Admin suspension (Day 35). A blocked account is refused at

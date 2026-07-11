@@ -1157,7 +1157,8 @@ details.collapsible > .code-block pre {
 <table><thead><tr><th>Table</th><th>Column</th><th>Data Type</th><th>Description</th><th>Used by</th></tr></thead><tbody><tr id="column-customer-customer-name"><td>Customer</td><td>Customer Name</td><td>string</td><td>No description set.</td><td>not referenced — see unused assets</td></tr><tr id="column-customer-region"><td>Customer</td><td>Region</td><td>string</td><td>No description set.</td><td>2 page(s) (Sales Overview, Region Detail); RLS role(s): Regional Manager</td></tr><tr id="column-customer-segment"><td>Customer</td><td>Segment</td><td>string</td><td>No description set.</td><td>1 page(s) (Sales Overview)</td></tr><tr id="column-date-date"><td>Date</td><td>Date</td><td>dateTime</td><td>No description set.</td><td>1 measure(s) (Revenue YTD); 1 page(s) (Sales Overview)</td></tr><tr id="column-date-year"><td>Date</td><td>Year</td><td>int64</td><td>No description set.</td><td>1 page(s) (Sales Overview)</td></tr><tr id="column-date-month-name"><td>Date</td><td>Month Name</td><td>string</td><td>No description set.</td><td>not referenced — see unused assets</td></tr><tr id="column-sales-customerkey"><td>Sales</td><td>CustomerKey</td><td>int64</td><td>Key identifier; used to join Sales to related tables.</td><td>1 relationship(s)</td></tr><tr id="column-sales-orderdatekey"><td>Sales</td><td>OrderDateKey</td><td>int64</td><td>Key identifier; used to join Sales to related tables.</td><td>1 relationship(s)</td></tr><tr id="column-sales-shipdatekey"><td>Sales</td><td>ShipDateKey</td><td>int64</td><td>Key identifier; used to join Sales to related tables.</td><td>1 relationship(s)</td></tr><tr id="column-sales-quantity"><td>Sales</td><td>Quantity</td><td>int64</td><td>No description set.</td><td>1 measure(s) (Total Revenue)</td></tr><tr id="column-sales-unitprice"><td>Sales</td><td>UnitPrice</td><td>double</td><td>No description set.</td><td>1 measure(s) (Total Revenue)</td></tr><tr id="column-sales-status"><td>Sales</td><td>Status</td><td>string</td><td>No description set.</td><td>1 measure(s) (Total Revenue); RLS role(s): Sales Rep</td></tr><tr id="column-sales-linetotal"><td>Sales</td><td>LineTotal</td><td>double</td><td>Calculated column.</td><td>not referenced — see unused assets</td></tr></tbody></table>
 <h2 id="sec7">7. Measures &amp; Calculations (DAX Dictionary) <span class="pill extracted">Extracted</span></h2>
 <div class="measure" id="measure-avg-order-value">
-<h3>Avg Order Value · Sales<span class="pill">Ratio</span></h3>
+<h3>Avg Order Value<span class="pill">Ratio</span></h3>
+<p class="usedon">Home table: <strong>Key Measures</strong> · Operates on: Sales</p>
 <p>A ratio: Total Revenue divided by DISTINCTCOUNT ( Sales[SalesKey] ).</p>
 <p class="caveat">Known caveats: Housed in &#x27;Key Measures&#x27; table but operates on &#x27;Sales&#x27; table.</p>
 <p class="usedon"><strong>Dependency tree:</strong></p><pre class="dep-tree"><code>└── Total Revenue</code></pre>
@@ -1166,7 +1167,8 @@ details.collapsible > .code-block pre {
 <div class="code-block"><button type="button" class="copy-btn">Copy</button><pre><code><span class="tok-keyword">DIVIDE</span> ( <span class="tok-ref">[Total Revenue]</span>, <span class="tok-keyword">DISTINCTCOUNT</span> ( <span class="tok-ref">Sales[SalesKey]</span> ) )</code></pre></div>
 </div>
 <div class="measure" id="measure-total-revenue">
-<h3>Total Revenue · Sales<span class="pill">Revenue</span></h3>
+<h3>Total Revenue<span class="pill">Revenue</span></h3>
+<p class="usedon">Home table: <strong>Sales</strong></p>
 <p>Computes the total of Sales[Quantity] * Sales[UnitPrice], evaluated row by row over FILTER ( Sales, Sales[Status] &lt;&gt; &quot;Canceled&quot; ).</p>
 <p class="caveat">Known caveats: excludes rows where Status = &quot;Canceled&quot;</p>
 <p class="usedon">Depends on: Sales[Status], Sales[Quantity], Sales[UnitPrice]</p>
@@ -1178,7 +1180,8 @@ details.collapsible > .code-block pre {
     )</code></pre></div>
 </div>
 <div class="measure" id="measure-revenue-ytd">
-<h3>Revenue YTD · Date<span class="pill">Time-Intelligence</span></h3>
+<h3>Revenue YTD<span class="pill">Time-Intelligence</span></h3>
+<p class="usedon">Home table: <strong>Sales</strong> · Operates on: Date</p>
 <p>A time-intelligence calculation: the year-to-date value of Total Revenue.</p>
 <p class="caveat">Known caveats: Housed in &#x27;Sales&#x27; table but operates on &#x27;Date&#x27; table.</p>
 <p class="usedon"><strong>Dependency tree:</strong></p><pre class="dep-tree"><code>└── Total Revenue</code></pre>
@@ -1187,7 +1190,8 @@ details.collapsible > .code-block pre {
 <div class="code-block"><button type="button" class="copy-btn">Copy</button><pre><code><span class="tok-keyword">TOTALYTD</span> ( <span class="tok-ref">[Total Revenue]</span>, <span class="tok-ref">&#x27;Date&#x27;[Date]</span> )</code></pre></div>
 </div>
 <div class="measure" id="measure-orphan-margin">
-<h3>Orphan Margin · Sales<span class="pill">Revenue</span></h3>
+<h3>Orphan Margin<span class="pill">Revenue</span></h3>
+<p class="usedon">Home table: <strong>Sales</strong></p>
 <p>A derived metric: Total Revenue * 0.3.</p>
 <p class="usedon"><strong>Dependency tree:</strong></p><pre class="dep-tree"><code>└── Total Revenue</code></pre>
 <p class="usedon">Used on: not placed on a page · format <code>\$#,0</code></p>
@@ -1317,21 +1321,17 @@ details.collapsible > .code-block pre {
 Model.Tables[&quot;Customer&quot;].Columns[&quot;Customer Name&quot;].Delete();</code></pre>
 </div></details>
 <details class="collapsible" style="margin-bottom:1rem; border:1px solid #e2e8f0; padding:10px; border-radius:6px;">
-<summary style="font-weight:600; cursor:pointer;">Table: Date (2 unused assets)</summary>
+<summary style="font-weight:600; cursor:pointer;">Table: Date (1 unused assets)</summary>
 <div style="margin-top:10px; padding-left:15px;">
 <h4>Unused Columns</h4><ul>
 <li><strong>Month Name</strong> — Evidence: no visuals, no measures, no relationships, no RLS filters reference this column.</li>
 </ul>
-<h4>Unused Measures</h4><ul>
-<li><strong>Revenue YTD</strong> — Evidence: no visuals or other measures reference this measure.</li>
-</ul>
 <h4>Tabular Editor C# Script</h4>
 <pre><code>// Tabular Editor C# script to remove unused assets in Table Date
-Model.Tables[&quot;Date&quot;].Columns[&quot;Month Name&quot;].Delete();
-Model.Tables[&quot;Date&quot;].Measures[&quot;Revenue YTD&quot;].Delete();</code></pre>
+Model.Tables[&quot;Date&quot;].Columns[&quot;Month Name&quot;].Delete();</code></pre>
 </div></details>
 <details class="collapsible" style="margin-bottom:1rem; border:1px solid #e2e8f0; padding:10px; border-radius:6px;">
-<summary style="font-weight:600; cursor:pointer;">Table: Sales (8 unused assets)</summary>
+<summary style="font-weight:600; cursor:pointer;">Table: Sales (9 unused assets)</summary>
 <div style="margin-top:10px; padding-left:15px;">
 <h4>Unused Columns</h4><ul>
 <li><strong>CustomerKey</strong> — Evidence: no visuals, no measures, no relationships, no RLS filters reference this column.</li>
@@ -1346,6 +1346,7 @@ Model.Tables[&quot;Date&quot;].Measures[&quot;Revenue YTD&quot;].Delete();</code
 </ul>
 <h4>Unused Measures</h4><ul>
 <li><strong>Orphan Margin</strong> — Evidence: no visuals or other measures reference this measure.</li>
+<li><strong>Revenue YTD</strong> — Evidence: no visuals or other measures reference this measure.</li>
 </ul>
 <h4>Tabular Editor C# Script</h4>
 <pre><code>// Tabular Editor C# script to remove unused assets in Table Sales
@@ -1356,7 +1357,8 @@ Model.Tables[&quot;Sales&quot;].Columns[&quot;Quantity&quot;].Delete();
 Model.Tables[&quot;Sales&quot;].Columns[&quot;ShipDateKey&quot;].Delete();
 Model.Tables[&quot;Sales&quot;].Columns[&quot;Status&quot;].Delete();
 Model.Tables[&quot;Sales&quot;].Columns[&quot;UnitPrice&quot;].Delete();
-Model.Tables[&quot;Sales&quot;].Measures[&quot;Orphan Margin&quot;].Delete();</code></pre>
+Model.Tables[&quot;Sales&quot;].Measures[&quot;Orphan Margin&quot;].Delete();
+Model.Tables[&quot;Sales&quot;].Measures[&quot;Revenue YTD&quot;].Delete();</code></pre>
 </div></details>
 <h3>Modeling risks</h3>
 <ul><li>Sales ↔ Date uses bi-directional cross-filtering, which can create ambiguous filter paths and slow performance.</li><li>Sales[ShipDateKey] → Date[DateKey] is inactive and only applies via USERELATIONSHIP() in DAX.</li></ul>
@@ -1366,7 +1368,7 @@ Model.Tables[&quot;Sales&quot;].Measures[&quot;Orphan Margin&quot;].Delete();</c
 <table><thead><tr><th>Component</th><th>Score</th><th>Why</th></tr></thead><tbody><tr><td>Model Design</td><td><span class="num">70</span></td><td>6 of 19 best-practice check(s) failed.</td></tr><tr><td>DAX Quality</td><td><span class="num">96</span></td><td>4 DAX finding(s) (worst severity: Low).</td></tr><tr><td>Governance &amp; Security</td><td><span class="num">87</span></td><td>7 governance finding(s) (worst severity: Medium).</td></tr><tr><td>Performance</td><td><span class="num">97</span></td><td>3 performance risk signal(s) (worst severity: Low).</td></tr><tr><td>Maintainability</td><td><span class="num">76</span></td><td>12 unused asset(s) add size and maintenance load without analytical value.</td></tr></tbody></table>
 <p class="muted">Scored by deterministic rules over the model metadata — reproducible, not an AI guess.</p>
 <div class="card-section" style="margin-bottom: 1.5rem; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">
-<p style="margin: 0; font-size: 0.95em;"><strong>Best Practice Rules Summary:</strong> Checks Run: <strong>52</strong> &middot; Passed: <span style="color: #10b981; font-weight: 600;">40</span> &middot; Failed: <span style="color: #ef4444; font-weight: 600;">12</span> &middot; Suppressed: <span style="color: #64748b; font-weight: 600;">0</span></p>
+<p style="margin: 0; font-size: 0.95em;"><strong>Best Practice Rules Summary:</strong> Checks Run: <strong>52</strong> &middot; Passed: <span style="color: #10b981; font-weight: 600;">39</span> &middot; Failed: <span style="color: #ef4444; font-weight: 600;">13</span> &middot; Suppressed: <span style="color: #64748b; font-weight: 600;">0</span></p>
 </div>
 <h3>Prioritized recommendations</h3>
 <div class="measure">
@@ -1477,7 +1479,7 @@ Model.Tables[&quot;Sales&quot;].Measures[&quot;Orphan Margin&quot;].Delete();
 <div class="todo"><b>✎ To complete:</b> Escalation contact, SLA for fixes, .pbix/.pbip backup location, and decommission criteria.</div>
 <h2 id="sec18">18. Appendix &amp; Sign-off <span class="pill extracted">Extracted</span></h2>
 <p>The model diagram is in section 6. Attach wireframes/mockups and any source-to-target mapping here.</p>
-<table><thead><tr><th>Sign-off Role</th><th>Name</th><th>Title / Role</th><th>Date</th></tr></thead><tbody><tr><td>Business Owner</td><td></td><td></td><td></td></tr><tr><td>Data Owner</td><td></td><td></td><td></td></tr><tr><td>Developer</td><td>TBC</td><td>BI Developer</td><td>ISODATE</td></tr></tbody></table>
+<table><thead><tr><th>Sign-off Role</th><th>Name</th><th>Title / Role</th><th>Date</th></tr></thead><tbody><tr><td>Business Owner</td><td></td><td>Business Owner</td><td></td></tr><tr><td>Developer</td><td>TBC</td><td>BI Developer</td><td>ISODATE</td></tr><tr><td>Approver</td><td></td><td>Reviewer</td><td></td></tr></tbody></table>
 <p class="caveat"><strong>Reminder:</strong> Obtain sign-off before sharing with stakeholders.</p>
 <h2 id="sec19">19. Methodology &amp; Guarantees <span class="pill extracted">Extracted</span></h2>
 <div class="card-section">

@@ -23,6 +23,7 @@ from typing import Optional
 
 from ...schemas.user_guide_document import GlossaryTerm, PageGuide, UserGuideDocument
 from .. import io
+from ..consistency import AuditVerdicts, check_consistency
 from ..context import JobAIContext, build_job_context
 from ..critic import apply_critic_pass, apply_results
 from ..deterministic import business_analyst_deterministic
@@ -33,6 +34,7 @@ from ..report_facts import (
     field_parameter_table_names,
     first_sentence,
     is_field_selector,
+    parse_human_glossary,
     report_pages,
     slicers,
 )
@@ -59,7 +61,8 @@ def _dimension_definition(name: str) -> str:
 
 
 def _build_glossary(model, client: Optional[LLMClient], warn: Warn,
-                     ai_context: Optional[JobAIContext]) -> list[GlossaryTerm]:
+                     ai_context: Optional[JobAIContext],
+                     human_glossary: Optional[str] = None) -> list[GlossaryTerm]:
     """Priority order per measure: human-provided description -> the DAX
     Translator's *actual* business definition (Phase 0: the job-shared
     ``ai_context.translations`` — the same result the technical doc's
@@ -69,7 +72,16 @@ def _build_glossary(model, client: Optional[LLMClient], warn: Warn,
     never consulted) -> the deterministic business-safe fallback -> a typed
     fallback for the rare measure with neither. Never the generic "a custom
     metric specific to this report" bucket — a business glossary that can't
-    tell two measures apart isn't documentation."""
+    tell two measures apart isn't documentation.
+
+    Day 3: ``human_glossary`` (the intake form's free-text glossary field,
+    parsed by ``report_facts.parse_human_glossary``) is merged in last —
+    overriding the definition of any term it names (highest precedence: a
+    human explaining "Amount is scaled to 30% per finance policy" beats any
+    inferred gloss) and appending any new business term it introduces that
+    has no counterpart among the report's measures/fields at all. It never
+    *replaces* the deterministic/AI-inferred glossary the way rendering
+    "either/or"-ing on the raw text field used to."""
     llm_translations: dict[str, str] = {}
     if ai_context is not None and ai_context.translations:
         # Same DAX Translator result the technical doc's Measure Catalog
@@ -119,6 +131,18 @@ def _build_glossary(model, client: Optional[LLMClient], warn: Warn,
                 definition = ("A field selector that switches what the chart displays."
                              if is_field_param else _dimension_definition(leaf))
                 terms.append(GlossaryTerm(term=leaf, plain_definition=definition))
+
+    human_terms = parse_human_glossary(human_glossary)
+    if human_terms:
+        by_term_lower = {t.term.lower(): t for t in terms}
+        for term, definition in human_terms.items():
+            existing = by_term_lower.get(term.lower())
+            if existing:
+                existing.plain_definition = definition
+            else:
+                new_term = GlossaryTerm(term=term, plain_definition=definition)
+                terms.append(new_term)
+                by_term_lower[term.lower()] = new_term
     return terms
 
 
@@ -207,17 +231,25 @@ def _drillthrough_actions(drillthrough_page_names: list[str]) -> list[str]:
             for name in drillthrough_page_names]
 
 
-def _introduction(model, core_purpose: str, insights: Optional[dict] = None) -> str:
+def _introduction(model, core_purpose: str, insights: Optional[dict] = None,
+                   business_decision: Optional[str] = None) -> str:
     """Phase 2: when the whole-model synthesis has a confident report
     purpose, it seeds this intro's core_purpose instead of the generic
     deterministic one — the same free upgrade ``technical.py``'s Business
-    Analyst fallback gets, purchased by a call already made for this job."""
+    Analyst fallback gets, purchased by a call already made for this job.
+
+    Day 3: ``business_decision`` (the intake form's "Primary Business
+    Decision / Impact") anchors the intro even offline — a first-time reader
+    learns what the report is *for*, not just what it covers."""
     if insights:
         rp = insights.get("report_purpose") or {}
         if rp.get("statement") and rp.get("confidence") in ("High", "Medium"):
             core_purpose = rp["statement"]
-    return (f"Welcome! This guide explains how to use the '{model.report_name}' report — no "
-            f"technical background needed. {core_purpose}")
+    intro = (f"Welcome! This guide explains how to use the '{model.report_name}' report — no "
+             f"technical background needed. {core_purpose}")
+    if business_decision:
+        intro = f"{intro} You'll use it to: {business_decision}"
+    return intro
 
 
 def _getting_started(pages: list[PageGuide]) -> list[str]:
@@ -276,6 +308,22 @@ def _run_grounding(doc: UserGuideDocument, client, warn: Warn, ai_context: Optio
     apply_results(triples, results)
 
 
+def _run_consistency(
+    doc: UserGuideDocument, client, warn: Warn, ai_context: Optional[JobAIContext],
+    audit_verdicts: Optional[AuditVerdicts],
+) -> None:
+    """Day 2: cross-artifact consistency check against the sibling Audit &
+    Health Report's verdicts — its deterministic layer needs no LLM, so this
+    runs even offline; a no-op only when no Audit document was generated
+    alongside this one in the same job."""
+    if audit_verdicts is None:
+        return
+    triples = _narrative_triples(doc)
+    fields = [(loc, text) for loc, text, _ in triples]
+    results = check_consistency(fields, client, verdicts=audit_verdicts, warn=warn, ai_context=ai_context)
+    apply_results(triples, results)
+
+
 class BusinessGuideGenerator:
     """Teaches a business user how to use the report without needing the
     developer — no table/DAX/semantic-model talk, written like onboarding a
@@ -292,8 +340,20 @@ class BusinessGuideGenerator:
         version: Optional[str] = None,
         status: Optional[str] = None,
         classification: Optional[str] = None,
+        author: Optional[str] = None,
+        reviewer: Optional[str] = None,
+        business_decision: Optional[str] = None,
+        requirements: Optional[str] = None,
+        security_notes: Optional[str] = None,
+        refresh_notes: Optional[str] = None,
+        deployment_notes: Optional[str] = None,
+        access_notes: Optional[str] = None,
+        glossary: Optional[str] = None,
+        assumptions: Optional[str] = None,
+        support_notes: Optional[str] = None,
         on_warning: Optional[Warn] = None,
         ai_context: Optional[JobAIContext] = None,
+        audit_verdicts: Optional[AuditVerdicts] = None,
     ) -> UserGuideDocument:
         warn = on_warning or (lambda _msg: None)
         model.compute_counts()
@@ -357,8 +417,8 @@ class BusinessGuideGenerator:
             ))
 
         report_context = ai_context.insights if ai_context is not None else None
-        introduction = _introduction(model, analyst.core_purpose, report_context)
-        glossary = _build_glossary(model, client, warn, ai_context)
+        introduction = _introduction(model, analyst.core_purpose, report_context, business_decision)
+        glossary_entries = _build_glossary(model, client, warn, ai_context, glossary)
         getting_started = _getting_started(pages)
 
         if client is not None:
@@ -374,7 +434,9 @@ class BusinessGuideGenerator:
             introduction_set = False
             offset = 0
             for batch in io.user_guide_writer_batches(model.report_name, introduction, page_drafts,
-                                                       report_context=report_context):
+                                                       report_context=report_context,
+                                                       business_decision=business_decision,
+                                                       target_audience=audience):
                 batch_titles = [p["page_title"] for p in batch["pages"]]
                 data = call_llm_with_retry(client, io.USER_GUIDE_WRITER_SYSTEM, batch, io.USER_GUIDE_WRITER_SCHEMA,
                                             ai_context=ai_context, name="User Guide Writer")
@@ -396,15 +458,21 @@ class BusinessGuideGenerator:
             metadata=build_core_metadata(
                 model, "user-guide", default_audience="Business users",
                 owner=owner, audience=audience, refresh=refresh, version=version, status=status,
+                author=author, reviewer=reviewer, classification=classification,
+                business_decision=business_decision, requirements=requirements,
+                security_notes=security_notes, refresh_notes=refresh_notes,
+                deployment_notes=deployment_notes, access_notes=access_notes,
+                glossary=glossary, assumptions=assumptions, support_notes=support_notes,
             ),
             introduction=introduction,
             pages=pages,
-            glossary=glossary,
+            glossary=glossary_entries,
             getting_started=getting_started,
         )
 
         if client is not None:
             _run_critic(doc, model, client, warn, ai_context)
             _run_grounding(doc, client, warn, ai_context)
+        _run_consistency(doc, client, warn, ai_context, audit_verdicts)
 
         return doc

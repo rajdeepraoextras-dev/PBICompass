@@ -17,7 +17,7 @@ from typing import Any, Literal, Optional
 # Controlled vocabularies (kept as plain strings so JSON stays clean).
 Cardinality = Literal["one", "many", "unknown"]
 CrossFilter = Literal["single", "both", "unknown"]
-TableKind = Literal["fact", "dimension", "calculation", "calculation-group", "unknown"]
+TableKind = Literal["fact", "dimension", "calculation", "calculation-group", "parameter", "unknown"]
 SourceFormat = Literal["pbip-tmdl", "pbip-tmsl", "pbix", "unknown"]
 
 

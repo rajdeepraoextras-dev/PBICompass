@@ -188,6 +188,53 @@ SECTION_DEFAULT_PROVENANCE: dict[int, str] = {
 }
 
 
+def doc_subtitle(metadata: Any) -> str:
+    """Standard document-header subtitle base: target audience + generation
+    timestamp, with a classification badge appended when set (Day 3) — so
+    the audit/executive/user-guide headers show classification too, not
+    just the technical document's own Document Control table. Callers that
+    append their own extra segment (audit's Score Trend) do so after this."""
+    subtitle = f"{metadata.target_audience or ''} · generated {format_timestamp(metadata.generated_at)}"
+    classification = getattr(metadata, "classification", None)
+    if classification:
+        subtitle += f" · Classification: {classification}"
+    return subtitle
+
+
+def html_discrepancy_callout(discrepancies: list[dict]) -> str:
+    """Day 3: "You stated X; the model shows Y" — a human-stated intake fact
+    that contradicts the model's own metadata is never silently resolved
+    one way or the other; both sides are shown side by side. Returns ``""``
+    when there's nothing to show (the common case)."""
+    if not discrepancies:
+        return ""
+    cards = []
+    for d in discrepancies:
+        cards.append(
+            '<div class="card-section discrepancy-callout" style="border-left: 4px solid #d97706;">'
+            '<p style="margin: 0 0 6px 0;"><strong>⚠ Discrepancy — human input vs. model</strong></p>'
+            f'<p><strong>You stated:</strong> {html_e(d.get("human_claim", ""))}</p>'
+            f'<p><strong>The model shows:</strong> {html_e(d.get("model_finding", ""))}</p>'
+            f'<p class="muted">{html_e(d.get("explanation", ""))}</p>'
+            '</div>'
+        )
+    return "".join(cards)
+
+
+def md_discrepancy_callout(discrepancies: list[dict]) -> str:
+    if not discrepancies:
+        return ""
+    parts = []
+    for d in discrepancies:
+        parts.append(
+            f"\n> **⚠ Discrepancy — human input vs. model**\n"
+            f"> **You stated:** {d.get('human_claim', '')}\n"
+            f">\n> **The model shows:** {d.get('model_finding', '')}\n"
+            f">\n> {d.get('explanation', '')}\n"
+        )
+    return "".join(parts)
+
+
 def section_provenance(section_num: int, metadata: Any) -> str:
     """Bare-text provenance label (``"Extracted"``/``"AI-inferred"``/
     ``"Human-provided"``, no icon) for a technical-doc H2 section: the

@@ -119,49 +119,33 @@ def _effective_metadata(options: dict, enrichment_meta: dict) -> dict:
 
 
 def _generate_one(document_type: str, model, client, meta: dict, warn: Callable[[str], None],
-                   ai_context: JobAIContext | None, top_cluster=None, plan: str | None = None) -> object:
+                   ai_context: JobAIContext | None, top_cluster=None, plan: str | None = None,
+                   audit_verdicts=None, requirements_matrix=None) -> object:
+    # Day 3: ``meta``'s keys (see _effective_metadata) already match every
+    # generator's kwarg names exactly, and every generator now accepts the
+    # full human intake field set (previously only the technical document
+    # did) — so all four document types get it here, not just technical.
     if document_type == "technical":
         return generate_document(
-            model, client,
-            owner=meta.get("owner"),
-            audience=meta.get("audience"),
-            refresh=meta.get("refresh"),
-            version=meta.get("version"),
-            status=meta.get("status"),
-            author=meta.get("author"),
-            reviewer=meta.get("reviewer"),
-            classification=meta.get("classification"),
-            business_decision=meta.get("business_decision"),
-            requirements=meta.get("requirements"),
-            security_notes=meta.get("security_notes"),
-            refresh_notes=meta.get("refresh_notes"),
-            deployment_notes=meta.get("deployment_notes"),
-            access_notes=meta.get("access_notes"),
-            glossary=meta.get("glossary"),
-            assumptions=meta.get("assumptions"),
-            support_notes=meta.get("support_notes"),
+            model, client, **meta,
             on_warning=warn, ai_context=ai_context, top_cluster=top_cluster,
+            audit_verdicts=audit_verdicts, requirements_matrix=requirements_matrix,
         )
     if document_type == "audit":
         return DOCUMENT_TYPES["audit"].generate(
-            model, client,
-            owner=meta.get("owner"),
-            audience=meta.get("audience"),
-            refresh=meta.get("refresh"),
-            version=meta.get("version"),
-            status=meta.get("status"),
-            classification=meta.get("classification"),
+            model, client, **meta,
             on_warning=warn, ai_context=ai_context, plan=plan,
+            requirements_matrix=requirements_matrix,
+        )
+    if document_type == "executive":
+        return DOCUMENT_TYPES["executive"].generate(
+            model, client, **meta,
+            on_warning=warn, ai_context=ai_context, audit_verdicts=audit_verdicts,
+            requirements_matrix=requirements_matrix,
         )
     return DOCUMENT_TYPES[document_type].generate(
-        model, client,
-        owner=meta.get("owner"),
-        audience=meta.get("audience"),
-        refresh=meta.get("refresh"),
-        version=meta.get("version"),
-        status=meta.get("status"),
-        classification=meta.get("classification"),
-        on_warning=warn, ai_context=ai_context,
+        model, client, **meta,
+        on_warning=warn, ai_context=ai_context, audit_verdicts=audit_verdicts,
     )
 
 
@@ -254,22 +238,36 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
         # cross-document links below assume these exact names.
         html_filenames = {d: f"{d}.html" for d in document_types} if multi else {}
 
-        # Day 8: when both "technical" and "audit" are requested, generate
-        # the Audit document first so its Audit Synthesizer clusters (Day 7)
-        # can be surfaced on the technical doc's §16 — avoids a second,
-        # potentially-inconsistent Synthesizer call. The pre-generated audit
-        # doc is reused below when the main loop reaches "audit" rather than
-        # regenerated, so this never doubles LLM cost.
+        # Day 8/Day 2: when "audit" is requested alongside any other document
+        # type, generate it first so its Audit Synthesizer clusters (Day 7,
+        # technical §16 only) and its deterministic verdicts (Day 2's
+        # cross-artifact consistency check, every other doc type) are both
+        # available — avoids a second, potentially-inconsistent Synthesizer
+        # call. The pre-generated audit doc is reused below when the main
+        # loop reaches "audit" rather than regenerated, so this never doubles
+        # LLM cost.
         # Day 9: the AI fix-snippets feature is plan-gated (pro/enterprise
         # only) — threaded here rather than read again per-doc, matching how
         # ``options.get("plan")`` is already validated once by the quota
         # check above in ``app.py``.
         plan = options.get("plan")
 
+        # Day 4: computed once, before pre_audit_doc — no ordering
+        # dependency on the Audit document, unlike top_cluster/audit_verdicts.
+        from ..agents.traceability import build_requirements_matrix
+        requirements_matrix = build_requirements_matrix(
+            model, meta.get("requirements"), client, warn, ai_context=ai_context,
+        )
+
         pre_audit_doc = None
-        if client is not None and "technical" in document_types and "audit" in document_types:
-            pre_audit_doc = _generate_one("audit", model, client, meta, warn, ai_context, plan=plan)
+        if "audit" in document_types and len(document_types) > 1:
+            pre_audit_doc = _generate_one("audit", model, client, meta, warn, ai_context, plan=plan,
+                                          requirements_matrix=requirements_matrix)
         top_cluster = _audit_top_cluster(pre_audit_doc) if pre_audit_doc is not None else None
+        audit_verdicts = None
+        if pre_audit_doc is not None:
+            from ..agents.consistency import build_audit_verdicts
+            audit_verdicts = build_audit_verdicts(model, pre_audit_doc)
 
         outputs: dict[str, bytes] = {}
         docs: dict[str, object] = {}
@@ -279,7 +277,9 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
             else:
                 doc = _generate_one(dtype, model, client, meta, warn, ai_context,
                                      top_cluster=top_cluster if dtype == "technical" else None,
-                                     plan=plan if dtype == "audit" else None)
+                                     plan=plan if dtype == "audit" else None,
+                                     audit_verdicts=audit_verdicts,
+                                     requirements_matrix=requirements_matrix)
             if changelog_text and dtype in ("technical", "audit"):
                 doc.changelog = changelog_text
             docs[dtype] = doc

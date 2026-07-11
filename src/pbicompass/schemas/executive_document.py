@@ -46,6 +46,10 @@ class ExecutiveDocument:
     # server, or database name (G.1).
     data_source_types: list[str] = field(default_factory=list)
     refresh_schedule: Optional[str] = None
+    # Day 3: gateway/latency detail from the intake form's "Gateway, Latency
+    # & Refresh Details" field — the "Data & Refresh at a Glance" section's
+    # only source for anything beyond the bare schedule string.
+    refresh_notes: Optional[str] = None
     maintenance_note: str = ""
     # Owner comes from ``metadata.owner`` (shared across doc types); steward
     # has no source yet — will be sourced from the enrichment file (5.1)
@@ -53,6 +57,9 @@ class ExecutiveDocument:
     steward: Optional[str] = None
     classification: Optional[str] = None
     next_steps: list[str] = field(default_factory=list)
+    # Day 4: "7/9"-style Requirements Traceability coverage stat (empty
+    # when no requirements were supplied) — see agents.traceability.
+    requirements_coverage: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)

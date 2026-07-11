@@ -79,21 +79,68 @@ def _infer_data_sources(model: SemanticModel) -> list[DataSource]:
     return sources
 
 
+
+# Power BI's Auto Date/Time feature creates two hidden tables per date
+# column ("LocalDateTable_<GUID>" and "DateTableTemplate_<GUID>") and wires
+# them into the model with a many-to-one relationship *from* the column's
+# own table. That relationship is pure noise for shape inference: it makes
+# an otherwise pure dimension (e.g. an explicit "Date" table with no
+# measures) look many-sided and get misclassified as a fact table. Matches
+# ``audit_rules.py``'s PBIC-PERF-007 auto-date detection so both heuristics
+# agree on what counts as an auto date/time artifact.
+_AUTO_DATE_TABLE_RE = re.compile(r"LocalDateTable_|DateTableTemplate_|TemplateId")
+
+# The exact M signature Power BI Desktop emits for a manually-entered data
+# table (Power Query's "Enter Data") — the mechanism behind What-If
+# Parameters and field parameters. A single-column table built this way,
+# with no measures and no relationships, is a parameter/entered-data table,
+# not a dimension.
+_PARAMETER_M_SIGNATURE_RE = re.compile(r"Table\.FromRows\(Json\.Document\(Binary\.Decompress\(")
+
+
+def _is_auto_date_table(name: str) -> bool:
+    return bool(_AUTO_DATE_TABLE_RE.search(name))
+
+
+def _looks_like_parameter_table(t: Table) -> bool:
+    if len(t.columns) != 1 or t.measures:
+        return False
+    return any(
+        p.source_kind == "m" and p.expression and _PARAMETER_M_SIGNATURE_RE.search(p.expression)
+        for p in t.partitions
+    )
+
+
 def _classify_tables(model: SemanticModel) -> None:
     """Light fact/dimension heuristic (refined later by the Data Modeler agent)."""
     many_end: dict[str, int] = {}
     one_end: dict[str, int] = {}
     for r in model.relationships:
+        if _is_auto_date_table(r.from_table) or _is_auto_date_table(r.to_table):
+            continue
         many_end[r.from_table] = many_end.get(r.from_table, 0) + 1
         one_end[r.to_table] = one_end.get(r.to_table, 0) + 1
     for t in model.tables:
         if t.kind not in ("unknown",):  # respect calculation / calculation-group
             continue
+        if _is_auto_date_table(t.name):
+            t.kind = "calculation"
+            continue
+        if _looks_like_parameter_table(t):
+            t.kind = "parameter"
+            continue
         m, o = many_end.get(t.name, 0), one_end.get(t.name, 0)
         has_measures = bool(t.measures)
-        if m and (has_measures or m >= o):
+        # A table with real measures is a fact table. Otherwise, any
+        # one-side participation makes it dimensional in shape — including
+        # snowflake middle tiers that are also many-side to some other
+        # table — since 0 measures is the stronger signal than relationship
+        # direction. Only a table with no one-side participation at all
+        # (a pure many-side junction/bridge with no measures) falls back to
+        # "fact".
+        if has_measures:
             t.kind = "fact"
-        elif o and not m:
+        elif o:
             t.kind = "dimension"
         elif m:
             t.kind = "fact"

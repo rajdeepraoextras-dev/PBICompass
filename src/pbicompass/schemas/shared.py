@@ -23,3 +23,19 @@ class DocMetadataCore:
     status: Optional[str] = None
     score_trend: Optional[str] = None
     overridden_fields: list[str] = field(default_factory=list)
+    # Day 3: the same human intake fields ``schemas.document.DocumentMetadata``
+    # (the technical document) already carries — extended here so the audit,
+    # executive, and user guide documents can receive and render them too,
+    # instead of only the technical document ever seeing them.
+    author: Optional[str] = None
+    reviewer: Optional[str] = None
+    classification: Optional[str] = None
+    business_decision: Optional[str] = None
+    requirements: Optional[str] = None
+    security_notes: Optional[str] = None
+    refresh_notes: Optional[str] = None
+    deployment_notes: Optional[str] = None
+    access_notes: Optional[str] = None
+    glossary: Optional[str] = None
+    assumptions: Optional[str] = None
+    support_notes: Optional[str] = None

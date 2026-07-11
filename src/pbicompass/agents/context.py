@@ -56,6 +56,13 @@ class JobAIContext:
     # text and needs no LLM to have succeeded for it to exist.
     model_digest: Optional[str] = None
 
+    # Rule-engine ledger (4.1 / J.A.1) — ``audit_rules.compute_checks_ledger``'s
+    # result, stashed here by whichever document generator computes it first
+    # (currently the Audit & Health Report) so a sibling document generated
+    # in the same job (technical.py's §16) reuses the identical counts
+    # instead of re-deriving them a different way and disagreeing.
+    checks_ledger: Optional[dict] = None
+
     # Job-sandbox-scoped LLM response cache path (service only); ``None``
     # means "use the client-wide default" (``LLMResponseCache``'s own
     # ``PBICOMPASS_LLM_CACHE`` env-var lookup, e.g. the CLI's persistent

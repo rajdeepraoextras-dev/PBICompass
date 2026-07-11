@@ -1,11 +1,16 @@
-"""Tests for ``agents/sanitize.py`` (AI-Native roadmap D2/D6): the
-deterministic meta-commentary and punt-phrase guards."""
+"""Tests for ``agents/sanitize.py`` (AI-Native roadmap D2/D3/D6): the
+deterministic meta-commentary, orphan-fragment, and punt-phrase guards."""
 
 from __future__ import annotations
 
 import unittest
 
-from pbicompass.agents.sanitize import is_meta_commentary, is_punt_phrase, sanitize
+from pbicompass.agents.sanitize import (
+    is_low_content_fragment,
+    is_meta_commentary,
+    is_punt_phrase,
+    sanitize,
+)
 
 
 class IsMetaCommentaryTest(unittest.TestCase):
@@ -36,6 +41,43 @@ class IsMetaCommentaryTest(unittest.TestCase):
     def test_empty_text_is_not_flagged(self):
         self.assertFalse(is_meta_commentary(""))
         self.assertFalse(is_meta_commentary(None))
+
+    def test_leaked_column_describer_guardrail_fragment_is_flagged(self):
+        # The exact trailing clause of io.py's column-describer system
+        # prompt (see io.py:354): "Only write exactly \"Unknown — requires
+        # business confirmation.\" when no such structural fact is
+        # available either." — reproduced verbatim, as it would appear if
+        # the model echoed its own instructions into a description field.
+        self.assertTrue(is_meta_commentary(
+            'Only write exactly "Unknown — requires business confirmation." '
+            'when no such structural fact is available either.'
+        ))
+
+    def test_orphaned_guardrail_clause_is_flagged(self):
+        # The same guardrail, stranded as a dependent clause by
+        # sentence-granular grounding replacement (D3) — no longer attached
+        # to the sentence it was cut out of.
+        self.assertTrue(is_meta_commentary("when no such structural fact is available either."))
+        self.assertTrue(is_meta_commentary("when no structural fact is available either."))
+
+
+class IsLowContentFragmentTest(unittest.TestCase):
+    def test_short_lowercase_clause_is_flagged(self):
+        self.assertTrue(is_low_content_fragment("when no such fact is available either."))
+
+    def test_short_uppercase_sentence_is_not_flagged(self):
+        # The deterministic fallback wording (D6) — short, but a real,
+        # grammatically complete sentence, not stranded clause debris.
+        self.assertFalse(is_low_content_fragment("No description set."))
+
+    def test_normal_length_lowercase_fragment_is_not_flagged(self):
+        self.assertFalse(is_low_content_fragment(
+            "when the underlying source system records a corrected amount retroactively."
+        ))
+
+    def test_empty_text_is_not_flagged(self):
+        self.assertFalse(is_low_content_fragment(""))
+        self.assertFalse(is_low_content_fragment(None))
 
 
 class IsPuntPhraseTest(unittest.TestCase):

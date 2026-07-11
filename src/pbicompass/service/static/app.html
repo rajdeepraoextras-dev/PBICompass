@@ -161,6 +161,10 @@
 #admin-accounts .qbox { width: 88px; padding: 6px 10px; font-size: .8rem; }
 .admin-name { font-weight: 500; color: #fff; }
 .admin-sub { font-size: .72rem; color: hsl(0 0% 100% / .6); }
+.prov-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid hsl(0 0% 100% / .08); }
+.prov-row:last-child { border-bottom: none; }
+.prov-row .badge { margin-left: 8px; vertical-align: middle; }
+.prov-row .btn-ghost { flex: none; min-width: 84px; }
 
 .site-foot-mini { text-align: center; padding: 30px 0 40px; color: hsl(0 0% 100% / .5); font-size: .74rem; }
 .site-foot-mini a { color: hsl(0 0% 100% / .7); }
@@ -184,6 +188,13 @@
     <div class="appbar-right" id="appbar-right">
       <a class="account-btn liquid-glass scale-hover" href="/">← Back to site</a>
     </div>
+  </div>
+
+  <!-- Boot loader — shown until we know whether there's a session, so the
+       first paint is a spinner rather than a blank green screen. -->
+  <div id="app-boot" class="auth-shell" style="text-align:center; padding-top:14vh;">
+    <span style="display:inline-block; width:24px; height:24px; border-radius:50%;
+      border:2px solid hsl(0 0% 100% / .2); border-top-color:#fff; animation:spin .7s linear infinite;"></span>
   </div>
 
   <!-- =============================================================
@@ -295,15 +306,17 @@
         <div class="console-head">
           <span class="pill liquid-glass" style="align-self:center; margin-bottom:6px;">secure sandbox · shredded after render</span>
           <h3>Power BI Knowledge Studio</h3>
-          <p>Metadata only — row data is never read. Choose one document or generate all four.</p>
+          <p>Metadata only — row data is never read. Pick one document or let the AI write all four.</p>
         </div>
 
         <form id="gen-form">
           <div class="tabs liquid-glass" style="margin-bottom:26px;">
             <button type="button" class="tab-btn active" data-tab="tab-config"><span class="tn">1</span><span class="txt">Source &amp; Engine</span></button>
-            <button type="button" class="tab-btn" data-tab="tab-control"><span class="tn">2</span><span class="txt">Document Control</span></button>
-            <button type="button" class="tab-btn" data-tab="tab-details"><span class="tn">3</span><span class="txt">Details &amp; Notes</span></button>
+            <button type="button" class="tab-btn" data-tab="tab-control"><span class="tn">2</span><span class="txt">Metadata <small style="opacity:.65;font-weight:400;">· optional</small></span></button>
+            <button type="button" class="tab-btn" data-tab="tab-details"><span class="tn">3</span><span class="txt">Notes <small style="opacity:.65;font-weight:400;">· optional</small></span></button>
           </div>
+
+          <p class="muted" style="text-align:center; margin:-10px 0 22px;">Only the file in step 1 is required — steps 2 &amp; 3 are optional and simply enrich the documents.</p>
 
           <!-- Tab 1 -->
           <div class="tab-content active" id="tab-config">
@@ -349,13 +362,7 @@
             <div class="grid-2">
               <div class="form-group">
                 <label>Documentation Engine</label>
-                <select id="provider">
-                  <option value="none">Offline Engine (Deterministic Fallback)</option>
-                  <option value="anthropic">Claude (Opus 4.8 / Thinking)</option>
-                  <option value="gemini">Gemini (3.5 Flash)</option>
-                  <option value="cohere">Cohere (Command A)</option>
-                  <option value="meshapi">MeshAPI (one key, 1000+ models)</option>
-                </select>
+                <select id="provider"><!-- populated from /app/api/config: AI engines (some may be "currently unavailable") + offline --></select>
               </div>
               <div class="form-group" id="provider-key-row">
                 <label>Engine API Key <small>(your Claude/Gemini/Cohere/MeshAPI key — used for this job only, never stored)</small></label>
@@ -511,6 +518,18 @@
       </div>
 
       <div class="panel-card liquid-glass">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+          <h2 style="margin:0;">AI engines</h2>
+          <div style="flex:1"></div>
+          <button class="btn-ghost" onclick="loadAdminProviders()">Refresh</button>
+        </div>
+        <p class="muted" style="margin-bottom:12px;">Enable or disable the AI engines users can pick. A disabled engine shows as <b>"currently unavailable"</b> in the generator and is refused server-side.</p>
+        <div id="admin-providers"></div>
+        <div class="err-text" id="admin-prov-err"></div>
+        <div class="ok-text" id="admin-prov-ok"></div>
+      </div>
+
+      <div class="panel-card liquid-glass">
         <h2>Accounts</h2>
         <div class="err-text" id="admin-err"></div>
         <div class="ok-text" id="admin-ok"></div>
@@ -579,7 +598,7 @@ function showAuthTab(which) {
   $("auth-title").textContent = isLogin ? "Welcome back" : "Create your account";
   $("auth-sub").textContent = isLogin
     ? "Sign in to generate documentation and manage your account."
-    : "Free to start — then upload a model and generate four documents.";
+    : "Free to start — then upload a Power BI report and let AI write four documents.";
 }
 
 /* ---------- plan pickers (signup + profile) ---------- */
@@ -622,6 +641,7 @@ document.querySelectorAll("[data-back]").forEach(b => b.addEventListener("click"
 /* ---------- sign in ---------- */
 $("login-form").addEventListener("submit", async e => {
   e.preventDefault();
+  if (!supa) return;
   const f = e.target; $("login-err").textContent = "";
   $("login-spin").style.display = "inline-block";
   const { error } = await supa.auth.signInWithPassword({ email: f.email.value, password: f.password.value });
@@ -633,6 +653,7 @@ $("login-form").addEventListener("submit", async e => {
 /* ---------- sign up ---------- */
 $("signup-form").addEventListener("submit", async e => {
   e.preventDefault();
+  if (!supa) return;
   const f = e.target; $("signup-err").textContent = ""; $("signup-info").textContent = "";
   $("signup-spin").style.display = "inline-block";
   const { data, error } = await supa.auth.signUp({
@@ -670,6 +691,7 @@ function showView(name) {
 document.querySelectorAll(".nav-btn").forEach(b => b.addEventListener("click", () => showView(b.dataset.view)));
 
 async function enterApp(me) {
+  $("app-boot").classList.add("hidden");
   $("auth").classList.add("hidden");
   $("app-shell").style.display = "block";
   $("signedin-foot").style.display = "block";
@@ -769,7 +791,39 @@ async function loadJobs() {
 
 /* ---------- admin panel (in-app, admin accounts only) ---------- */
 async function loadAdmin() {
-  await Promise.all([loadAdminAccounts(), loadAdminJobs()]);
+  await Promise.all([loadAdminAccounts(), loadAdminJobs(), loadAdminProviders()]);
+}
+
+/* ---------- admin: AI engine availability ---------- */
+async function loadAdminProviders() {
+  $("admin-prov-err").textContent = ""; $("admin-prov-ok").textContent = "";
+  const r = await api("/app/api/admin/providers");
+  if (!r.ok) { $("admin-prov-err").textContent = "Could not load AI engines."; return; }
+  const { providers, byok_enabled } = await r.json();
+  const box = $("admin-providers"); box.innerHTML = "";
+  providers.forEach(p => {
+    const row = document.createElement("div"); row.className = "prov-row";
+    const status = p.enabled
+      ? '<span class="badge ok">Available</span>'
+      : '<span class="badge warn">Currently unavailable</span>';
+    const keyNote = (!p.has_key && !byok_enabled)
+      ? '<div class="admin-sub">No server key configured — enabling will fall back to the offline engine.</div>'
+      : '';
+    row.innerHTML = `<div style="flex:1;min-width:0;"><span class="admin-name">${escHtml(p.label)}</span>${status}${keyNote}</div>`;
+    const btn = document.createElement("button");
+    btn.className = "btn-ghost";
+    btn.textContent = p.enabled ? "Disable" : "Enable";
+    btn.onclick = () => adminSetProvider(p.id, !p.enabled);
+    row.appendChild(btn);
+    box.appendChild(row);
+  });
+}
+async function adminSetProvider(providerId, enabled) {
+  $("admin-prov-err").textContent = ""; $("admin-prov-ok").textContent = "";
+  const r = await api(`/app/api/admin/providers/${providerId}`, { method: "POST", body: JSON.stringify({ enabled }) });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); $("admin-prov-err").textContent = e.detail || "Could not update engine."; return; }
+  $("admin-prov-ok").textContent = `${providerId} ${enabled ? "enabled" : "disabled"}.`;
+  await loadAdminProviders();
 }
 
 async function loadAdminAccounts() {
@@ -875,6 +929,36 @@ providerApikey.value = localStorage.getItem("pbicompass_provider_key") || "";
 providerApikey.addEventListener("change", () => localStorage.setItem("pbicompass_provider_key", providerApikey.value.trim()));
 
 const EFFORT_CAPABLE_PROVIDERS = ["anthropic", "gemini", "cohere", "meshapi"];
+
+// Build the engine picker from server config. Each AI engine is either
+// selectable or shown as "currently unavailable" (admin-controlled); the
+// offline engine is always available and appended last. The first available
+// AI engine is preselected and tagged "recommended"; if none are available we
+// fall back to the offline engine.
+function renderProviderOptions() {
+  const sel = $("provider");
+  const providers = (cfg && cfg.providers) || [{ id: "anthropic", label: "Claude (Opus 4.8)", enabled: true }];
+  sel.innerHTML = "";
+  let firstEnabled = null;
+  providers.forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.id;
+    if (p.enabled) {
+      if (!firstEnabled) { firstEnabled = p.id; o.textContent = p.label + " — recommended"; }
+      else o.textContent = p.label;
+    } else {
+      o.textContent = p.label + " — currently unavailable";
+      o.disabled = true;
+    }
+    sel.appendChild(o);
+  });
+  const off = document.createElement("option");
+  off.value = "none";
+  off.textContent = "Offline engine — no AI, fully deterministic";
+  sel.appendChild(off);
+  sel.value = firstEnabled || "none";
+}
+
 function syncEffortVisibility() {
   const isOffline = $("provider").value === "none";
   $("effort-row").style.display = EFFORT_CAPABLE_PROVIDERS.includes($("provider").value) ? "" : "none";
@@ -1070,11 +1154,15 @@ async function downloadFile(url, fmt) {
    Auth state → route between signed-out and signed-in
    ============================================================= */
 function showSignedOut() {
+  $("app-boot").classList.add("hidden");
   $("app-shell").style.display = "none";
   $("signedin-foot").style.display = "none";
   $("auth").classList.remove("hidden");
   $("appbar-right").innerHTML = '<a class="account-btn liquid-glass scale-hover" href="/">← Back to site</a>';
   if (cfg.supabase_enabled) $("ms-wrap").classList.remove("hidden");
+  // Landing-page CTAs deep-link here with #signup so new visitors land on the
+  // "Create account" tab instead of the sign-in form.
+  if (location.hash === "#signup") showAuthTab("signup");
 }
 
 async function onAuthState(session) {
@@ -1089,10 +1177,12 @@ async function onAuthState(session) {
   cfg = await api("/app/api/config").then(r => r.json()).catch(() => ({}));
   if (cfg.plan_limits) planLimits = cfg.plan_limits;
   renderPlanCards($("signup-plans"), signupPlan, p => { signupPlan = p; });
+  renderProviderOptions();
   syncEffortVisibility();
 
   if (!cfg.supabase_enabled) {
     // Self-host / API-key-only deployment — nothing to sign in to.
+    $("app-boot").classList.add("hidden");
     $("auth").classList.remove("hidden");
     $("login-form").classList.add("hidden");
     $("signup-form").classList.add("hidden");

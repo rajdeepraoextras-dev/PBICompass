@@ -11,6 +11,7 @@ logic" mandate. Pure functions, no LLM involved.
 from __future__ import annotations
 
 import re
+from typing import Optional
 
 from ..schemas.model import SemanticModel
 from .deterministic import translate_dax
@@ -292,6 +293,29 @@ def declassify(text: str) -> str:
     meaning (1.5/1.6) — this keeps that text free of DAX-flavored syntax even
     though the translator itself is written for a technical audience."""
     return _TABLE_COLUMN_RE.sub(r"\1", text)
+
+
+def parse_human_glossary(text: Optional[str]) -> dict[str, str]:
+    """Parse the intake form's free-text "Glossary of Key Business Terms"
+    field into ``{term: definition}`` (Day 3).
+
+    One term per line, ``Term: Definition`` — the same convention already
+    used for the rendered Document Control glossary. A line with no colon
+    can't be attributed to a term, so it's skipped rather than guessed at;
+    the caller's merge only ever *adds to or overrides* the deterministic
+    glossary, it never silently drops a human line — an unparsed line still
+    means the whole ``glossary`` blob renders verbatim wherever the field
+    itself is shown (§14's own paragraph), just not merged term-by-term."""
+    entries: dict[str, str] = {}
+    for line in (text or "").split("\n"):
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        term, _, definition = line.partition(":")
+        term, definition = term.strip(), definition.strip()
+        if term and definition:
+            entries[term] = definition
+    return entries
 
 
 # Single-argument DAX aggregation calls translate_dax() only prettifies at

@@ -15,6 +15,7 @@ from pathlib import Path
 from ..schemas.executive_document import ExecutiveDocument, ExecutiveRisk
 from ._docx_writer import _Docx
 from ._html_shell import page_shell
+from ._shared import doc_subtitle as _doc_subtitle
 from ._shared import format_timestamp as _fmt_ts
 from ._shared import html_e as _e
 from ._shared import md_table as _table
@@ -37,11 +38,13 @@ def _risk_line(r: ExecutiveRisk) -> str:
 def render_markdown(doc: ExecutiveDocument) -> str:
     md = doc.metadata
     out: list[str] = [f"# {md.report_name} — Executive Summary\n"]
-    out.append(f"_{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}_\n")
+    out.append(f"_{_doc_subtitle(md)}_\n")
 
     out.append(f"\n## {_SECTION_TITLES[0]}\n")
     out.append(doc.purpose + "\n")
     out.append(doc.business_value + "\n")
+    if getattr(doc, "requirements_coverage", None):
+        out.append(f"**Requirements coverage:** {doc.requirements_coverage}\n")
 
     out.append(f"\n## {_SECTION_TITLES[1]}\n")
     if doc.key_kpis:
@@ -65,6 +68,8 @@ def render_markdown(doc: ExecutiveDocument) -> str:
     else:
         out.append("**Data sources:** _None detected._\n")
     out.append(f"**Refresh schedule:** {doc.refresh_schedule or '_Not documented._'}\n")
+    if getattr(doc, "refresh_notes", None):
+        out.append(f"**Gateway & latency:** {doc.refresh_notes}\n")
     out.append(doc.maintenance_note + "\n")
 
     out.append(f"\n## {_SECTION_TITLES[4]}\n")
@@ -119,6 +124,8 @@ def render_html(
     o.append(f'<h2 id="sec1">{_e(_SECTION_TITLES[0])}</h2>')
     o.append(f"<p>{_e(doc.purpose)}</p>")
     o.append(f"<p>{_e(doc.business_value)}</p>")
+    if getattr(doc, "requirements_coverage", None):
+        o.append(f'<p><strong>Requirements coverage:</strong> {_e(doc.requirements_coverage)}</p>')
 
     kpi_ids = [f"kpi-{i}" for i in range(len(doc.key_kpis))]
     o.append(f'<h2 id="sec2">{_e(_SECTION_TITLES[1])}</h2>')
@@ -147,6 +154,8 @@ def render_html(
         o.append('<p><strong>Data sources:</strong> <span class="muted">None detected.</span></p>')
     refresh_html = _e(doc.refresh_schedule) if doc.refresh_schedule else '<span class="muted">not documented</span>'
     o.append(f'<p><strong>Refresh schedule:</strong> {refresh_html}</p>')
+    if getattr(doc, "refresh_notes", None):
+        o.append(f'<p><strong>Gateway &amp; latency:</strong> {_e(doc.refresh_notes)}</p>')
     o.append(f"<p>{_e(doc.maintenance_note)}</p>")
 
     _not_specified = '<span class="muted">not specified</span>'
@@ -177,7 +186,7 @@ def render_html(
 
     return page_shell(
         title=f"{md.report_name} — Executive Summary",
-        subtitle=f"{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}",
+        subtitle=_doc_subtitle(md),
         toc=toc, kpis=kpis, body_html="\n".join(o), doc_links=doc_links, search_index=search_index,
         owner=md.owner, version=md.version, status=md.status, classification=doc.classification,
     )
@@ -191,7 +200,7 @@ def render_docx(doc: ExecutiveDocument, out_path) -> Path:
     md = doc.metadata
 
     d.heading(0, f"{md.report_name} — Executive Summary")
-    d.para([d._run(f"{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}", italic=True)])
+    d.para([d._run(_doc_subtitle(md), italic=True)])
 
     def _bullets_or_none(items: list[str], empty: str) -> None:
         if items:
@@ -203,6 +212,8 @@ def render_docx(doc: ExecutiveDocument, out_path) -> Path:
     d.heading(1, _SECTION_TITLES[0])
     d.para(doc.purpose)
     d.para(doc.business_value)
+    if getattr(doc, "requirements_coverage", None):
+        d.para([d._run("Requirements coverage: ", bold=True), d._run(doc.requirements_coverage)])
 
     d.heading(1, _SECTION_TITLES[1])
     _bullets_or_none(doc.key_kpis, "No KPIs identified.")
@@ -218,6 +229,8 @@ def render_docx(doc: ExecutiveDocument, out_path) -> Path:
     d.para([d._run("Data sources: ", bold=True),
            d._run(", ".join(doc.data_source_types) if doc.data_source_types else "None detected.")])
     d.para([d._run("Refresh schedule: ", bold=True), d._run(doc.refresh_schedule or "Not documented.")])
+    if getattr(doc, "refresh_notes", None):
+        d.para([d._run("Gateway & latency: ", bold=True), d._run(doc.refresh_notes)])
     d.para(doc.maintenance_note)
 
     d.heading(1, _SECTION_TITLES[4])

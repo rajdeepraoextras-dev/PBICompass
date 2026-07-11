@@ -41,6 +41,17 @@ from .usage import used_column_names, used_measure_names
 
 _SEVERITY_COST = {"Critical": 15, "High": 8, "Medium": 4, "Low": 1}
 
+# Power BI's Auto Date/Time creates two hidden tables per date column,
+# "LocalDateTable_<GUID>" and "DateTableTemplate_<GUID>" — real Auto
+# Date/Time table names don't contain "TemplateId" on their own, but the
+# substring is kept as a defensive third match for older export shapes.
+# Shared by PBIC-PERF-007's own detection (below) and ``find_unused_assets``
+# (Day 2): a reviewer expects these auto-generated artifacts to be called
+# out once, as their own category, not scattered across "unused calculated
+# columns"/"unused tables" noise.
+def _is_auto_date_table(name: str) -> bool:
+    return "LocalDateTable" in name or "DateTableTemplate" in name or "TemplateId" in name
+
 # -- Rules Engine & Configuration (Phase 4) ---------------------------------------
 
 FINDING_RULES = {
@@ -1100,20 +1111,19 @@ def find_performance_risks(model: SemanticModel) -> list[PerformanceRisk]:
                 severity="Medium",
             ))
 
-    # PBIC-PERF-007: Auto date/time enabled. Power BI's Auto Date/Time
-    # creates two hidden tables per date column, "LocalDateTable_<GUID>" and
-    # "DateTableTemplate_<GUID>" — the latter did not previously match here
-    # (only a "TemplateId" substring did, which real Auto Date/Time table
-    # names don't contain), so a model with only the template table visible
-    # in this list silently escaped detection.
-    has_auto_date = any(
-        "LocalDateTable" in t.name or "DateTableTemplate" in t.name or "TemplateId" in t.name
-        for t in model.tables
-    )
-    if has_auto_date:
+    # PBIC-PERF-007: Auto date/time enabled.
+    auto_date_tables = [t for t in model.tables if _is_auto_date_table(t.name)]
+    if auto_date_tables:
+        column_count = sum(len(t.columns) for t in auto_date_tables)
         risks.append(PerformanceRisk(
             kind="auto_datetime", object_name="Auto Date/Time", table=None,
-            detail="Auto date/time is enabled in this model — hidden local tables are created for date columns, increasing file size.",
+            detail=(
+                f"Auto date/time is enabled in this model — {len(auto_date_tables)} hidden local "
+                f"table(s) with {column_count} column(s) total are created for date columns, "
+                f"increasing file size. These hidden tables' own columns are its own category, "
+                f"excluded from the Unused Assets report below rather than inflating it — disabling "
+                f"Auto Date/Time (Options > Data Load) removes them entirely."
+            ),
             severity="Medium",
         ))
 
@@ -1137,19 +1147,29 @@ def find_performance_risks(model: SemanticModel) -> list[PerformanceRisk]:
 # -- Governance --------------------------------------------------------------------
 def check_governance(
     model: SemanticModel, *, owner: str | None = None, classification: str | None = None,
+    security_notes: str | None = None,
 ) -> list[GovernanceFinding]:
     findings: list[GovernanceFinding] = []
 
+    # Day 3: a human-supplied Security & RLS Validation Notes excerpt is
+    # appended as evidentiary context to whatever RLS finding fires below —
+    # a reader shouldn't have to cross-reference the Document Control table
+    # to see what the report owner already said about RLS testing/scope.
+    security_note_suffix = f' Per the intake form: "{security_notes.strip()}"' if security_notes else ""
+
     if not model.roles:
         findings.append(GovernanceFinding(
-            area="rls", detail="No row-level security roles are defined in this model.", severity="Medium",
+            area="rls",
+            detail="No row-level security roles are defined in this model." + security_note_suffix,
+            severity="Medium",
         ))
     else:
         for r in model.roles:
             if not r.members:
                 findings.append(GovernanceFinding(
-                    area="rls", detail=f"Role '{r.name}' has no members assigned in the model file "
-                                        f"(membership may be managed in the Power BI Service).",
+                    area="rls", detail=(f"Role '{r.name}' has no members assigned in the model file "
+                                        f"(membership may be managed in the Power BI Service)."
+                                        + security_note_suffix),
                     severity="Low",
                 ))
 
@@ -1253,22 +1273,37 @@ def check_governance(
 def find_unused_assets(model: SemanticModel) -> UnusedAssets:
     used_measures = used_measure_names(model)
     used_cols = used_column_names(model)
+    auto_date_table_names = {t.name for t in model.tables if _is_auto_date_table(t.name)}
 
     unused_measures = [m.name for m in model.all_measures() if m.name not in used_measures]
-    unused_columns = [
+    unused_columns_all = [
         {"table": t.name, "column": c.name}
         for t in model.tables for c in t.columns
         if not c.is_hidden and not c.is_calculated and c.name not in used_cols
     ]
-    unused_calc_cols = [c for c in calc_columns(model) if c["column"] not in used_cols]
+    unused_calc_cols_all = [c for c in calc_columns(model) if c["column"] not in used_cols]
 
     related_tables = {r.from_table for r in model.relationships} | {r.to_table for r in model.relationships}
-    unused_tables = [
+    unused_tables_all = [
         t.name for t in model.tables
         if t.name not in related_tables
         and not any(m.name in used_measures for m in t.measures)
         and not any(c.name in used_cols for c in t.columns)
     ]
+
+    # Auto Date/Time's own hidden tables and their otherwise-unused columns
+    # are excluded here and counted instead (Day 2) — they're the
+    # PBIC-PERF-007 finding's own category (auto-generated, cleared up by
+    # disabling the feature), not a maintenance gap a reviewer should act on
+    # column-by-column.
+    unused_columns = [c for c in unused_columns_all if c["table"] not in auto_date_table_names]
+    unused_calc_cols = [c for c in unused_calc_cols_all if c["table"] not in auto_date_table_names]
+    unused_tables = [t for t in unused_tables_all if t not in auto_date_table_names]
+    auto_datetime_excluded = (
+        (len(unused_columns_all) - len(unused_columns))
+        + (len(unused_calc_cols_all) - len(unused_calc_cols))
+        + (len(unused_tables_all) - len(unused_tables))
+    )
 
     unused_pages = [p["name"] for p in report_pages(model)
                     if p["hidden"] and not p["drillthrough"]]
@@ -1279,6 +1314,7 @@ def find_unused_assets(model: SemanticModel) -> UnusedAssets:
         tables=unused_tables,
         calculated_columns=[{"table": c["table"], "column": c["column"]} for c in unused_calc_cols],
         report_pages=unused_pages,
+        auto_datetime_excluded=auto_datetime_excluded,
     )
 
 

@@ -99,9 +99,20 @@ def render_docx(doc: Document, out_path) -> Path:
     if not md.business_decision:
         todo("The primary business decision this dashboard drives (e.g. weekly sales planning).")
 
-    # 3. Business Requirements
+    # 3. Business Requirements. requirements_matrix (Day 4) supersedes the
+    # plain text dump whenever it's non-empty.
     d.heading(1, f"3. Business Requirements{_badge(3)}")
-    if md.requirements:
+    if doc.requirements_matrix:
+        covered = sum(1 for r in doc.requirements_matrix if r["status"] in ("Covered", "Partial"))
+        d.para([d._run(
+            f"Requirements Traceability Matrix — {covered}/{len(doc.requirements_matrix)} at least partially "
+            f"covered by the report's own measures, columns, and pages.", italic=True)])
+        rag_rows = []
+        for r in doc.requirements_matrix:
+            evidence = ", ".join(e["name"] for e in r.get("evidence", [])) or "—"
+            rag_rows.append([r.get("priority") or "—", r["text"], r["status"], evidence])
+        d.table(["Priority", "Requirement", "Status", "Evidence"], _t(rag_rows))
+    elif md.requirements:
         for req in md.requirements.split('\n'):
             if req.strip():
                 d.para(req)
@@ -173,8 +184,14 @@ def render_docx(doc: Document, out_path) -> Path:
     # 7. Measures
     d.heading(1, f"7. Measures & Calculations (DAX Dictionary){_badge(7)}")
     for m in doc.measure_catalog.measures:
-        suffix = (f" · {m.table}" if m.table else "") + (f" · {m.category}" if m.category else "")
+        suffix = f" · {m.category}" if m.category else ""
         d.heading(3, m.name + suffix)
+        operates_on = [t for t in (m.operates_on or []) if t and t != m.table]
+        if m.table:
+            line = f"Home table: {m.table}"
+            if operates_on:
+                line += f" · Operates on: {', '.join(operates_on)}"
+            d.para([d._run(line, italic=True)])
         d.para(m.plain_english)
         if m.calculation_logic and m.calculation_logic != m.plain_english:
             d.para([d._run("Calculation: ", bold=True), d._run(m.calculation_logic)])
@@ -238,6 +255,11 @@ def render_docx(doc: Document, out_path) -> Path:
     # 10. RLS
     sec = doc.security
     d.heading(1, f"10. Row-Level Security (RLS){_badge(10)}")
+    for disc in (getattr(sec, "discrepancies", None) or []):
+        d.para([d._run("⚠ Discrepancy — human input vs. model", bold=True)])
+        d.para([d._run("You stated: ", bold=True), d._run(disc.get("human_claim", ""))])
+        d.para([d._run("The model shows: ", bold=True), d._run(disc.get("model_finding", ""))])
+        d.para([d._run(disc.get("explanation", ""), italic=True)])
     if sec.roles:
         d.heading(2, "Roles definition")
         d.table(["Role Name", "Permission", "Members"],
@@ -317,24 +339,20 @@ def render_docx(doc: Document, out_path) -> Path:
     else:
         todo("Workspace roles and app access per group, with justification.")
         
-    # 14. Glossary
+    # 14. Glossary. doc.glossary_entries already carries the merged result
+    # (Day 3) — human terms override/append, never replace the whole table.
     d.heading(1, f"14. Data Dictionary / Glossary{_badge(14)}")
     d.para("Column-level data dictionary is in section 6.")
-    if md.glossary:
-        for line in md.glossary.split('\n'):
-            if line.strip():
-                d.para(line)
-    else:
-        glossary_rows = []
-        for r in doc.glossary_entries:
-            typo = f"⚠️ {r['typo_flag']}" if r["typo_flag"] else "—"
-            glossary_rows.append([
-                r["term"],
-                r["type"],
-                r["definition"],
-                typo
-            ])
-        d.table(["Term", "Type", "Plain-English Definition", "Typo / Rename Flag"], _t(glossary_rows))
+    glossary_rows = []
+    for r in doc.glossary_entries:
+        typo = f"⚠️ {r['typo_flag']}" if r["typo_flag"] else "—"
+        glossary_rows.append([
+            r["term"],
+            r["type"],
+            r["definition"],
+            typo
+        ])
+    d.table(["Term", "Type", "Plain-English Definition", "Typo / Rename Flag"], _t(glossary_rows))
 
     # 15. Known Issues
     td = doc.tech_debt
@@ -406,10 +424,10 @@ def render_docx(doc: Document, out_path) -> Path:
     recs = doc.ai_recommendations or []
     suppressed = doc.tech_debt.suppressed_rules if hasattr(doc, "tech_debt") and doc.tech_debt else []
     suppressed_count = len(suppressed)
-    total_checks = TOTAL_RULE_COUNT
-    failed_count = len(recs)
-    passed_count = max(0, total_checks - suppressed_count - failed_count)
-    
+    total_checks = doc.checks_run or TOTAL_RULE_COUNT
+    passed_count = doc.checks_passed
+    failed_count = doc.checks_failed
+
     d.para([
         d._run("Best Practice Rules Summary: ", bold=True),
         d._run(f"Checks Run: {total_checks - suppressed_count}  |  Passed: {passed_count}  |  Failed: {failed_count}  |  Suppressed: {suppressed_count}")
@@ -450,12 +468,13 @@ def render_docx(doc: Document, out_path) -> Path:
     # 18. Appendix & Sign-off
     d.heading(1, f"18. Appendix & Sign-off{_badge(18)}")
     d.para("The model diagram is in the HTML / section 6.")
-    developer_name = md.owner if md.owner else "TBC"
     generated_date = (md.generated_at or "")[:10]
+    # owner -> Business Owner, author -> Developer, reviewer -> Approver
+    # (Day 3) — each row filled from the metadata field it corresponds to.
     sign_off_rows = [
-        ["Business Owner", "", "", ""],
-        ["Data Owner", "", "", ""],
-        ["Developer", developer_name, "BI Developer", generated_date],
+        ["Business Owner", md.owner or "", "Business Owner", generated_date if md.owner else ""],
+        ["Developer", md.author or "TBC", "BI Developer", generated_date],
+        ["Approver", md.reviewer or "", "Reviewer", generated_date if md.reviewer else ""],
     ]
     d.table(["Sign-off Role", "Name", "Title / Role", "Date"], _t(sign_off_rows))
     d.para([d._run("Reminder: ", bold=True), d._run("Obtain sign-off before sharing with stakeholders.")])

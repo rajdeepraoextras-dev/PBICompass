@@ -60,6 +60,13 @@ AGENT_EFFORT: dict[str, str] = {
     # against an already-built digest needs less depth than writing the
     # narrative in the first place.
     "Grounding": "medium",
+    # Day 2 (cross-artifact consistency): same reasoning depth as Grounding —
+    # checking claims against an already-built digest of the Audit
+    # document's verdicts, not writing new prose.
+    "Consistency Checker": "medium",
+    # Day 4: judging pre-matched candidates against requirement text is
+    # closer to Grounding than to open-ended synthesis.
+    "Requirements Traceability": "medium",
 }
 
 # --------------------------------------------------------------------------
@@ -73,6 +80,32 @@ AGENT_EFFORT: dict[str, str] = {
 REPORT_CONTEXT_NOTE = """
 You may also be given report_context — a synthesized understanding of the whole report produced by a separate whole-model reasoning pass (business domain, purpose, page workflows, entity definitions, KPI relationships). Use it to write with more depth and consistency with the rest of the report. Never contradict the concrete tables/measures/pages given elsewhere in this input, and never copy report_context's wording verbatim — restate its substance in your own words for this specific field.
 """
+
+# --------------------------------------------------------------------------
+# Day 3 (AI-native intake wiring): appended to every prompt whose input
+# builder accepts human_context — facts a human supplied on this specific
+# report via the intake form/enrichment file. Human-stated facts always
+# outrank an inference; this is what turns them into steering, not just
+# inert metadata-table content the AI writes past.
+# --------------------------------------------------------------------------
+HUMAN_CONTEXT_NOTE = """
+You may also be given human_context — facts a human supplied about this specific report, always higher-precedence than anything you infer from the model alone. When "business_decision" is present, anchor your core content explicitly around that decision rather than writing generically about the report's subject matter (e.g. write toward "weekly regional sales planning", not just "this report tracks sales"). When "target_audience" is present, calibrate vocabulary, detail level, and what you emphasize to that specific audience (e.g. "Executives" wants outcomes and business impact, not field or table names; "BI developers" tolerates more technical density).
+"""
+
+
+def human_context_payload(business_decision: Optional[str] = None,
+                           target_audience: Optional[str] = None) -> Optional[dict]:
+    """Build the ``human_context`` block an input builder attaches to its
+    payload when either field is present — ``None`` when neither is set, so
+    callers can ``if ctx: payload["human_context"] = ctx`` without an empty
+    block ever reaching the prompt."""
+    ctx: dict = {}
+    if business_decision:
+        ctx["business_decision"] = business_decision
+    if target_audience:
+        ctx["target_audience"] = target_audience
+    return ctx or None
+
 
 # --------------------------------------------------------------------------
 # Business Analyst Agent  (-> Executive Summary & Business Guide, §II)
@@ -91,7 +124,7 @@ Populate:
   - confidence: "High", "Medium", or "Low" — how confident you are in the inferred purpose. Use "Low" whenever the page content is too generic to infer intent.
 - navigation_guide: Short imperative steps (one sentence each) referencing the exact slicers, fields, and drill-through targets. Include cross-filtering behaviour only where it exists in the input.
 - complex_visual_explainers: Only for genuinely non-obvious visuals (decomposition trees, key influencers, scatter, maps, gauges, waterfall, custom visuals). 2-3 sentences: how to read it and what to act on. Skip bar/line/card visuals.
-""" + REPORT_CONTEXT_NOTE + STYLE_RULES
+""" + REPORT_CONTEXT_NOTE + HUMAN_CONTEXT_NOTE + STYLE_RULES
 
 BUSINESS_ANALYST_SCHEMA = {
     "type": "object",
@@ -134,7 +167,10 @@ BUSINESS_ANALYST_SCHEMA = {
 }
 
 
-def business_analyst_input(model: SemanticModel, report_context: Optional[dict] = None) -> dict:
+def business_analyst_input(
+    model: SemanticModel, report_context: Optional[dict] = None,
+    business_decision: Optional[str] = None, target_audience: Optional[str] = None,
+) -> dict:
     key_measures = [m.name for m in model.all_measures() if not m.is_hidden][:25]
     payload = {
         "report_name": model.report_name,
@@ -163,6 +199,9 @@ def business_analyst_input(model: SemanticModel, report_context: Optional[dict] 
     }
     if report_context is not None:
         payload["report_context"] = report_context
+    human_context = human_context_payload(business_decision, target_audience)
+    if human_context is not None:
+        payload["human_context"] = human_context
     return payload
 
 
@@ -175,6 +214,7 @@ BUSINESS_ANALYST_BATCH_SIZE = 6
 def business_analyst_batches(
     model: SemanticModel, batch_size: int = BUSINESS_ANALYST_BATCH_SIZE,
     report_context: Optional[dict] = None,
+    business_decision: Optional[str] = None, target_audience: Optional[str] = None,
 ) -> list[dict]:
     """Split the report's *visible* pages into bounded batches, each shaped
     like :func:`business_analyst_input`'s return value (same report-wide
@@ -184,7 +224,8 @@ def business_analyst_batches(
     contiguous slice of the deterministic visible-pages list callers already
     have, letting a failed batch be mapped straight back to the pages it
     covers."""
-    base = business_analyst_input(model, report_context=report_context)
+    base = business_analyst_input(model, report_context=report_context,
+                                   business_decision=business_decision, target_audience=target_audience)
     visible_pages = [p for p in base["pages"] if not p["is_hidden"]]
     if not visible_pages:
         return [base]
@@ -572,7 +613,7 @@ Populate exactly these fields:
 - reframed_risks: for every entry in known_risks, return one item that echoes back its rule_id exactly (or "" if it had none) and rewrites its consequence and ask in plain business language per the rules below. Same order and count as known_risks — never add, drop, or merge entries.
 
 Do not invent facts, statistics, or risks beyond what is given. Do not restate every input number — synthesize.
-""" + REPORT_CONTEXT_NOTE + STYLE_RULES + EXEC_STYLE_RULES
+""" + REPORT_CONTEXT_NOTE + HUMAN_CONTEXT_NOTE + STYLE_RULES + EXEC_STYLE_RULES
 
 EXECUTIVE_WRITER_SCHEMA = {
     "type": "object",
@@ -607,6 +648,8 @@ def executive_writer_input(
     known_risks: list[dict[str, str]],
     maintenance_draft: str,
     report_context: Optional[dict] = None,
+    business_decision: Optional[str] = None,
+    target_audience: Optional[str] = None,
 ) -> dict:
     payload = {
         "business_purpose_draft": business_purpose_draft,
@@ -618,6 +661,9 @@ def executive_writer_input(
     }
     if report_context is not None:
         payload["report_context"] = report_context
+    human_context = human_context_payload(business_decision, target_audience)
+    if human_context is not None:
+        payload["human_context"] = human_context
     return payload
 
 
@@ -634,7 +680,7 @@ Rewrite them into plain, direct English that:
 - For the introduction, writes 2-3 sentences that orient a first-time user: what the report covers and where to start.
 
 Do not invent pages, fields, roles, or workflows beyond what is given in the drafts.
-""" + REPORT_CONTEXT_NOTE + STYLE_RULES
+""" + REPORT_CONTEXT_NOTE + HUMAN_CONTEXT_NOTE + STYLE_RULES
 
 USER_GUIDE_WRITER_SCHEMA = {
     "type": "object",
@@ -664,6 +710,8 @@ def user_guide_writer_input(
     introduction_draft: str,
     pages: list[dict],
     report_context: Optional[dict] = None,
+    business_decision: Optional[str] = None,
+    target_audience: Optional[str] = None,
 ) -> dict:
     payload = {
         "report_name": report_name,
@@ -672,6 +720,9 @@ def user_guide_writer_input(
     }
     if report_context is not None:
         payload["report_context"] = report_context
+    human_context = human_context_payload(business_decision, target_audience)
+    if human_context is not None:
+        payload["human_context"] = human_context
     return payload
 
 
@@ -684,14 +735,73 @@ def user_guide_writer_batches(
     report_name: str, introduction_draft: str, pages: list[dict],
     batch_size: int = USER_GUIDE_WRITER_BATCH_SIZE,
     report_context: Optional[dict] = None,
+    business_decision: Optional[str] = None,
+    target_audience: Optional[str] = None,
 ) -> list[dict]:
     """Split ``pages`` (each ``{page_title, purpose_draft, common_scenarios_draft}``)
     into bounded batches, each shaped like :func:`user_guide_writer_input`'s
     return value."""
     if not pages:
-        return [user_guide_writer_input(report_name, introduction_draft, [], report_context=report_context)]
+        return [user_guide_writer_input(report_name, introduction_draft, [], report_context=report_context,
+                                        business_decision=business_decision, target_audience=target_audience)]
     return [
         user_guide_writer_input(report_name, introduction_draft, pages[i:i + batch_size],
-                                 report_context=report_context)
+                                 report_context=report_context,
+                                 business_decision=business_decision, target_audience=target_audience)
         for i in range(0, len(pages), batch_size)
     ]
+
+
+# --------------------------------------------------------------------------
+# Requirements Traceability Agent (Day 4) — a verdict-only agent: it
+# never invents facts, only judges whether the already-matched candidates
+# (deterministic keyword overlap, ``agents/traceability.py``) actually
+# satisfy each stated business requirement.
+# --------------------------------------------------------------------------
+TRACEABILITY_SYSTEM = """\
+You are auditing a Power BI report against a list of stated business requirements, deciding whether the \
+report's actual content satisfies each one. For each requirement you are given the requirement text and a \
+ranked list of candidate model objects (measures, columns, pages) that share vocabulary with it — found by \
+deterministic keyword matching, not yet verified as actually satisfying the requirement.
+
+For each requirement, return:
+- requirement: copied verbatim from the input.
+- status: "Covered" if at least one candidate clearly and fully satisfies the requirement; "Partial" if \
+related objects exist but only partly address it (e.g. the metric exists but isn't broken down the way the \
+requirement asks, or only part of a multi-part requirement is met); "Gap" if nothing given addresses it.
+- evidence: the anchor id(s), copied verbatim from that requirement's candidate list, that support your \
+verdict. Empty for "Gap". Never invent an anchor not present in that requirement's own candidate list.
+- rationale: one sentence, plain language, explaining the verdict.
+
+A requirement with no candidates listed is always "Gap". Never claim a table, measure, column, or page \
+exists beyond what's listed in its candidates.
+"""
+
+TRACEABILITY_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["requirements"],
+    "properties": {
+        "requirements": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["requirement", "status", "evidence", "rationale"],
+                "properties": {
+                    "requirement": {"type": "string"},
+                    "status": {"type": "string", "enum": ["Covered", "Partial", "Gap"]},
+                    "evidence": {"type": "array", "items": {"type": "string"}},
+                    "rationale": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+
+
+def traceability_input(requirements_with_candidates: list[dict]) -> dict:
+    """``requirements_with_candidates``: ``[{"requirement": str, "candidates":
+    [{"anchor": str, "kind": str, "name": str}, ...]}, ...]`` — one entry per
+    parsed requirement line, already keyword-matched against the model."""
+    return {"requirements": requirements_with_candidates}

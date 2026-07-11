@@ -15,7 +15,9 @@ import dataclasses
 import re
 from typing import Optional
 
+from ..consistency import AuditVerdicts, check_consistency, find_human_claim_discrepancies
 from ..context import JobAIContext, build_job_context
+from ..traceability import build_requirements_matrix
 from ...schemas.document import (
     Document,
     DocumentMetadata,
@@ -50,6 +52,7 @@ from ..report_facts import (
     first_sentence,
     is_field_selector,
     local_path_sources,
+    parse_human_glossary,
     report_pages,
     slicers,
     table_priority_key,
@@ -94,19 +97,28 @@ def _metadata(model: SemanticModel, owner, audience, refresh,
 
 
 # -- II. Executive Summary ----------------------------------------------------
-def _executive_summary(model: SemanticModel, client, warn, ai_context: Optional[JobAIContext]) -> ExecutiveSummary:
+def _executive_summary(model: SemanticModel, client, warn, ai_context: Optional[JobAIContext],
+                        business_decision: Optional[str] = None, audience: Optional[str] = None,
+                        ) -> ExecutiveSummary:
     """Batches the Business Analyst prompt by page (``io.business_analyst_
     batches``) so one failed/invalid batch degrades only the pages it
     covers, not the whole Executive Summary. Each batch gets one retry
     (jittered) before falling back; a batch that still fails keeps its pages
     on the deterministic engine and names them in a warning, rather than
-    silently degrading the whole document with no signal (1.4)."""
+    silently degrading the whole document with no signal (1.4).
+
+    Day 3: ``business_decision`` anchors ``core_purpose`` even in the
+    deterministic/offline fallback and steers the Business Analyst prompt
+    (``io.HUMAN_CONTEXT_NOTE``) when a client is available."""
     deterministic = business_analyst_deterministic(model)
+    core_purpose = deterministic.core_purpose
+    if business_decision:
+        core_purpose = f"{core_purpose} This report exists to support: {business_decision}"
     if client is None:
+        deterministic.core_purpose = core_purpose
         return deterministic
 
     pages = list(deterministic.pages)
-    core_purpose = deterministic.core_purpose
     navigation_guide = list(deterministic.navigation_guide)
     complex_visual_explainers = list(deterministic.complex_visual_explainers)
     nav_seen = set(navigation_guide)
@@ -123,8 +135,11 @@ def _executive_summary(model: SemanticModel, client, warn, ai_context: Optional[
         rp = report_context.get("report_purpose") or {}
         if rp.get("statement") and rp.get("confidence") in ("High", "Medium"):
             core_purpose = rp["statement"]
+            if business_decision:
+                core_purpose = f"{core_purpose} This report exists to support: {business_decision}"
 
-    for batch in io.business_analyst_batches(model, report_context=report_context):
+    for batch in io.business_analyst_batches(model, report_context=report_context,
+                                              business_decision=business_decision, target_audience=audience):
         batch_size = len(batch["pages"])
         slice_titles = [p.page_title for p in pages[offset:offset + batch_size]]
         data = call_llm_with_retry(client, io.BUSINESS_ANALYST_SYSTEM, batch, io.BUSINESS_ANALYST_SCHEMA,
@@ -454,10 +469,17 @@ def _measure_catalog(model: SemanticModel, client, warn, ai_context: Optional[Jo
         tree_lines = build_measure_dependency_tree(entry.name, measure_deps_map, {entry.name})
         entry.dependency_tree = "\n".join(tree_lines)
 
-        # Cross-check measure table attribution
+        # Cross-check measure table attribution. ``entry.table`` (the home
+        # table, an objective fact from the model definition) is never
+        # overwritten here — a card's title has to stay trustworthy even
+        # when this name-pattern heuristic guesses the "true" table wrong.
+        # The referenced tables instead populate ``operates_on``, a
+        # clearly-separate secondary line, with a caveat note only when
+        # they genuinely diverge from the home table.
         referenced_tables = find_referenced_tables(measure.expression)
         if referenced_tables:
             referenced_tables.sort(key=table_priority_key)
+            entry.operates_on = referenced_tables
             true_table = referenced_tables[0]
             # Mismatch if:
             # - original table is not referenced at all, OR
@@ -466,9 +488,7 @@ def _measure_catalog(model: SemanticModel, client, warn, ai_context: Optional[Jo
                 table_priority_key(entry.table) >= 50 and table_priority_key(true_table) < table_priority_key(entry.table)
             )
             if is_mismatch and entry.table != true_table:
-                orig_table = entry.table
-                entry.table = true_table
-                note = f"Housed in '{orig_table}' table but operates on '{true_table}' table."
+                note = f"Housed in '{entry.table}' table but operates on '{true_table}' table."
                 if entry.caveats:
                     entry.caveats = f"{entry.caveats}. {note}"
                 else:
@@ -478,7 +498,7 @@ def _measure_catalog(model: SemanticModel, client, warn, ai_context: Optional[Jo
 
 
 # -- VI. Security & Governance ------------------------------------------------
-def _security(model: SemanticModel) -> SecurityGovernance:
+def _security(model: SemanticModel, security_notes: Optional[str] = None) -> SecurityGovernance:
     roles = [
         {
             "name": r.name,
@@ -496,7 +516,9 @@ def _security(model: SemanticModel) -> SecurityGovernance:
         ]
     else:
         constraints = ["No row-level security roles are defined in this model."]
-    return SecurityGovernance(roles=roles, workspace_constraints=constraints)
+    discrepancies = find_human_claim_discrepancies(security_notes, len(model.roles))
+    return SecurityGovernance(roles=roles, workspace_constraints=constraints,
+                              discrepancies=[dataclasses.asdict(d) for d in discrepancies])
 
 
 # -- VII. Tech Debt / Audit (always deterministic) ----------------------------
@@ -558,7 +580,13 @@ def _check_typo(name: str) -> str:
 
 
 def _infer_glossary(model: SemanticModel, measure_catalog: MeasureCatalog, col_descs: dict[tuple[str, str], str],
-                     field_param_tables: set[str] = frozenset()) -> list[dict[str, str]]:
+                     field_param_tables: set[str] = frozenset(),
+                     human_glossary: Optional[str] = None) -> list[dict[str, str]]:
+    """Day 3: ``human_glossary`` (the intake form's free-text glossary
+    field) is merged in last, term-by-term, overriding any matching entry's
+    definition and appending any new business term with no counterpart
+    below — never a full override of this deterministic/AI-inferred table
+    the way rendering it as an either/or with the raw text field used to."""
     entries = []
 
     # 1. Add all measures (first sentence only — full definition lives in the
@@ -619,6 +647,19 @@ def _infer_glossary(model: SemanticModel, measure_catalog: MeasureCatalog, col_d
             "typo_flag": typo_flag
         })
 
+    human_terms = parse_human_glossary(human_glossary)
+    if human_terms:
+        by_term_lower = {e["term"].lower(): e for e in entries}
+        for term, definition in human_terms.items():
+            existing = by_term_lower.get(term.lower())
+            if existing:
+                existing["definition"] = definition
+                existing["typo_flag"] = ""
+            else:
+                new_entry = {"term": term, "type": "Business Term", "definition": definition, "typo_flag": ""}
+                entries.append(new_entry)
+                by_term_lower[term.lower()] = new_entry
+
     return entries
 
 
@@ -627,16 +668,25 @@ def _health_and_recommendations(
     model: SemanticModel,
     owner: Optional[str],
     classification: Optional[str],
-) -> tuple[dict, list[dict], list[str]]:
+    ai_context: Optional[JobAIContext] = None,
+    security_notes: Optional[str] = None,
+) -> tuple[dict, list[dict], list[str], dict]:
     """Run the deterministic audit rules over the model and return
-    ``(health_score, ai_recommendations, suppressed_rules)`` as plain dicts/lists for the technical
-    document."""
+    ``(health_score, ai_recommendations, suppressed_rules, checks_ledger)``
+    as plain dicts/lists for the technical document.
+
+    ``checks_ledger`` reuses ``ai_context.checks_ledger`` when the sibling
+    Audit & Health Report already computed it in this job (Day 8's
+    pre-generated-audit path) instead of re-deriving pass/fail counts a
+    different way — the two documents must always show identical numbers
+    for the same model."""
     audit_rules.reset_suppressed_rules()
     measures = model.all_measures()
     dax_findings = audit_rules.find_dax_findings(measures)
     best_practices = audit_rules.check_best_practices(model)
     performance_risks = audit_rules.find_performance_risks(model)
-    governance = audit_rules.check_governance(model, owner=owner, classification=classification)
+    governance = audit_rules.check_governance(model, owner=owner, classification=classification,
+                                              security_notes=security_notes)
     unused_assets = audit_rules.find_unused_assets(model)
     health = audit_rules.compute_health_score(
         dax_findings, best_practices, performance_risks, governance, unused_assets,
@@ -645,7 +695,14 @@ def _health_and_recommendations(
         dax_findings, best_practices, performance_risks, governance, unused_assets, model=model,
     )
     suppressed = audit_rules.get_suppressed_rules()
-    return dataclasses.asdict(health), [dataclasses.asdict(r) for r in recommendations], suppressed
+    if ai_context is not None and ai_context.checks_ledger is not None:
+        ledger = ai_context.checks_ledger
+    else:
+        ledger = audit_rules.compute_checks_ledger(
+            dax_findings, best_practices, performance_risks, governance, suppressed,
+        )
+    return (dataclasses.asdict(health), [dataclasses.asdict(r) for r in recommendations],
+            suppressed, ledger)
 
 
 def _narrative_triples(doc: Document) -> list[tuple[str, str, "callable"]]:
@@ -722,6 +779,23 @@ def _run_grounding(doc: Document, client, warn, ai_context: Optional[JobAIContex
     apply_results(triples, results)
 
 
+def _run_consistency(
+    doc: Document, client, warn, ai_context: Optional[JobAIContext],
+    audit_verdicts: Optional[AuditVerdicts],
+) -> None:
+    """Day 2: cross-artifact consistency check against the sibling Audit &
+    Health Report's verdicts, run after grounding so it judges the already
+    fact-checked text. Its deterministic fixed-vocabulary layer needs no
+    LLM, so this runs even offline — a no-op only when no Audit document was
+    generated alongside this one in the same job (``audit_verdicts is None``)."""
+    if audit_verdicts is None:
+        return
+    triples = _narrative_triples(doc)
+    fields = [(loc, text) for loc, text, _ in triples]
+    results = check_consistency(fields, client, verdicts=audit_verdicts, warn=warn, ai_context=ai_context)
+    apply_results(triples, results)
+
+
 class TechnicalDocumentationGenerator:
     """Assembles the 17-section :class:`Document` — the original pbicompass
     documentation output, unchanged, for BI developers/data engineers/
@@ -753,6 +827,8 @@ class TechnicalDocumentationGenerator:
         support_notes: Optional[str] = None,
         ai_context: Optional[JobAIContext] = None,
         top_cluster: Optional[FindingCluster] = None,
+        audit_verdicts: Optional[AuditVerdicts] = None,
+        requirements_matrix: Optional[list] = None,
     ) -> Document:
         """Assemble the seven-section :class:`Document` from a parsed model.
 
@@ -772,11 +848,32 @@ class TechnicalDocumentationGenerator:
         can surface it without a second, potentially-inconsistent Synthesizer
         call. Omit it (or pass ``None``) and §16 simply carries no root-cause
         callout — never a placeholder.
+
+        ``audit_verdicts`` (Day 2) is the same sibling Audit document's
+        ground-truth verdicts (schema shape, RLS role count, refresh
+        configured, description coverage, fact/dimension counts) —
+        ``agents.consistency.build_audit_verdicts(model, pre_audit_doc)``.
+        When given, every narrative field is checked against it and any
+        contradicting claim (e.g. "a well-structured star schema" when the
+        Audit document's own star-schema check failed) is corrected in
+        place. Omit it (or pass ``None``) and this check is skipped — never
+        a false positive against a document that wasn't generated.
+
+        ``requirements_matrix`` (Day 4) is the pre-computed Requirements
+        Traceability Matrix (``agents.traceability.build_requirements_matrix``)
+        — unlike ``top_cluster``/``audit_verdicts`` it has no ordering
+        dependency on the Audit document, so the caller may compute it once
+        up front and share it with every document type. Omit it (or pass
+        ``None``) and this generator computes its own from ``requirements``.
         """
         warn = on_warning or (lambda _msg: None)
         model.compute_counts()
         if ai_context is None and client is not None:
             ai_context = build_job_context(model, client, warn)
+        if requirements_matrix is None:
+            requirements_matrix = build_requirements_matrix(
+                model, requirements, client, warn, ai_context=ai_context,
+            )
         col_descs = _column_descriptions(model, client, warn, ai_context)
         from ...render._nav_map import render_navigation_map
         nav_edges, nav_map_svg = render_navigation_map(model)
@@ -790,11 +887,12 @@ class TechnicalDocumentationGenerator:
                 access_notes=access_notes, glossary=glossary,
                 assumptions=assumptions, support_notes=support_notes,
             ),
-            executive_summary=_executive_summary(model, client, warn, ai_context),
+            executive_summary=_executive_summary(model, client, warn, ai_context,
+                                                  business_decision=business_decision, audience=audience),
             lineage=_lineage(model),
             semantic_model=_semantic_model(model, client, warn, col_descs, ai_context),
             measure_catalog=_measure_catalog(model, client, warn, ai_context),
-            security=_security(model),
+            security=_security(model, security_notes),
             tech_debt=_audit(model),
             stats=dict(model.meta.counts),
             report_pages=report_pages(model),
@@ -802,6 +900,7 @@ class TechnicalDocumentationGenerator:
             calculated_columns=calc_columns(model),
             navigation_map_svg=nav_map_svg or None,
             navigation_edges=nav_edges,
+            requirements_matrix=[dataclasses.asdict(r) for r in requirements_matrix],
         )
 
         # Check for hardcoded years for Executive Summary callout
@@ -822,13 +921,19 @@ class TechnicalDocumentationGenerator:
             )
             doc.executive_summary.core_purpose += warning_msg
 
-        doc.glossary_entries = _infer_glossary(model, doc.measure_catalog, col_descs, field_parameter_table_names(model))
-        health_score, ai_recs, suppressed = _health_and_recommendations(
-            model, owner, classification,
+        doc.glossary_entries = _infer_glossary(model, doc.measure_catalog, col_descs,
+                                               field_parameter_table_names(model), glossary)
+        health_score, ai_recs, suppressed, ledger = _health_and_recommendations(
+            model, owner, classification, ai_context, security_notes=security_notes,
         )
         doc.health_score = health_score
         doc.ai_recommendations = ai_recs
         doc.tech_debt.suppressed_rules = suppressed
+        doc.checks_run = ledger["run"]
+        doc.checks_passed = ledger["passed"]
+        doc.checks_failed = ledger["failed"]
+        doc.checks_suppressed = ledger["suppressed"]
+        doc.checks_by_category = ledger["by_category"]
         doc.top_cluster = dataclasses.asdict(top_cluster) if top_cluster else None
         
         trend = audit_rules.get_and_update_score_history(
@@ -840,5 +945,6 @@ class TechnicalDocumentationGenerator:
         if client is not None:
             _run_critic(doc, model, client, warn, ai_context)
             _run_grounding(doc, client, warn, ai_context)
+        _run_consistency(doc, client, warn, ai_context, audit_verdicts)
 
         return doc

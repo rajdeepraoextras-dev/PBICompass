@@ -113,6 +113,12 @@ class MeasureEntry:
     plain_english: str = ""    # business definition (what the number means)
     caveats: str = ""
     category: str = ""
+    # Tables the DAX expression actually reads from (parsed from the
+    # expression, sorted most-to-least likely to be the "real" table) —
+    # informational context shown alongside ``table``, never a replacement
+    # for it. ``table`` is the measure's home table, an objective fact from
+    # the model definition; this heuristic must never overwrite it.
+    operates_on: list[str] = field(default_factory=list)
     format_string: Optional[str] = None
     used_on: list[str] = field(default_factory=list)  # report pages that use it
     calculation_logic: str = ""   # how it computes, distinct from the business definition
@@ -135,6 +141,10 @@ class SecurityGovernance:
     roles: list[dict[str, Any]] = field(default_factory=list)
     workspace_constraints: list[str] = field(default_factory=list)
     provenance: str = "Extracted"
+    # Day 3: human-stated Security & RLS Validation Notes that contradict
+    # the model's actual RLS role count — see agents.consistency.
+    # find_human_claim_discrepancies. Never silently resolved either way.
+    discrepancies: list[dict[str, str]] = field(default_factory=list)
 
 
 # -- VII. Tech Debt / Audit ---------------------------------------------------
@@ -164,6 +174,11 @@ class Document:
     slicers: list[dict[str, Any]] = field(default_factory=list)
     calculated_columns: list[dict[str, Any]] = field(default_factory=list)
     glossary_entries: list[dict[str, str]] = field(default_factory=list)
+    # Day 4: Requirements Traceability Matrix — one row per parsed
+    # requirement line: {text, priority, status, rationale,
+    # evidence: [{kind, name, anchor}]}. Empty when no requirements were
+    # supplied — §3 then renders the plain requirements text/TODO as before.
+    requirements_matrix: list[dict[str, Any]] = field(default_factory=list)
     # Model health score computed by the deterministic audit rules:
     # {overall, band, component_scores: {...}, component_notes: {...}}
     health_score: dict[str, Any] = field(default_factory=dict)
@@ -180,6 +195,16 @@ class Document:
     navigation_map_svg: Optional[str] = None
     navigation_edges: list[dict[str, str]] = field(default_factory=list)
     changelog: Optional[str] = None
+    # Rule-engine ledger (4.1 / J.A.1) — the exact same object
+    # ``agents.audit_rules.compute_checks_ledger`` produces for the sibling
+    # Audit & Health Report's ``checks_run``/``checks_passed``/etc., so §16's
+    # "Best Practice Rules Summary" card can never disagree with the Audit
+    # document's own numbers for the same model.
+    checks_run: int = 0
+    checks_passed: int = 0
+    checks_failed: int = 0
+    checks_suppressed: int = 0
+    checks_by_category: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)

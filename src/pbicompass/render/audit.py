@@ -19,10 +19,14 @@ from ..schemas.audit_document import AuditDocument
 from ._docx_writer import _Docx
 from ._html_shell import page_shell
 from .docx import _add_para_with_md
+from ._shared import HEALTH_COMPONENT_LABELS
 from ._shared import anchor_slug
+from ._shared import doc_subtitle as _doc_subtitle
 from ._shared import format_timestamp as _fmt_ts
+from ._shared import html_discrepancy_callout as _html_discrepancy_callout
 from ._shared import html_e as _e
 from ._shared import html_table as _html_table
+from ._shared import md_discrepancy_callout as _md_discrepancy_callout
 from ._shared import md_table as _table
 from .html import _render_md
 from .html import format_prose_with_code
@@ -39,10 +43,6 @@ _SECTION_TITLES = [
     "9. Root-Cause Analysis",
 ]
 
-_COMPONENT_LABELS = {
-    "modeling": "Modeling", "dax": "DAX", "governance": "Governance",
-    "performance": "Performance", "unused_assets": "Unused Assets",
-}
 _GOVERNANCE_AREA_LABELS = {
     "rls": "RLS", "descriptions": "Descriptions", "ownership": "Ownership",
     "sensitive_columns": "Sensitive Columns", "data_source_consistency": "Data Source Consistency",
@@ -50,7 +50,11 @@ _GOVERNANCE_AREA_LABELS = {
 
 
 def _component_label(key: str) -> str:
-    return _COMPONENT_LABELS.get(key, key.replace("_", " ").title())
+    # Reuses the same mapping the technical document's §16 renders with
+    # (Day 2) — the Audit doc and technical.py's "Same deterministic rule
+    # engine as the full Audit & Health Report" callout must never label the
+    # identical health-score component two different ways.
+    return HEALTH_COMPONENT_LABELS.get(key, key.replace("_", " ").title())
 
 
 def _area_label(area: str) -> str:
@@ -99,6 +103,19 @@ def _severity_note() -> str:
             "row-level data is ever extracted, so nothing here reflects a measured runtime.")
 
 
+def _auto_datetime_note(ua) -> str:
+    """Footnote for the Unused Assets section (Day 2): the excluded count
+    is tracked on ``ua.auto_datetime_excluded`` rather than silently
+    dropped, and cross-references PBIC-PERF-007 where those artifacts are
+    reported as their own category."""
+    n = getattr(ua, "auto_datetime_excluded", 0)
+    if not n:
+        return ""
+    return (f"{n} additional otherwise-unused item(s) belonging to Power BI's auto-generated "
+            f"Auto Date/Time tables are excluded from the counts above — see PBIC-PERF-007 "
+            f"in Performance Risks.")
+
+
 def _unused_rows(ua) -> list[list]:
     return [
         ["Measures", len(ua.measures), ", ".join(ua.measures) or "—"],
@@ -121,8 +138,16 @@ def _top_cluster(doc: AuditDocument):
 
 def _rule_id_anchors(doc: AuditDocument) -> dict[str, list[tuple[str, str, str]]]:
     """``rule_id -> [(section_label, anchor_id, display_text), ...]`` for
-    every finding/check/recommendation that carries that stable rule ID —
-    the deep-link targets a cluster's ``rule_ids`` resolve against (Day 8)."""
+    every finding/check that carries that stable rule ID — the deep-link
+    targets a cluster's ``rule_ids`` resolve against (Day 8).
+
+    Deliberately excludes ``doc.recommendations`` (Day 2): every
+    recommendation with a rule_id is generated *from* one of the findings/
+    checks already indexed below (``build_recommendations``), so including
+    it too just adds a second, near-duplicate "Related findings" link for
+    the same rule_id (recommendations already have their own visibility in
+    §8) — e.g. PBIC-MOD-010 used to render both its Model Best Practices
+    check and its own recommendation echo as separate links."""
     index: dict[str, list[tuple[str, str, str]]] = {}
 
     def _add(rule_id: str, section: str, anchor: str, text: str) -> None:
@@ -138,9 +163,6 @@ def _rule_id_anchors(doc: AuditDocument) -> dict[str, list[tuple[str, str, str]]
         _add(r.rule_id, "Performance Risks", f"finding-perf-{i}", f"{r.object_name} — {_kind_label(r.kind)}")
     for i, g in enumerate(doc.governance):
         _add(g.rule_id, "Governance", f"finding-gov-{i}", _area_label(g.area))
-    for i, r in enumerate(doc.recommendations):
-        rid = f"rec-{r.rule_id}" if getattr(r, "rule_id", "") else f"rec-{i}"
-        _add(getattr(r, "rule_id", ""), "Recommendations", rid, r.issue)
     return index
 
 
@@ -149,7 +171,7 @@ def render_markdown(doc: AuditDocument) -> str:
     md = doc.metadata
     h = doc.health
     c = doc.complexity
-    subtitle_str = f"{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}"
+    subtitle_str = _doc_subtitle(md)
     if getattr(md, "score_trend", None):
         subtitle_str += f" · Score Trend: {md.score_trend}"
     out: list[str] = [f"# {md.report_name} — Audit & Health Report\n"]
@@ -213,6 +235,8 @@ def render_markdown(doc: AuditDocument) -> str:
     ))
 
     out.append(f"\n## {_SECTION_TITLES[5]}\n")
+    if getattr(doc, "discrepancies", None):
+        out.append(_md_discrepancy_callout(doc.discrepancies))
     out.append(_table(
         ["Rule", "Area", "Severity", "Detail"],
         [[g.rule_id, _area_label(g.area), g.severity, g.detail] for g in doc.governance],
@@ -223,6 +247,9 @@ def render_markdown(doc: AuditDocument) -> str:
     out.append(_table(["Asset Type", "Count", "Items"], _unused_rows(doc.unused_assets)))
     out.append("\n_Hierarchies and calculation groups are not yet parsed by PBICompass, so they are "
                "excluded from this audit._\n")
+    auto_dt_note = _auto_datetime_note(doc.unused_assets)
+    if auto_dt_note:
+        out.append(f"\n_{auto_dt_note}_\n")
 
     out.append(f"\n## {_SECTION_TITLES[7]}\n")
     if doc.recommendations:
@@ -235,6 +262,14 @@ def render_markdown(doc: AuditDocument) -> str:
             out.append(f"**Estimated effort:** {getattr(r, 'effort', 'Medium')}\n")
     else:
         out.append("_No recommendations — the model passed every deterministic check._\n")
+
+    if getattr(doc, "requirements_gaps", None):
+        out.append("\n### Requirements gaps\n")
+        out.append("_Business requirement(s) with nothing in the report satisfying them (Requirements "
+                   "Traceability Matrix — see the technical document's §3):_\n")
+        for g in doc.requirements_gaps:
+            priority = f"[{g['priority']}] " if g.get("priority") else ""
+            out.append(f"- {priority}{g['text']}")
 
     if doc.clusters:
         out.append(f"\n## {_SECTION_TITLES[8]}\n")
@@ -362,6 +397,8 @@ def render_html(
 
     gov_ids = [f"finding-gov-{i}" for i in range(len(doc.governance))]
     o.append(f'<h2 id="sec6">{_e(_SECTION_TITLES[5])}</h2>')
+    if getattr(doc, "discrepancies", None):
+        o.append(_html_discrepancy_callout(doc.discrepancies))
     o.append(_html_table(
         ["Rule", "Area", "Severity", "Detail"],
         [[_rule_pill(g.rule_id), _e(_area_label(g.area)), _severity_pill(g.severity), _e(g.detail)]
@@ -375,6 +412,9 @@ def render_html(
                          [[_e(row[0]), _e(row[1]), _e(row[2])] for row in _unused_rows(doc.unused_assets)]))
     o.append('<p class="caveat">Hierarchies and calculation groups are not yet parsed by PBICompass, '
              'so they are excluded from this audit.</p>')
+    auto_dt_note = _auto_datetime_note(doc.unused_assets)
+    if auto_dt_note:
+        o.append(f'<p class="caveat">{_e(auto_dt_note)}</p>')
 
     # Anchored by rule_id when present (stable across renders, and how the
     # executive doc's per-risk deep links (I5) address a specific
@@ -394,6 +434,18 @@ def render_html(
             o.append('</div>')
     else:
         o.append('<p class="muted">No recommendations — the model passed every deterministic check.</p>')
+
+    if getattr(doc, "requirements_gaps", None):
+        o.append('<div class="card-section" style="border-left: 4px solid #b42318;">')
+        o.append('<h3>Requirements gaps</h3>')
+        o.append('<p class="muted">Business requirement(s) with nothing in the report satisfying them '
+                 '(Requirements Traceability Matrix — see the technical document\'s §3):</p>')
+        o.append('<ul>')
+        for g in doc.requirements_gaps:
+            priority = f'<span class="pill high">{_e(g["priority"])}</span> ' if g.get("priority") else ""
+            o.append(f'<li>{priority}{_e(g["text"])}</li>')
+        o.append('</ul>')
+        o.append('</div>')
 
     cluster_ids = [f"cluster-{i}" for i in range(len(doc.clusters))]
     if doc.clusters:
@@ -444,7 +496,7 @@ def render_html(
         for r, rid in zip(doc.recommendations, rec_ids)
     ]
 
-    subtitle_str = f"{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}"
+    subtitle_str = _doc_subtitle(md)
     if getattr(md, "score_trend", None):
         subtitle_str += f" · Score Trend: {md.score_trend}"
 
@@ -470,7 +522,7 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
     c = doc.complexity
 
     d.heading(0, f"{md.report_name} — Audit & Health Report")
-    subtitle_str = f"{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}"
+    subtitle_str = _doc_subtitle(md)
     if getattr(md, "score_trend", None):
         subtitle_str += f" · Score Trend: {md.score_trend}"
     d.para([d._run(subtitle_str, italic=True)])
@@ -526,6 +578,11 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
                 for r in doc.performance_risks]) or [["—", "—", "—", "—", "—", "No performance risk signals."]])
 
     d.heading(1, _SECTION_TITLES[5])
+    for disc in (getattr(doc, "discrepancies", None) or []):
+        d.para([d._run("⚠ Discrepancy — human input vs. model", bold=True)])
+        d.para([d._run("You stated: ", bold=True), d._run(disc.get("human_claim", ""))])
+        d.para([d._run("The model shows: ", bold=True), d._run(disc.get("model_finding", ""))])
+        d.para([d._run(disc.get("explanation", ""), italic=True)])
     d.table(["Rule", "Area", "Severity", "Detail"],
             _t([[g.rule_id, _area_label(g.area), g.severity, g.detail] for g in doc.governance])
             or [["—", "—", "—", "No governance gaps detected."]])
@@ -534,6 +591,9 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
     d.table(["Asset Type", "Count", "Items"], _t(_unused_rows(doc.unused_assets)))
     d.para([d._run("Hierarchies and calculation groups are not yet parsed by PBICompass, so they are "
                    "excluded from this audit.", italic=True)])
+    auto_dt_note = _auto_datetime_note(doc.unused_assets)
+    if auto_dt_note:
+        d.para([d._run(auto_dt_note, italic=True)])
 
     d.heading(1, _SECTION_TITLES[7])
     if doc.recommendations:
@@ -546,6 +606,14 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
             d.para([d._run("Estimated effort: ", bold=True), d._run(getattr(r, "effort", "Medium"))])
     else:
         d.para("No recommendations — the model passed every deterministic check.")
+
+    if getattr(doc, "requirements_gaps", None):
+        d.heading(2, "Requirements gaps")
+        d.para([d._run("Business requirement(s) with nothing in the report satisfying them (Requirements "
+                       "Traceability Matrix — see the technical document's §3):", italic=True)])
+        for g in doc.requirements_gaps:
+            prefix = f"[{g['priority']}] " if g.get("priority") else ""
+            d.bullet(f"{prefix}{g['text']}")
 
     if doc.clusters:
         d.heading(1, _SECTION_TITLES[8])

@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1a15">
 <title>PBICompass — AI Documentation & Governance for Power BI</title>
-<meta name="description" content="Turn any Power BI semantic model into enterprise-grade technical, audit, executive and business documentation — automatically, in minutes. Metadata only. Zero retention. Create a free account to get started.">
+<meta name="description" content="Turn any Power BI report (.pbix or .pbip) into enterprise-grade technical, audit, executive and business documentation — written by AI, in minutes. Metadata only. Zero retention. Create a free account to get started.">
 <meta property="og:title" content="PBICompass — AI Documentation & Governance for Power BI">
-<meta property="og:description" content="Upload a .pbix or .pbip. Get four enterprise-ready documents in about a minute. Metadata only — nothing stored.">
+<meta property="og:description" content="Upload a .pbix or .pbip. Get four AI-written, enterprise-ready documents in about a minute. Metadata only — nothing stored.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M15 42V8h10a13 13 0 0 1 0 26h-6' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M32.5 15.5 20 21l5.5 2.5L28 29z' fill='white'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -196,7 +196,11 @@ body.no-video .hero-video { display: none; }
 .brand-name { font-size: 1.5rem; font-weight: 600; letter-spacing: -.045em; color: #fff; }
 .brand-name span { color: hsl(0 0% 100% / .82); font-weight: 400; }
 
-.menu-wrap { position: relative; }
+.menu-wrap { position: relative; z-index: 40; }
+/* Lift the whole nav above the hero title: hero-nav and hero-mid are sibling
+   z-index:1 children of panel-left, so without this the later-painted title
+   bleeds over the open menu sheet no matter how high the sheet's own z-index. */
+.panel-left > .hero-nav { z-index: 40; }
 .menu-btn {
   display: inline-flex; align-items: center; gap: 9px; cursor: pointer;
   padding: 10px 18px; border-radius: 100px;
@@ -205,9 +209,11 @@ body.no-video .hero-video { display: none; }
 .menu-btn svg { width: 15px; height: 15px; }
 .menu-sheet {
   position: absolute; right: 0; top: calc(100% + 10px); z-index: 30;
-  min-width: 230px; border-radius: 20px; padding: 8px;
+  min-width: 248px; border-radius: 20px; padding: 8px;
   display: none; flex-direction: column;
-  background: hsl(0 0% 4% / .72);
+  /* opaque so the large hero text behind it never bleeds through */
+  background: hsl(160 24% 8%);
+  box-shadow: 0 24px 60px -12px rgba(0,0,0,.75);
 }
 .menu-sheet.open { display: flex; animation: sheetIn .25s var(--ease); }
 @keyframes sheetIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
@@ -607,6 +613,12 @@ body.no-video .hero-video { display: none; }
 .deck-formats { text-align: center; margin-top: 46px; font-size: .66rem; letter-spacing: .22em; text-transform: uppercase; color: hsl(0 0% 100% / .68); }
 .deck-formats i { font-style: normal; color: hsl(0 0% 100% / .3); padding: 0 10px; }
 
+/* ---- techstrip / pricing / faq: text sections need the same top rhythm as
+   the rest so their eyebrow pill isn't crammed against the section above ---- */
+.techstrip { padding: 96px 0 10px; }
+.pricing { padding: 120px 0 20px; }
+.faq { padding: 120px 0 40px; }
+
 /* ---- security: the pipeline ---- */
 .security { padding: 120px 0 30px; }
 .pipe { position: relative; max-width: 640px; margin: 64px auto 0; padding: 8px 0; list-style: none; }
@@ -1002,7 +1014,7 @@ button[type=submit] .spin {
           <a href="#security">Security <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></a>
           <a href="/pricing">Pricing <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></a>
           <a href="#faq">FAQ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></a>
-          <a href="#generate">Generate documentation <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></a>
+          <a href="/app#signup">Generate documentation <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></a>
           <a href="/app">Dashboard &amp; API keys <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></a>
         </div>
       </div>
@@ -1016,11 +1028,11 @@ button[type=submit] .spin {
         </svg>
       </div>
 
-      <h1 class="hero-title reveal d1">Your Power BI models, <em>documented in minutes.</em></h1>
+      <h1 class="hero-title reveal d1">Your Power BI reports, <em>documented by AI in minutes.</em></h1>
 
-      <p class="hero-sub reveal d2">Upload a <b>.pbix</b> or <b>.pbip</b> — PBICompass reads the entire semantic model and generates enterprise-grade technical, audit, executive and business documentation automatically. <b>Nothing stored, ever.</b></p>
+      <p class="hero-sub reveal d2">Upload a <b>.pbix</b> or <b>.pbip</b> — PBICompass reads the entire semantic model and its <b>AI writes</b> enterprise-grade technical, audit, executive and business documentation automatically. <b>Nothing stored, ever.</b></p>
 
-      <a class="hero-cta liquid-glass-strong scale-hover cta-press reveal d3" href="/app">
+      <a class="hero-cta liquid-glass-strong scale-hover cta-press reveal d3" href="/app#signup">
         Get started — free
         <span class="cta-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></span>
       </a>
@@ -1044,9 +1056,7 @@ button[type=submit] .spin {
   <div class="panel-right">
     <div class="rp-top">
       <div class="social-pill liquid-glass">
-        <a href="#" aria-label="PBICompass on X"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3l-4.9-6.4L6.4 22H3.3l7.3-8.3L1.6 2H8l4.4 5.9L18.9 2zm-1.1 18.1h1.7L7.1 3.8H5.3l12.5 16.3z"/></svg></a>
-        <a href="#" aria-label="PBICompass on LinkedIn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/></svg></a>
-        <a href="https://github.com/rajdeepraoextras-dev/pbidoc" aria-label="PBICompass on GitHub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg></a>
+        <a href="https://github.com/rajdeepraoextras-dev/pbicompass" aria-label="PBICompass on GitHub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg></a>
         <span class="sep" aria-hidden="true"></span>
         <a href="#generate" aria-label="Go to the generator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></a>
       </div>
@@ -1058,10 +1068,10 @@ button[type=submit] .spin {
       </div>
     </div>
 
-    <a class="eco-card liquid-glass scale-hover" href="/app">
-      <h3>Your command center</h3>
-      <p>Jobs, keys, quotas and usage — governed from one dashboard your whole team shares.</p>
-      <span class="go">Enter the dashboard <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+    <a class="eco-card liquid-glass scale-hover" href="/app#signup">
+      <h3>Your secure AI sandbox</h3>
+      <p>Upload a Power BI report — AI reads every table, measure and relationship and writes four documents inside a sealed sandbox. Metadata only, nothing stored.</p>
+      <span class="go">Generate documentation <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
     </a>
 
     <div class="rp-feature liquid-glass">
@@ -1294,7 +1304,7 @@ button[type=submit] .spin {
     <div class="sec-head">
       <span class="sec-eyebrow liquid-glass reveal">The output</span>
       <h2 class="sec-title reveal d1">Four audiences.<br>Four <em>documents.</em></h2>
-      <p class="sec-sub reveal d2">One parse writes all of them. Pick one, or take the full set.</p>
+      <p class="sec-sub reveal d2">AI writes all four from a single parse. Pick one, or take the full set.</p>
     </div>
 
     <div class="deck">
@@ -1419,7 +1429,7 @@ button[type=submit] .spin {
       <span class="pill liquid-glass">Cohere</span>
     </div>
 
-    <p class="cmp-hint reveal d4" style="margin-top:18px;">Bring your own AI key, or run the fully deterministic offline engine — your choice.</p>
+    <p class="cmp-hint reveal d4" style="margin-top:18px;">AI is included on every plan — or run the fully deterministic offline engine. Your choice.</p>
   </div>
 </section>
 
@@ -1440,10 +1450,10 @@ button[type=submit] .spin {
         <ul class="price-features">
           <li>Technical, Audit, Executive &amp; Business docs</li>
           <li>Markdown · HTML · DOCX · PDF · JSON</li>
-          <li>Deterministic offline engine, no AI key needed</li>
+          <li>AI-written prose included — no API key to manage</li>
           <li>Metadata only · zero retention</li>
         </ul>
-        <a class="price-cta" href="/app">Get started</a>
+        <a class="price-cta" href="/app#signup">Get started</a>
       </div>
 
       <div class="price-card liquid-glass-strong featured reveal d1">
@@ -1454,10 +1464,10 @@ button[type=submit] .spin {
         <ul class="price-features">
           <li>Everything in Free</li>
           <li>10 reports every month</li>
-          <li>Bring your own AI key (Claude, Gemini, Cohere &amp; more)</li>
           <li>Priority processing</li>
+          <li>Email support</li>
         </ul>
-        <a class="price-cta" href="/app">Start with Pro</a>
+        <a class="price-cta" href="/app#signup">Start with Pro</a>
       </div>
 
       <div class="price-card liquid-glass reveal d2">
@@ -1470,7 +1480,7 @@ button[type=submit] .spin {
           <li>Highest self-serve monthly volume</li>
           <li>Priority support</li>
         </ul>
-        <a class="price-cta" href="/app">Start with Business</a>
+        <a class="price-cta" href="/app#signup">Start with Business</a>
       </div>
     </div>
 
@@ -1517,7 +1527,7 @@ button[type=submit] .spin {
       </div>
       <div class="liquid-glass reveal d3" style="padding:22px 24px; border-radius:20px;">
         <h4 style="font-size:.95rem; font-weight:500; color:#fff; margin-bottom:8px; letter-spacing:-.015em;">Which AI models power the documentation?</h4>
-        <p style="font-size:.82rem; line-height:1.6; color:hsl(0 0% 100% / .82); font-weight:300;">You choose: Claude, Gemini, Cohere, or 1000+ models via MeshAPI — bring your own key, used only for that job, never stored. Or skip AI entirely with the deterministic offline engine.</p>
+        <p style="font-size:.82rem; line-height:1.6; color:hsl(0 0% 100% / .82); font-weight:300;">AI is built in and included on every plan — no API key to manage. Prefer full determinism or an air-gapped run? The offline engine produces complete documentation with no AI at all.</p>
       </div>
     </div>
   </div>
@@ -1529,15 +1539,15 @@ button[type=submit] .spin {
     <div class="sec-head">
       <span class="sec-eyebrow liquid-glass reveal">Ready when you are</span>
       <h2 class="sec-title reveal d1">One upload. <em>Four documents.</em></h2>
-      <p class="sec-sub reveal d2">Create a free account, upload a <b>.pbix</b> or <b>.pbip</b>, and get enterprise-grade documentation in about a minute. Your file is parsed in a sealed sandbox and shredded the moment your documents are rendered.</p>
+      <p class="sec-sub reveal d2">Create a free account, upload a <b>.pbix</b> or <b>.pbip</b>, and let AI write enterprise-grade documentation in about a minute. Your file is parsed in a sealed sandbox and shredded the moment your documents are rendered.</p>
     </div>
 
     <div class="cta-panel liquid-glass-strong reveal d2">
       <div class="cta-copy">
-        <h3>Start documenting your models</h3>
+        <h3>Start documenting your reports</h3>
         <p>Free to start · no credit card · pick a plan at sign-up and change it anytime. Metadata only, nothing stored.</p>
         <div class="cta-actions">
-          <a class="hero-cta liquid-glass-strong scale-hover cta-press" href="/app">
+          <a class="hero-cta liquid-glass-strong scale-hover cta-press" href="/app#signup">
             Create free account
             <span class="cta-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
           </a>
@@ -1572,10 +1582,10 @@ button[type=submit] .spin {
       <a href="#security">Security</a>
       <a href="/pricing">Pricing</a>
       <a href="#faq">FAQ</a>
-      <a href="#generate">Generate</a>
+      <a href="/app#signup">Get started</a>
       <a href="/app">Dashboard</a>
       <a href="/healthz">Status</a>
-      <a href="https://github.com/rajdeepraoextras-dev/pbidoc">GitHub</a>
+      <a href="https://github.com/rajdeepraoextras-dev/pbicompass">GitHub</a>
     </nav>
   </div>
   <div class="foot-row" style="margin-top:14px;">

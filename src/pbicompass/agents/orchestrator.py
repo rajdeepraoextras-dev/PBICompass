@@ -16,6 +16,7 @@ from typing import Callable, Optional
 from ..schemas.audit_document import FindingCluster
 from ..schemas.document import Document
 from ..schemas.model import SemanticModel
+from .consistency import AuditVerdicts
 from .context import JobAIContext
 from .generators.technical import TechnicalDocumentationGenerator
 from .llm import LLMClient
@@ -48,6 +49,8 @@ def generate_document(
     support_notes: Optional[str] = None,
     ai_context: Optional[JobAIContext] = None,
     top_cluster: Optional[FindingCluster] = None,
+    audit_verdicts: Optional[AuditVerdicts] = None,
+    requirements_matrix: Optional[list] = None,
 ) -> Document:
     """Assemble the seven-section :class:`Document` from a parsed model.
 
@@ -57,6 +60,11 @@ def generate_document(
     ``None``) and the generator builds its own on demand. ``top_cluster``
     (Day 8) forwards the sibling Audit document's top root-cause cluster for
     §16; omit it (or pass ``None``) and §16 carries no root-cause callout.
+    ``audit_verdicts`` (Day 2) forwards the sibling Audit document's
+    ground-truth verdicts for the cross-artifact consistency check; omit it
+    (or pass ``None``) and that check is skipped. ``requirements_matrix``
+    (Day 4) forwards the pre-computed Requirements Traceability Matrix; omit
+    it (or pass ``None``) and the generator computes its own.
     """
     return TechnicalDocumentationGenerator.generate(
         model, client,
@@ -67,5 +75,6 @@ def generate_document(
         refresh_notes=refresh_notes, deployment_notes=deployment_notes,
         access_notes=access_notes, glossary=glossary,
         assumptions=assumptions, support_notes=support_notes,
-        ai_context=ai_context, top_cluster=top_cluster,
+        ai_context=ai_context, top_cluster=top_cluster, audit_verdicts=audit_verdicts,
+        requirements_matrix=requirements_matrix,
     )

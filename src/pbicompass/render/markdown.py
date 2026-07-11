@@ -13,6 +13,7 @@ from ..agents.audit_rules import TOTAL_RULE_COUNT
 from ..schemas.document import Document
 from ._shared import HEALTH_COMPONENT_LABELS
 from ._shared import format_timestamp as _fmt_ts
+from ._shared import md_discrepancy_callout
 from ._shared import is_local_path as _is_local_path
 from ._shared import md_table as _table
 from ._shared import md_todo as _todo
@@ -82,9 +83,19 @@ def render_markdown(doc: Document) -> str:
     if not md.business_decision:
         out.append(_todo("The primary business decision this dashboard drives (e.g. weekly sales planning)."))
 
-    # 3. Business Requirements
+    # 3. Business Requirements. requirements_matrix (Day 4) supersedes the
+    # plain text dump whenever it's non-empty.
     out.append(f"\n## 3. Business Requirements{_badge(3)}\n")
-    if md.requirements:
+    if doc.requirements_matrix:
+        covered = sum(1 for r in doc.requirements_matrix if r["status"] in ("Covered", "Partial"))
+        out.append(f"_Requirements Traceability Matrix — {covered}/{len(doc.requirements_matrix)} at least "
+                   f"partially covered by the report's own measures, columns, and pages._\n")
+        rag_rows = []
+        for r in doc.requirements_matrix:
+            evidence = ", ".join(e["name"] for e in r.get("evidence", [])) or "—"
+            rag_rows.append([r.get("priority") or "—", r["text"], r["status"], evidence])
+        out.append(_table(["Priority", "Requirement", "Status", "Evidence"], rag_rows))
+    elif md.requirements:
         out.append(md.requirements + "\n")
     else:
         out.append(_todo("Business requirements have not yet been captured; confirm scope with the business owner."))
@@ -152,9 +163,14 @@ def render_markdown(doc: Document) -> str:
     # 7. Measures & Calculations
     out.append(f"\n## 7. Measures & Calculations (DAX Dictionary){_badge(7)}\n")
     for m in doc.measure_catalog.measures:
-        home = f" · {m.table}" if m.table else ""
         cat = f" · _{m.category}_" if m.category else ""
-        out.append(f"### {m.name}{home}{cat}\n")
+        out.append(f"### {m.name}{cat}\n")
+        operates_on = [t for t in (m.operates_on or []) if t and t != m.table]
+        if m.table:
+            line = f"Home table: **{m.table}**"
+            if operates_on:
+                line += f" · Operates on: {', '.join(operates_on)}"
+            out.append(line + "\n")
         out.append(m.plain_english)
         if m.calculation_logic and m.calculation_logic != m.plain_english:
             out.append(f"\n**Calculation:** {m.calculation_logic}")
@@ -233,6 +249,8 @@ def render_markdown(doc: Document) -> str:
     # 10. RLS
     sec = doc.security
     out.append(f"\n## 10. Row-Level Security (RLS){_badge(10)}\n")
+    if getattr(sec, "discrepancies", None):
+        out.append(md_discrepancy_callout(sec.discrepancies))
     if sec.roles:
         out.append("\n### Roles definition\n")
         meta_rows = []
@@ -307,22 +325,20 @@ def render_markdown(doc: Document) -> str:
     else:
         out.append(_todo("Workspace roles and app access per group, with justification."))
         
-    # 14. Glossary
+    # 14. Glossary. doc.glossary_entries already carries the merged result
+    # (Day 3) — human terms override/append, never replace the whole table.
     out.append(f"\n## 14. Data Dictionary / Glossary{_badge(14)}\n")
     out.append("_Column-level data dictionary is in section 6._\n")
-    if md.glossary:
-        out.append(md.glossary + "\n")
-    else:
-        glossary_rows = []
-        for r in doc.glossary_entries:
-            typo = f"⚠️ {r['typo_flag']}" if r["typo_flag"] else "—"
-            glossary_rows.append([
-                f"`{r['term']}`",
-                r["type"],
-                r["definition"],
-                typo
-            ])
-        out.append(_table(["Term", "Type", "Plain-English Definition", "Typo / Rename Flag"], glossary_rows))
+    glossary_rows = []
+    for r in doc.glossary_entries:
+        typo = f"⚠️ {r['typo_flag']}" if r["typo_flag"] else "—"
+        glossary_rows.append([
+            f"`{r['term']}`",
+            r["type"],
+            r["definition"],
+            typo
+        ])
+    out.append(_table(["Term", "Type", "Plain-English Definition", "Typo / Rename Flag"], glossary_rows))
 
     # 15. Known Issues
     td = doc.tech_debt
@@ -414,10 +430,10 @@ def render_markdown(doc: Document) -> str:
     recs = doc.ai_recommendations or []
     suppressed = doc.tech_debt.suppressed_rules if hasattr(doc, "tech_debt") and doc.tech_debt else []
     suppressed_count = len(suppressed)
-    total_checks = TOTAL_RULE_COUNT
-    failed_count = len(recs)
-    passed_count = max(0, total_checks - suppressed_count - failed_count)
-    
+    total_checks = doc.checks_run or TOTAL_RULE_COUNT
+    passed_count = doc.checks_passed
+    failed_count = doc.checks_failed
+
     out.append(f"\n**Best Practice Rules Summary:** Checks Run: **{total_checks - suppressed_count}** | "
                f"Passed: **{passed_count}** | Failed: **{failed_count}** | Suppressed: **{suppressed_count}**\n")
     if suppressed:
@@ -449,12 +465,13 @@ def render_markdown(doc: Document) -> str:
     # 18. Appendix & Sign-off
     out.append(f"\n## 18. Appendix & Sign-off{_badge(18)}\n")
     out.append("The model diagram is in section 6.\n")
-    developer_name = md.owner if md.owner else "TBC"
     generated_date = (md.generated_at or "")[:10]
+    # owner -> Business Owner, author -> Developer, reviewer -> Approver
+    # (Day 3) — each row filled from the metadata field it corresponds to.
     sign_off_rows = [
-        ["Business Owner", "", "", ""],
-        ["Data Owner", "", "", ""],
-        ["Developer", developer_name, "BI Developer", generated_date],
+        ["Business Owner", md.owner or "", "Business Owner", generated_date if md.owner else ""],
+        ["Developer", md.author or "TBC", "BI Developer", generated_date],
+        ["Approver", md.reviewer or "", "Reviewer", generated_date if md.reviewer else ""],
     ]
     out.append(_table(["Sign-off Role", "Name", "Title / Role", "Date"], sign_off_rows))
     out.append("\n**Reminder:** Obtain sign-off before sharing with stakeholders.\n")

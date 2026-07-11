@@ -25,7 +25,9 @@ from ...schemas.executive_document import ExecutiveDocument, ExecutiveRisk
 from .. import audit_rules
 from .. import io
 from .. import usage
+from ..consistency import AuditVerdicts, check_consistency
 from ..context import JobAIContext, build_job_context
+from ..traceability import build_requirements_matrix, coverage_stat
 from ..critic import apply_critic_pass, apply_results
 from ..deterministic import business_analyst_deterministic, schema_shape, translate_dax
 from ..grounding import apply_grounding_pass
@@ -254,6 +256,22 @@ def _run_grounding(doc: ExecutiveDocument, client, warn: Warn, ai_context: Optio
     apply_results(triples, results)
 
 
+def _run_consistency(
+    doc: ExecutiveDocument, client, warn: Warn, ai_context: Optional[JobAIContext],
+    audit_verdicts: Optional[AuditVerdicts],
+) -> None:
+    """Day 2: cross-artifact consistency check against the sibling Audit &
+    Health Report's verdicts — its deterministic layer needs no LLM, so this
+    runs even offline; a no-op only when no Audit document was generated
+    alongside this one in the same job."""
+    if audit_verdicts is None:
+        return
+    triples = _narrative_triples(doc)
+    fields = [(loc, text) for loc, text, _ in triples]
+    results = check_consistency(fields, client, verdicts=audit_verdicts, warn=warn, ai_context=ai_context)
+    apply_results(triples, results)
+
+
 class ExecutiveSummaryGenerator:
     """Assembles a concise, non-technical summary for managers, executives,
     and project owners — readable in under ten minutes, no implementation
@@ -270,13 +288,30 @@ class ExecutiveSummaryGenerator:
         version: Optional[str] = None,
         status: Optional[str] = None,
         classification: Optional[str] = None,
+        author: Optional[str] = None,
+        reviewer: Optional[str] = None,
+        business_decision: Optional[str] = None,
+        requirements: Optional[str] = None,
+        security_notes: Optional[str] = None,
+        refresh_notes: Optional[str] = None,
+        deployment_notes: Optional[str] = None,
+        access_notes: Optional[str] = None,
+        glossary: Optional[str] = None,
+        assumptions: Optional[str] = None,
+        support_notes: Optional[str] = None,
         on_warning: Optional[Warn] = None,
         ai_context: Optional[JobAIContext] = None,
+        audit_verdicts: Optional[AuditVerdicts] = None,
+        requirements_matrix: Optional[list] = None,
     ) -> ExecutiveDocument:
         warn = on_warning or (lambda _msg: None)
         model.compute_counts()
         if ai_context is None and client is not None:
             ai_context = build_job_context(model, client, warn)
+        if requirements_matrix is None:
+            requirements_matrix = build_requirements_matrix(
+                model, requirements, client, warn, ai_context=ai_context,
+            )
 
         # Reuse the full deterministic audit engine (Phase 1) for the
         # maintenance note, top risks, and next steps, rather than
@@ -297,6 +332,12 @@ class ExecutiveSummaryGenerator:
         top_risks, shown_rule_ids = _top_risks(recommendations)
 
         purpose = _deterministic_purpose(model)
+        if business_decision:
+            # Day 3: the human-stated decision anchors the purpose sentence
+            # even offline — the deterministic draft otherwise reads
+            # generically ("this report supports spending pattern analysis")
+            # with nothing tying it to what the business actually uses it for.
+            purpose = f"{purpose} This report exists to support: {business_decision}"
         business_value = _business_value(key_kpi_names, audience)
         maintenance_note = _maintenance_note(failed_practice_count, len(governance))
 
@@ -317,6 +358,8 @@ class ExecutiveSummaryGenerator:
                     ],
                     maintenance_draft=maintenance_note,
                     report_context=ai_context.insights if ai_context is not None else None,
+                    business_decision=business_decision,
+                    target_audience=audience,
                 ),
                 io.EXECUTIVE_WRITER_SCHEMA, warn, "Executive Writer", ai_context=ai_context,
             )
@@ -329,6 +372,11 @@ class ExecutiveSummaryGenerator:
         metadata = build_core_metadata(
             model, "executive", default_audience="Managers, executives, and project owners",
             owner=owner, audience=audience, refresh=refresh, version=version, status=status,
+            author=author, reviewer=reviewer, classification=classification,
+            business_decision=business_decision, requirements=requirements,
+            security_notes=security_notes, refresh_notes=refresh_notes,
+            deployment_notes=deployment_notes, access_notes=access_notes,
+            glossary=glossary, assumptions=assumptions, support_notes=support_notes,
         )
 
         doc = ExecutiveDocument(
@@ -339,14 +387,17 @@ class ExecutiveSummaryGenerator:
             top_risks=top_risks,
             data_source_types=data_source_type_counts(model),
             refresh_schedule=refresh,
+            refresh_notes=refresh_notes,
             maintenance_note=maintenance_note,
             steward=None,  # sourced from the enrichment file (5.1) once wired in
             classification=classification,
             next_steps=_next_steps(recommendations, shown_rule_ids, metadata, warn),
+            requirements_coverage=coverage_stat(requirements_matrix),
         )
 
         if client is not None:
             _run_critic(doc, model, client, warn, ai_context)
             _run_grounding(doc, client, warn, ai_context)
+        _run_consistency(doc, client, warn, ai_context, audit_verdicts)
 
         return doc

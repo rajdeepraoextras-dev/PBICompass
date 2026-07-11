@@ -91,6 +91,11 @@ class UnusedAssets:
     tables: list[str] = field(default_factory=list)
     calculated_columns: list[dict[str, str]] = field(default_factory=list)  # {table, column}
     report_pages: list[str] = field(default_factory=list)
+    # Otherwise-unused columns/calculated columns/tables belonging to
+    # Power BI's auto-generated Auto Date/Time hidden tables — excluded
+    # from the lists above (Day 2) and counted here instead, since they
+    # are the PBIC-PERF-007 finding's own category, not a maintenance gap.
+    auto_datetime_excluded: int = 0
 
 
 @dataclass
@@ -151,6 +156,16 @@ class AuditDocument:
     checks_suppressed: int = 0
     # {category: {"run": n, "passed": n, "failed": n, "suppressed": n}}
     checks_by_category: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Day 3: human-stated facts (the intake form) that contradict what the
+    # model actually contains — {field, human_claim, model_finding,
+    # explanation}, from agents.consistency.find_human_claim_discrepancies.
+    # Never silently resolved one way or the other; always surfaced.
+    discrepancies: list[dict[str, str]] = field(default_factory=list)
+    # Day 4: Requirements Traceability rows whose status is "Gap" — a
+    # stated business requirement with nothing in the report satisfying it,
+    # each {text, priority, status, rationale}. Empty when every
+    # requirement is at least Partially covered, or none were supplied.
+    requirements_gaps: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)

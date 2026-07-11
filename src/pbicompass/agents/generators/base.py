@@ -129,9 +129,24 @@ def build_core_metadata(
     refresh: Optional[str] = None,
     version: Optional[str] = None,
     status: Optional[str] = None,
+    author: Optional[str] = None,
+    reviewer: Optional[str] = None,
+    classification: Optional[str] = None,
+    business_decision: Optional[str] = None,
+    requirements: Optional[str] = None,
+    security_notes: Optional[str] = None,
+    refresh_notes: Optional[str] = None,
+    deployment_notes: Optional[str] = None,
+    access_notes: Optional[str] = None,
+    glossary: Optional[str] = None,
+    assumptions: Optional[str] = None,
+    support_notes: Optional[str] = None,
 ) -> DocMetadataCore:
-    """Assemble the small metadata contract shared by the non-technical
-    document types (audit, executive, user guide)."""
+    """Assemble the metadata contract shared by the non-technical document
+    types (audit, executive, user guide) — Day 3: carries the full human
+    intake field set the technical document's own ``_metadata()`` already
+    does, so every document type can steer its prose and render these
+    sections, not just the technical one."""
     overridden = getattr(model.meta, "overridden_fields", [])
     return DocMetadataCore(
         report_name=model.report_name,
@@ -144,4 +159,16 @@ def build_core_metadata(
         version=version,
         status=status,
         overridden_fields=list(overridden),
+        author=author,
+        reviewer=reviewer,
+        classification=classification,
+        business_decision=business_decision,
+        requirements=requirements,
+        security_notes=security_notes,
+        refresh_notes=refresh_notes,
+        deployment_notes=deployment_notes,
+        access_notes=access_notes,
+        glossary=glossary,
+        assumptions=assumptions,
+        support_notes=support_notes,
     )

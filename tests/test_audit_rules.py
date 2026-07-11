@@ -287,14 +287,20 @@ class AutoDateTimeDetectionTest(unittest.TestCase):
 
 
 class AutoDateTimeClusterSignalsTest(unittest.TestCase):
-    """D5: Auto Date/Time should not just fire its own isolated performance
-    risk — it should leave the co-occurring, independently-computed signals
-    (unused hidden calculated columns on the same hidden tables) that a
-    root-cause synthesizer needs in order to cluster them together, rather
-    than reporting each in isolation."""
+    """D5/Day 2: Auto Date/Time's hidden tables used to inflate Unused
+    Assets with their own auto-generated, otherwise-unused columns — a
+    model with Auto Date/Time enabled but nothing else wrong would still
+    show a pile of "unused calculated columns" a reviewer can't act on
+    (they're deleted for free the moment Auto Date/Time is turned off).
+    Rather than relying on the root-cause synthesizer to *notice* and
+    cluster these two findings together after the fact, they're now
+    deterministically rolled into the PBIC-PERF-007 finding itself: the
+    auto-generated columns are excluded from Unused Assets (counted on
+    ``auto_datetime_excluded`` instead) and the finding's own detail names
+    the excluded count."""
 
-    def test_auto_date_time_root_cause_and_its_dependent_findings_co_occur(self):
-        from pbicompass.schemas.model import Column, SemanticModel, Table
+    def test_auto_date_time_columns_excluded_from_unused_assets(self):
+        from pbicompass.schemas.model import Column, Relationship, SemanticModel, Table
         model = SemanticModel(
             report_name="R",
             tables=[
@@ -304,12 +310,21 @@ class AutoDateTimeClusterSignalsTest(unittest.TestCase):
                            is_calculated=True, expression="YEAR([Date])"),
                 ]),
             ],
+            # Real Auto Date/Time always wires a many-to-one relationship
+            # from the host table to its hidden shadow table — included so
+            # this fixture doesn't *also* trip the (separate) unused-table
+            # signal and conflate two different counts in one assertion.
+            relationships=[Relationship(from_table="Sales", from_column="Date",
+                                        to_table="LocalDateTable_abc123", to_column="Date")],
         )
         risks = audit_rules.find_performance_risks(model)
-        self.assertTrue(any(r.kind == "auto_datetime" for r in risks),
-                         "root-cause finding must fire")
+        auto_dt = next((r for r in risks if r.kind == "auto_datetime"), None)
+        self.assertIsNotNone(auto_dt, "root-cause finding must fire")
+        self.assertIn("excluded from the Unused Assets report", auto_dt.detail)
+
         unused = audit_rules.find_unused_assets(model)
-        self.assertIn({"table": "LocalDateTable_abc123", "column": "Year"}, unused.calculated_columns)
+        self.assertNotIn({"table": "LocalDateTable_abc123", "column": "Year"}, unused.calculated_columns)
+        self.assertEqual(unused.auto_datetime_excluded, 1)
 
 
 class GovernanceTest(unittest.TestCase):

@@ -11,11 +11,14 @@ complete offline.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Optional
 
 from ...schemas.audit_document import AuditDocument, FindingCluster
 from .. import audit_rules
+from .. import consistency
 from .. import io
+from .. import traceability
 from ..context import JobAIContext
 from ..critic import apply_critic_pass, apply_results
 from ..grounding import apply_grounding_pass
@@ -218,20 +221,49 @@ class AuditReportGenerator:
         version: Optional[str] = None,
         status: Optional[str] = None,
         classification: Optional[str] = None,
+        author: Optional[str] = None,
+        reviewer: Optional[str] = None,
+        business_decision: Optional[str] = None,
+        requirements: Optional[str] = None,
+        security_notes: Optional[str] = None,
+        refresh_notes: Optional[str] = None,
+        deployment_notes: Optional[str] = None,
+        access_notes: Optional[str] = None,
+        glossary: Optional[str] = None,
+        assumptions: Optional[str] = None,
+        support_notes: Optional[str] = None,
         on_warning: Optional[Warn] = None,
         ai_context: Optional[JobAIContext] = None,
         plan: Optional[str] = None,
+        requirements_matrix: Optional[list] = None,
     ) -> AuditDocument:
         warn = on_warning or (lambda _msg: None)
         model.compute_counts()
+        if requirements_matrix is None:
+            requirements_matrix = traceability.build_requirements_matrix(
+                model, requirements, client, warn, ai_context=ai_context,
+            )
 
         audit_rules.reset_suppressed_rules()
         measures = model.all_measures()
         dax_findings = audit_rules.find_dax_findings(measures)
         best_practices = audit_rules.check_best_practices(model)
         performance_risks = audit_rules.find_performance_risks(model)
-        governance = audit_rules.check_governance(model, owner=owner, classification=classification)
+        governance = audit_rules.check_governance(model, owner=owner, classification=classification,
+                                                   security_notes=security_notes)
         unused_assets = audit_rules.find_unused_assets(model)
+
+        # Day 3: a documented business assumption ("returns lag source by
+        # 1 day") that happens to explain a finding is noted on that finding
+        # directly — a reviewer sees it's already accounted for, rather than
+        # reading it as an unexplained gap. Applied before scoring/ledger,
+        # though neither reads .detail, only .severity/.passed/.rule_id.
+        consistency.annotate_findings_with_assumptions(
+            dax_findings + performance_risks + governance
+            + [c for c in best_practices if not c.passed],
+            assumptions,
+        )
+
         health = audit_rules.compute_health_score(
             dax_findings, best_practices, performance_risks, governance, unused_assets,
         )
@@ -306,7 +338,11 @@ class AuditReportGenerator:
                 clusters = [
                     FindingCluster(
                         root_cause=c.get("root_cause", ""),
-                        rule_ids=list(c.get("rule_ids", [])),
+                        # Deduped, order-preserved: the LLM occasionally
+                        # repeats a rule_id within one cluster, which would
+                        # otherwise render the same "Related findings" link
+                        # twice (Day 2).
+                        rule_ids=list(dict.fromkeys(c.get("rule_ids", []))),
                         narrative=c.get("narrative", ""),
                         confidence=c.get("confidence", "Medium"),
                     )
@@ -325,6 +361,11 @@ class AuditReportGenerator:
         meta = build_core_metadata(
             model, "audit", default_audience="BI architects, technical leads, and governance teams",
             owner=owner, audience=audience, refresh=refresh, version=version, status=status,
+            author=author, reviewer=reviewer, classification=classification,
+            business_decision=business_decision, requirements=requirements,
+            security_notes=security_notes, refresh_notes=refresh_notes,
+            deployment_notes=deployment_notes, access_notes=access_notes,
+            glossary=glossary, assumptions=assumptions, support_notes=support_notes,
         )
         meta.score_trend = audit_rules.get_and_update_score_history(
             model.report_name or "UnknownReport",
@@ -333,6 +374,10 @@ class AuditReportGenerator:
         ledger = audit_rules.compute_checks_ledger(
             dax_findings, best_practices, performance_risks, governance, suppressed,
         )
+        if ai_context is not None:
+            ai_context.checks_ledger = ledger
+        discrepancies = consistency.find_human_claim_discrepancies(security_notes, len(model.roles))
+
         doc = AuditDocument(
             metadata=meta,
             health=health,
@@ -352,6 +397,8 @@ class AuditReportGenerator:
             checks_failed=ledger["failed"],
             checks_suppressed=ledger["suppressed"],
             checks_by_category=ledger["by_category"],
+            discrepancies=[dataclasses.asdict(d) for d in discrepancies],
+            requirements_gaps=[dataclasses.asdict(r) for r in requirements_matrix if r.status == "Gap"],
         )
 
         if client is not None:

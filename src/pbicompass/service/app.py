@@ -82,6 +82,30 @@ def _byok_ui_enabled() -> bool:
     return os.environ.get("PBICOMPASS_BYOK_UI", "").strip().lower() in ("1", "true", "yes")
 
 
+# AI engines the generator can offer, in display order. The offline engine
+# ("none") is always available and is deliberately not listed here. Each entry
+# names the env var(s) that supply a server-side key, so a provider with no key
+# defaults to "currently unavailable" on a hosted (non-BYOK) deployment.
+AI_PROVIDERS = (
+    {"id": "anthropic", "label": "Claude (Opus 4.8)", "keys": ("ANTHROPIC_API_KEY",)},
+    {"id": "gemini", "label": "Gemini (3.5 Flash)", "keys": ("GEMINI_API_KEY", "GOOGLE_API_KEY")},
+    {"id": "cohere", "label": "Cohere (Command A)", "keys": ("COHERE_API_KEY", "CO_API_KEY")},
+    {"id": "meshapi", "label": "MeshAPI (1000+ models)", "keys": ("MESHAPI_API_KEY",)},
+)
+AI_PROVIDER_IDS = frozenset(p["id"] for p in AI_PROVIDERS)
+
+
+def _provider_has_key(provider: dict) -> bool:
+    """True if the server itself holds a usable key for this provider."""
+    return any(os.environ.get(k) for k in provider["keys"])
+
+
+def _provider_default_enabled(provider: dict) -> bool:
+    """Availability before any admin override: usable if the server has its
+    key, or if BYOK is on (the user supplies the key per job)."""
+    return _byok_ui_enabled() or _provider_has_key(provider)
+
+
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
@@ -502,6 +526,28 @@ def create_app(
         return out
 
     # -- Account dashboard API (Day 24, §7.6; Day 29 -- Supabase-JWT-authenticated) -------
+    def _provider_overrides() -> dict:
+        return account_store.get_provider_overrides() if account_store else {}
+
+    def _provider_enabled(provider_id: str) -> bool:
+        """Effective availability of an AI engine: an admin override wins, else
+        the key-based default. Unknown ids (incl. the always-on offline engine)
+        are treated as available."""
+        provider = next((p for p in AI_PROVIDERS if p["id"] == provider_id), None)
+        if provider is None:
+            return True
+        return _provider_overrides().get(provider_id, _provider_default_enabled(provider))
+
+    def _provider_catalog() -> list[dict]:
+        """AI engines with their current enabled/disabled state for the
+        generator's engine picker. Offline is added by the frontend."""
+        overrides = _provider_overrides()
+        return [
+            {"id": p["id"], "label": p["label"],
+             "enabled": overrides.get(p["id"], _provider_default_enabled(p))}
+            for p in AI_PROVIDERS
+        ]
+
     @app.get("/app/api/config")
     def app_config() -> dict:
         """Public (unauthenticated) — lets the frontend construct a
@@ -518,6 +564,9 @@ def create_app(
             # Day 33: lets the signup/profile plan picker render real quota
             # numbers instead of hardcoding them in the frontend.
             "plan_limits": PLAN_LIMITS,
+            # Day 36: which AI engines the picker may offer, and whether each is
+            # currently available (admin-controlled). Offline is always usable.
+            "providers": _provider_catalog(),
         }
 
     @app.get("/app/api/me")
@@ -726,6 +775,37 @@ def create_app(
             raise HTTPException(status_code=404, detail="Account not found.")
         return {"account_id": account_id, "quota_override": limit}
 
+    @app.get("/app/api/admin/providers")
+    def app_admin_providers(request: Request) -> dict:
+        """AI-engine availability controls for the admin portal. ``has_key``
+        flags engines the server can't run itself (they'd fall back to offline
+        if enabled without BYOK) so the operator toggles with eyes open."""
+        _require_admin_user(request)
+        overrides = _provider_overrides()
+        return {
+            "byok_enabled": _byok_ui_enabled(),
+            "providers": [
+                {"id": p["id"], "label": p["label"],
+                 "has_key": _provider_has_key(p),
+                 "enabled": overrides.get(p["id"], _provider_default_enabled(p)),
+                 "overridden": p["id"] in overrides}
+                for p in AI_PROVIDERS
+            ],
+        }
+
+    @app.post("/app/api/admin/providers/{provider}")
+    async def app_admin_set_provider(provider: str, request: Request) -> dict:
+        _require_admin_user(request)
+        if provider not in AI_PROVIDER_IDS:
+            raise HTTPException(status_code=404, detail="Unknown AI engine.")
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        enabled = bool(body.get("enabled", True)) if isinstance(body, dict) else True
+        account_store.set_provider_enabled(provider, enabled)
+        return {"provider": provider, "enabled": enabled}
+
     @app.get("/app/api/admin/jobs")
     def app_admin_jobs(request: Request, tenant: str | None = Query(None),
                        limit: int = Query(100)) -> dict:
@@ -785,6 +865,19 @@ def create_app(
             raise HTTPException(
                 status_code=400,
                 detail=f"Unsupported file type '{suffix or '?'}'. Upload a .pbix or a .zip of a .pbip project.",
+            )
+
+        # Day 36: honour the admin's AI-engine availability toggles server-side
+        # too, so an API caller can't pick an engine the UI marks unavailable.
+        # Only jobs relying on the *server's* key are blocked — a caller that
+        # brings its own key (BYOK) runs at its own expense — and the offline
+        # engine ("none") is always allowed.
+        if (provider in AI_PROVIDER_IDS
+                and not (provider_api_key or "").strip()
+                and not _provider_enabled(provider)):
+            raise HTTPException(
+                status_code=400,
+                detail="That AI engine is currently unavailable. Choose another engine or the offline engine.",
             )
 
         # Freemium quota — enforced for authenticated tenants only.
