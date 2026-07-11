@@ -9,7 +9,7 @@
   <a href="https://pbicompass.duckdns.org"><img alt="Live demo" src="https://img.shields.io/badge/live%20demo-pbicompass.duckdns.org-blue"></a>
   <img alt="Built with Claude" src="https://img.shields.io/badge/built%20with-Claude%20Opus%204.8-D97757">
   <a href="https://github.com/rajdeepraoextras-dev/pbicompass/actions/workflows/ci.yml"><img alt="Tests" src="https://github.com/rajdeepraoextras-dev/pbicompass/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-informational">
+  <img alt="License" src="https://img.shields.io/badge/license-proprietary-lightgrey">
   <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue">
 </p>
 
@@ -399,4 +399,6 @@ multi-tenancy with freemium quotas**. Remaining for scale/commercial:
 
 ## License
 
-[MIT](LICENSE) © Rajdeep Rao
+Proprietary — © Rajdeep Rao, all rights reserved. This repository is public
+for evaluation and review purposes only; no license to use, copy, modify, or
+redistribute the code is granted. See [LICENSE](LICENSE).

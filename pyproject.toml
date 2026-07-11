@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Enterprise Power BI Documentation Generator — metadata-only parser and AI documentation pipeline."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "Proprietary" }
 authors = [{ name = "Rajdeep Rao" }]
 # Phase 0 core is intentionally ZERO-DEPENDENCY (stdlib only).
 # This keeps the parser portable, easy to audit, and minimises the number of
