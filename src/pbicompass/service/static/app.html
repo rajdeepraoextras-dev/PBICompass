@@ -151,6 +151,17 @@
 
 .err-text { color: var(--status-err); font-size: .84rem; min-height: 1.1rem; margin-top: 4px; }
 .ok-text { color: var(--status-ok); font-size: .84rem; min-height: 1.1rem; margin-top: 4px; }
+
+/* admin */
+.admin-stats { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.admin-stat { flex: 1; min-width: 120px; border-radius: 16px; padding: 14px 16px; background: hsl(0 0% 100% / .05); }
+.admin-stat b { display: block; font-size: 1.5rem; font-weight: 600; letter-spacing: -.02em; color: #fff; }
+.admin-stat span { font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: hsl(0 0% 100% / .6); }
+#admin-accounts select { padding: 6px 10px; font-size: .8rem; }
+#admin-accounts .qbox { width: 88px; padding: 6px 10px; font-size: .8rem; }
+.admin-name { font-weight: 500; color: #fff; }
+.admin-sub { font-size: .72rem; color: hsl(0 0% 100% / .6); }
+
 .site-foot-mini { text-align: center; padding: 30px 0 40px; color: hsl(0 0% 100% / .5); font-size: .74rem; }
 .site-foot-mini a { color: hsl(0 0% 100% / .7); }
 </style>
@@ -271,6 +282,10 @@
       <button class="nav-btn" data-view="jobs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
         Jobs
+      </button>
+      <button class="nav-btn" data-view="admin" id="nav-admin" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+        Admin
       </button>
     </nav>
 
@@ -481,6 +496,47 @@
         <div class="muted" id="jobs-empty" style="margin-top:10px;"></div>
       </div>
     </div>
+
+    <!-- ===== ADMIN (only rendered for admin accounts) ===== -->
+    <div class="view" id="view-admin">
+      <div class="panel-card liquid-glass-strong">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:6px;">
+          <h2 style="margin:0;">Admin</h2>
+          <span class="pill liquid-glass">signed-in admin</span>
+          <div style="flex:1"></div>
+          <button class="btn-ghost" onclick="loadAdmin()">Refresh</button>
+        </div>
+        <p class="muted">Manage every account's plan and daily quota, and review activity across all tenants. Metadata only — no document content is ever stored.</p>
+        <div class="admin-stats" id="admin-stats"></div>
+      </div>
+
+      <div class="panel-card liquid-glass">
+        <h2>Accounts</h2>
+        <div class="err-text" id="admin-err"></div>
+        <div class="ok-text" id="admin-ok"></div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" id="admin-accounts">
+            <thead><tr><th>Account</th><th>Plan</th><th>Usage today</th><th>Quota override</th></tr></thead>
+            <tbody id="admin-accounts-body"></tbody>
+          </table>
+        </div>
+        <div class="muted" id="admin-accounts-empty" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="panel-card liquid-glass">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+          <h2 style="margin:0;">Jobs (all tenants)</h2>
+          <div style="flex:1"></div>
+          <input type="text" id="admin-jobs-filter" placeholder="filter by tenant…"
+                 style="max-width:200px; padding:8px 12px;" onkeydown="if(event.key==='Enter')loadAdminJobs()">
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table"><thead><tr><th>Tenant</th><th>File</th><th>Status</th><th>Created</th></tr></thead>
+            <tbody id="admin-jobs-body"></tbody></table>
+        </div>
+        <div class="muted" id="admin-jobs-empty" style="margin-top:10px;"></div>
+      </div>
+    </div>
   </section>
 
   <p class="site-foot-mini" id="signedin-foot" style="display:none;">
@@ -625,7 +681,12 @@ async function enterApp(me) {
   renderPlanCards($("profile-plans"), currentPlan, changePlan);
   await loadKeys();
   await loadJobs();
+  // Admin surface: revealed only for an admin account (server also enforces).
+  isAdmin = !!me.is_admin;
+  $("nav-admin").style.display = isAdmin ? "" : "none";
+  if (isAdmin) await loadAdmin();
 }
+let isAdmin = false;
 
 function fillProfile(me) {
   currentPlan = me.plan;
@@ -704,6 +765,80 @@ async function loadJobs() {
     body.appendChild(tr);
   });
   $("jobs-empty").textContent = jobs.length ? "" : "No jobs yet.";
+}
+
+/* ---------- admin panel (in-app, admin accounts only) ---------- */
+async function loadAdmin() {
+  await Promise.all([loadAdminAccounts(), loadAdminJobs()]);
+}
+
+async function loadAdminAccounts() {
+  $("admin-err").textContent = ""; $("admin-ok").textContent = "";
+  const r = await api("/app/api/admin/accounts");
+  if (!r.ok) { $("admin-err").textContent = "Could not load accounts."; return; }
+  const { accounts } = await r.json();
+  // summary tiles
+  const byPlan = accounts.reduce((m, a) => (m[a.plan] = (m[a.plan] || 0) + 1, m), {});
+  const usedToday = accounts.reduce((n, a) => n + (a.used_today || 0), 0);
+  $("admin-stats").innerHTML =
+    `<div class="admin-stat"><b>${accounts.length}</b><span>accounts</span></div>` +
+    Object.keys(planLimits).map(p => `<div class="admin-stat"><b>${byPlan[p] || 0}</b><span>${planLabel(p)}</span></div>`).join("") +
+    `<div class="admin-stat"><b>${usedToday}</b><span>docs today</span></div>`;
+
+  const body = $("admin-accounts-body"); body.innerHTML = "";
+  const planOpts = Object.keys(planLimits);
+  accounts.forEach(a => {
+    const who = escHtml(a.name || a.company || a.tenant);
+    const sub = [a.company, a.role].filter(Boolean).map(escHtml).join(" · ");
+    const options = planOpts.map(p =>
+      `<option value="${p}"${p === a.plan ? " selected" : ""}>${planLabel(p)}</option>`).join("");
+    const limitTxt = a.daily_limit >= 100000 ? "∞" : a.daily_limit;
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td><span class="admin-name">${who}</span>${sub ? `<br><span class="admin-sub">${sub}</span>` : ""}</td>
+       <td><select data-acct="${a.id}" class="plan-sel">${options}</select></td>
+       <td>${a.used_today} / ${limitTxt}</td>
+       <td><input class="qbox" type="number" min="0" placeholder="—" value="${a.quota_override ?? ""}" data-acct="${a.id}"></td>`;
+    tr.querySelector(".plan-sel").addEventListener("change", ev => adminSetPlan(a.id, ev.target.value));
+    const q = tr.querySelector(".qbox");
+    q.addEventListener("change", () => adminSetQuota(a.id, q.value));
+    body.appendChild(tr);
+  });
+  $("admin-accounts-empty").textContent = accounts.length ? "" : "No accounts yet.";
+}
+
+async function adminSetPlan(accountId, plan) {
+  $("admin-err").textContent = ""; $("admin-ok").textContent = "";
+  const r = await api(`/app/api/admin/accounts/${accountId}/plan`, { method: "POST", body: JSON.stringify({ plan }) });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); $("admin-err").textContent = e.detail || "Could not change plan."; return; }
+  $("admin-ok").textContent = `Plan set to ${planLabel(plan)}.`;
+  await loadAdminAccounts();
+}
+
+async function adminSetQuota(accountId, value) {
+  $("admin-err").textContent = ""; $("admin-ok").textContent = "";
+  const quota_override = value === "" ? null : Number(value);
+  const r = await api(`/app/api/admin/accounts/${accountId}/quota`, { method: "POST", body: JSON.stringify({ quota_override }) });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); $("admin-err").textContent = e.detail || "Could not set quota."; return; }
+  $("admin-ok").textContent = quota_override === null ? "Quota override cleared." : `Quota override set to ${quota_override}.`;
+  await loadAdminAccounts();
+}
+
+async function loadAdminJobs() {
+  const filter = $("admin-jobs-filter").value.trim();
+  const r = await api("/app/api/admin/jobs" + (filter ? "?tenant=" + encodeURIComponent(filter) : ""));
+  if (!r.ok) { $("admin-jobs-empty").textContent = "Could not load jobs."; return; }
+  const { jobs } = await r.json();
+  const body = $("admin-jobs-body"); body.innerHTML = "";
+  jobs.forEach(j => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><span class="admin-sub">${escHtml(j.tenant || "—")}</span></td>
+      <td>${escHtml(j.filename || "—")}</td>
+      <td><span class="badge">${escHtml(j.status)}</span></td>
+      <td>${fmtDate(j.created_at)}</td>`;
+    body.appendChild(tr);
+  });
+  $("admin-jobs-empty").textContent = jobs.length ? "" : "No jobs yet.";
 }
 
 /* =============================================================

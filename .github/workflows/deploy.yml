@@ -27,11 +27,12 @@ jobs:
           PBICOMPASS_DB: ${{ secrets.PBICOMPASS_DB }}
           MESHAPI_API_KEY: ${{ secrets.MESHAPI_API_KEY }}
           PBICOMPASS_ADMIN_TOKEN: ${{ secrets.PBICOMPASS_ADMIN_TOKEN }}
+          PBICOMPASS_BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.PBICOMPASS_BOOTSTRAP_ADMIN_EMAIL }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: SUPABASE_URL,SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,PBICOMPASS_DB,MESHAPI_API_KEY,PBICOMPASS_ADMIN_TOKEN
+          envs: SUPABASE_URL,SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,PBICOMPASS_DB,MESHAPI_API_KEY,PBICOMPASS_ADMIN_TOKEN,PBICOMPASS_BOOTSTRAP_ADMIN_EMAIL
           script: |
             set -e
             cd ~/pbicompass
@@ -57,6 +58,12 @@ jobs:
             upsert_env PBICOMPASS_DB "$PBICOMPASS_DB"
             upsert_env MESHAPI_API_KEY "$MESHAPI_API_KEY"
             upsert_env PBICOMPASS_ADMIN_TOKEN "$PBICOMPASS_ADMIN_TOKEN"
+            upsert_env PBICOMPASS_BOOTSTRAP_ADMIN_EMAIL "$PBICOMPASS_BOOTSTRAP_ADMIN_EMAIL"
+            # Store JOB METADATA in the same managed Postgres as accounts, so a
+            # hosted deploy keeps no sqlite at all (Day 34). Rendered document
+            # bytes are never persisted (held in process memory, TTL-swept) --
+            # zero-retention. Reuses the PBICOMPASS_DB secret; separate tables.
+            upsert_env PBICOMPASS_JOBS_DB "$PBICOMPASS_DB"
             # Gate the hosted app (sign-in required to upload). Not a secret --
             # just a launch flag -- so it's written as a literal "1" rather
             # than sourced from a GitHub secret.

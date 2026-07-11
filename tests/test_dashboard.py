@@ -400,6 +400,101 @@ class DashboardApiTest(unittest.TestCase):
         b_keys = {k["id"] for k in self.client.get("/app/api/keys", headers=self._headers("b@example.com")).json()["keys"]}
         self.assertTrue(a_keys.isdisjoint(b_keys))
 
+    # -- in-app admin panel (Day 34) ----------------------------------------
+    def _make_admin(self, email="admin@example.com", sub="admin-1"):
+        """Provision the account (first /me call), then grant it admin — the
+        session-based admin the in-app panel uses, not the ops token."""
+        headers = self._headers(email, sub=sub)
+        self.client.get("/app/api/me", headers=headers)  # JIT-create the account
+        self.accounts.grant_admin(sub)
+        return headers
+
+    def test_me_reports_is_admin_flag(self):
+        headers = self._headers("plain@example.com", sub="plain-1")
+        self.assertFalse(self.client.get("/app/api/me", headers=headers).json()["is_admin"])
+        self.accounts.grant_admin("plain-1")
+        self.assertTrue(self.client.get("/app/api/me", headers=headers).json()["is_admin"])
+
+    def test_admin_routes_are_forbidden_for_a_signed_in_non_admin(self):
+        headers = self._headers("nonadmin@example.com", sub="na-1")
+        self.client.get("/app/api/me", headers=headers)  # provision
+        self.assertEqual(self.client.get("/app/api/admin/accounts", headers=headers).status_code, 403)
+        self.assertEqual(self.client.get("/app/api/admin/jobs", headers=headers).status_code, 403)
+
+    def test_admin_routes_require_sign_in(self):
+        self.assertEqual(self.client.get("/app/api/admin/accounts").status_code, 401)
+
+    def test_admin_lists_all_accounts_with_usage(self):
+        self.client.get("/app/api/me", headers=self._headers("u1@example.com", sub="u1"))
+        self.client.get("/app/api/me", headers=self._headers("u2@example.com", sub="u2"))
+        admin = self._make_admin()
+        accounts = self.client.get("/app/api/admin/accounts", headers=admin).json()["accounts"]
+        self.assertGreaterEqual(len(accounts), 3)  # u1, u2, admin
+        self.assertIn("used_today", accounts[0])
+        self.assertIn("daily_limit", accounts[0])
+
+    def test_admin_changes_another_accounts_plan(self):
+        me = self.client.get("/app/api/me", headers=self._headers("target@example.com", sub="tgt")).json()
+        admin = self._make_admin()
+        accounts = self.client.get("/app/api/admin/accounts", headers=admin).json()["accounts"]
+        target = next(a for a in accounts if a["tenant"] == me["tenant"])
+        self.assertEqual(target["plan"], "free")
+        res = self.client.post(f"/app/api/admin/accounts/{target['id']}/plan",
+                               json={"plan": "enterprise"}, headers=admin)
+        self.assertEqual(res.status_code, 200, res.text)
+        after = self.client.get("/app/api/admin/accounts", headers=admin).json()["accounts"]
+        changed = next(a for a in after if a["id"] == target["id"])
+        self.assertEqual(changed["plan"], "enterprise")
+        self.assertEqual(changed["daily_limit"], 100000)
+
+    def test_admin_plan_change_rejects_unknown_plan_and_missing_account(self):
+        admin = self._make_admin()
+        acct = self.client.get("/app/api/admin/accounts", headers=admin).json()["accounts"][0]
+        self.assertEqual(self.client.post(f"/app/api/admin/accounts/{acct['id']}/plan",
+                                          json={"plan": "unicorn"}, headers=admin).status_code, 400)
+        self.assertEqual(self.client.post("/app/api/admin/accounts/nonexistent/plan",
+                                          json={"plan": "pro"}, headers=admin).status_code, 404)
+
+    def test_admin_sets_and_clears_quota_override(self):
+        admin = self._make_admin()
+        acct = self.client.get("/app/api/admin/accounts", headers=admin).json()["accounts"][0]
+        self.client.post(f"/app/api/admin/accounts/{acct['id']}/quota",
+                         json={"quota_override": 5}, headers=admin)
+        after = self.client.get("/app/api/admin/accounts", headers=admin).json()["accounts"]
+        self.assertEqual(next(a for a in after if a["id"] == acct["id"])["daily_limit"], 5)
+        # clearing reverts to the plan default
+        self.client.post(f"/app/api/admin/accounts/{acct['id']}/quota",
+                         json={"quota_override": None}, headers=admin)
+        cleared = self.client.get("/app/api/admin/accounts", headers=admin).json()["accounts"]
+        self.assertIsNone(next(a for a in cleared if a["id"] == acct["id"])["quota_override"])
+
+    def test_admin_rejects_negative_quota(self):
+        admin = self._make_admin()
+        acct = self.client.get("/app/api/admin/accounts", headers=admin).json()["accounts"][0]
+        self.assertEqual(self.client.post(f"/app/api/admin/accounts/{acct['id']}/quota",
+                                          json={"quota_override": -1}, headers=admin).status_code, 400)
+
+    def test_admin_sees_cross_tenant_jobs(self):
+        self.store.create("a.pbix", tenant="tenant-a")
+        self.store.create("b.pbix", tenant="tenant-b")
+        admin = self._make_admin()
+        jobs = self.client.get("/app/api/admin/jobs", headers=admin).json()["jobs"]
+        tenants = {j["tenant"] for j in jobs}
+        self.assertIn("tenant-a", tenants)
+        self.assertIn("tenant-b", tenants)
+
+    def test_bootstrap_admin_email_grants_admin_on_first_signin(self):
+        with mock.patch.dict("os.environ", {"PBICOMPASS_BOOTSTRAP_ADMIN_EMAIL": "Boss@Example.com"}):
+            app = create_app(self.store, require_auth=False, admin_token="t",
+                             account_store=self.accounts, supabase_config=self.cfg)
+            client = TestClient(app, base_url="https://testserver")
+            # case-insensitive match, granted on the first authenticated request
+            me = client.get("/app/api/me", headers=self._headers("boss@example.com", sub="boss-1")).json()
+            self.assertTrue(me["is_admin"])
+            # a different email is never auto-promoted
+            other = client.get("/app/api/me", headers=self._headers("other@example.com", sub="other-1")).json()
+            self.assertFalse(other["is_admin"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

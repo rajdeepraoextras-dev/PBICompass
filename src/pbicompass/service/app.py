@@ -138,6 +138,12 @@ def create_app(
     if admin_token is None:
         admin_token = os.environ.get("PBICOMPASS_ADMIN_TOKEN") or None
     admin_guard = admin_guard or AdminGuard()
+    # Bootstrap admin (Day 34): the email auto-granted admin on its first
+    # signed-in request, so the very first admin exists without a manual DB
+    # touch — after that, admins are granted by an existing admin. Empty ⇒ no
+    # bootstrap. This is what makes the in-app Admin panel reachable for the
+    # operator without ever typing the break-glass ops token in the browser.
+    bootstrap_admin_email = (os.environ.get("PBICOMPASS_BOOTSTRAP_ADMIN_EMAIL") or "").strip().lower()
     # Day 29: identity (signup/login/email-verify/password-reset/"Sign in
     # with Microsoft") is handled by Supabase Auth, not this app -- None
     # unless SUPABASE_URL is configured, in which case Authorization: Bearer
@@ -284,6 +290,20 @@ def create_app(
         acct = account_store.get_or_create_account_for_supabase_user(
             claims.sub, claims.email or "", **_onboarding_fields(claims)
         )
+        # Self-provision the bootstrap admin on first sign-in (idempotent).
+        if bootstrap_admin_email and (claims.email or "").strip().lower() == bootstrap_admin_email \
+                and not account_store.is_admin(claims.sub):
+            account_store.grant_admin(claims.sub)
+        return claims, acct
+
+    def _require_admin_user(request: Request):
+        """Gate an in-app admin endpoint by the SIGNED-IN user's admin status
+        (not the break-glass ops token). 403 for a signed-in non-admin. This
+        is what the Admin view inside /app uses, so an admin manages the
+        product from the same UI, never typing PBICOMPASS_ADMIN_TOKEN."""
+        claims, acct = _require_user(request)
+        if not account_store.is_admin(claims.sub):
+            raise HTTPException(status_code=403, detail="Admin access required.")
         return claims, acct
 
     def _require_admin(request: Request) -> None:
@@ -482,6 +502,7 @@ def create_app(
             "used_today": used,
             "daily_limit": limit,
             "remaining": max(0, limit - used),
+            "is_admin": account_store.is_admin(claims.sub),
         }
 
     @app.post("/app/api/plan")
@@ -538,6 +559,75 @@ def create_app(
         # (zero-retention preserved). Reuses the store's own public() shape.
         jobs = app.state.store.list_for_tenant(acct.tenant, limit=50)
         return {"jobs": [app.state.store.public(j) for j in jobs]}
+
+    # -- in-app admin panel (Day 34) ---------------------------------------
+    # Rendered inside /app on the shared theme and gated by the SIGNED-IN
+    # user's admin status (_require_admin_user), so an admin runs the product
+    # from the same UI and never types the break-glass PBICOMPASS_ADMIN_TOKEN
+    # in a browser. The token-gated /admin/api/* routes stay as the
+    # out-of-band operator fallback.
+    @app.get("/app/api/admin/accounts")
+    def app_admin_accounts(request: Request) -> dict:
+        _require_admin_user(request)
+        out = []
+        for a in account_store.list_accounts():
+            out.append({
+                "id": a.id, "tenant": a.tenant, "name": a.name,
+                "company": a.company, "role": a.role, "plan": a.plan,
+                "quota_override": a.quota_override, "created_at": a.created_at,
+                "used_today": account_store.usage_today(a.tenant),
+                "daily_limit": account_store.limit_for(a.plan, a.quota_override),
+            })
+        return {"accounts": out}
+
+    @app.post("/app/api/admin/accounts/{account_id}/plan")
+    async def app_admin_set_plan(account_id: str, request: Request) -> dict:
+        _require_admin_user(request)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        plan = (body.get("plan") or "").strip() if isinstance(body, dict) else ""
+        try:
+            existed = account_store.set_plan(account_id, plan)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not existed:
+            raise HTTPException(status_code=404, detail="Account not found.")
+        return {"account_id": account_id, "plan": plan}
+
+    @app.post("/app/api/admin/accounts/{account_id}/quota")
+    async def app_admin_set_quota(account_id: str, request: Request) -> dict:
+        _require_admin_user(request)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        raw = body.get("quota_override") if isinstance(body, dict) else None
+        limit: int | None = None
+        if raw is not None and str(raw).strip() != "":
+            try:
+                limit = int(raw)
+            except (TypeError, ValueError):
+                limit = -1
+            if limit < 0:
+                raise HTTPException(status_code=400,
+                                    detail="quota_override must be a non-negative integer, or null to clear.")
+        if not account_store.set_quota_override(account_id, limit):
+            raise HTTPException(status_code=404, detail="Account not found.")
+        return {"account_id": account_id, "quota_override": limit}
+
+    @app.get("/app/api/admin/jobs")
+    def app_admin_jobs(request: Request, tenant: str | None = Query(None),
+                       limit: int = Query(100)) -> dict:
+        _require_admin_user(request)
+        jobs = app.state.store.list_all(limit=max(1, min(limit, 500)), tenant=tenant)
+        out = []
+        for j in jobs:
+            payload = app.state.store.public(j)
+            payload["tenant"] = j.tenant  # whose job it is (admin-only field)
+            out.append(payload)
+        return {"jobs": out}
 
     @app.post("/jobs")
     async def create_job(
