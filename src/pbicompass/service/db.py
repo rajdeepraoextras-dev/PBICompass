@@ -56,21 +56,41 @@ class _Connection:
 
     def execute(self, sql: str, params: tuple = ()):
         cur = self._conn.cursor()
-        cur.execute(self._sql(sql), params)
+        try:
+            cur.execute(self._sql(sql), params)
+        except Exception:
+            # A failed statement leaves a Postgres connection's transaction
+            # "aborted" -- every subsequent statement on it fails with
+            # InFailedSqlTransaction until something rolls back. Since this
+            # one connection is shared (serialized by AccountStore/JobStore's
+            # lock) across every request, one bad query would otherwise wedge
+            # the whole process until restart. Roll back immediately so the
+            # NEXT call gets a clean transaction (sqlite3's rollback() is a
+            # harmless no-op with nothing pending, so this is safe there too).
+            self._conn.rollback()
+            raise
         return cur
 
     def executemany(self, sql: str, seq) -> None:
         cur = self._conn.cursor()
-        cur.executemany(self._sql(sql), seq)
+        try:
+            cur.executemany(self._sql(sql), seq)
+        except Exception:
+            self._conn.rollback()
+            raise
 
     def executescript(self, script: str) -> None:
         # psycopg has no sqlite-style ``executescript``, but both engines
         # happily run a parameter-free, ';'-separated multi-statement string
         # through a single plain ``execute`` — used only for schema DDL.
-        if self.is_postgres:
-            self._conn.cursor().execute(script)
-        else:
-            self._conn.executescript(script)
+        try:
+            if self.is_postgres:
+                self._conn.cursor().execute(script)
+            else:
+                self._conn.executescript(script)
+        except Exception:
+            self._conn.rollback()
+            raise
 
     def commit(self) -> None:
         self._conn.commit()
