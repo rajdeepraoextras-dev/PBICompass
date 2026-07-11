@@ -203,5 +203,88 @@ class AccountStorePostgresBackendTest(unittest.TestCase):
             self.assertEqual(len(restored.list_accounts()), 1)
 
 
+class TryConsumeAmbiguousColumnRegressionTest(unittest.TestCase):
+    """Day 36 production incident: ``try_consume``'s upsert used a bare
+    ``SET count = count + 1``, which real Postgres rejects with
+    ``psycopg.errors.AmbiguousColumn`` inside an ``ON CONFLICT DO UPDATE``
+    (the target row's existing value and the row that would have been
+    inserted are both named ``count`` in that scope) -- sqlite3 has no such
+    ambiguity rule, which is exactly why the sqlite-backed
+    ``_install_fake_psycopg`` fake used elsewhere in this file never caught
+    it. This fake instead encodes Postgres's actual rule for this query
+    shape: a bare, unqualified ``count`` on the right-hand side of the SET
+    inside ON CONFLICT DO UPDATE raises; a table-qualified or
+    ``excluded.``-qualified reference does not."""
+
+    @staticmethod
+    def _install_ambiguity_checking_fake_psycopg():
+        import re
+
+        conn = sqlite3.connect(":memory:", check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+
+        class _Cursor:
+            def execute(self, sql, params=()):
+                if "on conflict" in sql.lower() and "do update set" in sql.lower():
+                    set_clause = sql.lower().split("do update set", 1)[1]
+                    # A bare "count = count + 1" (no "usage." or "excluded."
+                    # qualifier immediately before the right-hand "count")
+                    # reproduces the real ambiguity Postgres rejects.
+                    if re.search(r"count\s*=\s*count\s*\+", set_clause):
+                        raise RuntimeError(
+                            'AmbiguousColumn: column reference "count" is ambiguous'
+                        )
+                translated = sql.replace("%s", "?")
+                self._cur = conn.cursor()
+                if not params and translated.strip().count(";") > 1:
+                    conn.executescript(translated)
+                else:
+                    self._cur.execute(translated, params)
+                return self
+
+            def fetchone(self):
+                row = self._cur.fetchone()
+                return dict(row) if row is not None else None
+
+            def fetchall(self):
+                return [dict(r) for r in self._cur.fetchall()]
+
+            @property
+            def rowcount(self):
+                return self._cur.rowcount
+
+        class _Conn:
+            def cursor(self):
+                return _Cursor()
+
+            def commit(self):
+                conn.commit()
+
+            def rollback(self):
+                conn.rollback()
+
+            def close(self):
+                conn.close()
+
+        fake_module = ModuleType("psycopg")
+        fake_module.connect = lambda dsn, **kwargs: _Conn()
+        fake_module.rows = SimpleNamespace(dict_row=object())
+        return fake_module
+
+    def test_try_consume_upsert_is_not_ambiguous_on_postgres(self):
+        fake_module = self._install_ambiguity_checking_fake_psycopg()
+        with patch.dict(sys.modules, {"psycopg": fake_module}):
+            store = AccountStore("postgres://user:pw@host/db")
+            self.addCleanup(store.close)
+            store.create_account("acme", plan="pro")
+            # Two consecutive calls exercise both the INSERT and the
+            # ON CONFLICT DO UPDATE (increment) branches of the same upsert.
+            allowed1, used1, _ = store.try_consume("acme", "pro")
+            allowed2, used2, _ = store.try_consume("acme", "pro")
+            self.assertTrue(allowed1)
+            self.assertTrue(allowed2)
+            self.assertEqual((used1, used2), (1, 2))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
