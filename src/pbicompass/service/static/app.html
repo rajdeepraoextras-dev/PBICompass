@@ -1041,8 +1041,8 @@ function fieldAiMsg(btn, text, cls) {
 
 function setFieldBusy(row, btn, busyLabel, busy) {
   row.querySelectorAll("button").forEach(b => b.disabled = busy);
-  if (busy) { btn.dataset.label = btn.textContent; btn.textContent = busyLabel; }
-  else { btn.textContent = btn.dataset.label || btn.textContent; }
+  if (busy) { btn.dataset.label = btn.innerHTML; btn.innerHTML = "<span>" + busyLabel + "</span>"; }
+  else { btn.innerHTML = btn.dataset.label || btn.innerHTML; }
 }
 
 async function assistFill(ta, btn) {
@@ -1080,16 +1080,19 @@ async function assistFormat(ta, btn) {
   finally { setFieldBusy(row, btn, "", false); }
 }
 
+const AI_FILL_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>';
+
 document.querySelectorAll("#tab-details .form-group").forEach(group => {
   const ta = group.querySelector("textarea");
   if (!ta) return;
   const row = document.createElement("div");
   row.className = "field-actions";
   const fillBtn = document.createElement("button");
-  fillBtn.type = "button"; fillBtn.className = "field-ai-btn"; fillBtn.textContent = "✨ AI Fill";
+  fillBtn.type = "button"; fillBtn.className = "field-ai-btn";
+  fillBtn.innerHTML = AI_FILL_ICON + "<span>AI Fill</span>";
   fillBtn.title = "Draft this field from the uploaded report";
   const formatBtn = document.createElement("button");
-  formatBtn.type = "button"; formatBtn.className = "field-ai-btn"; formatBtn.textContent = "Format";
+  formatBtn.type = "button"; formatBtn.className = "field-ai-btn"; formatBtn.innerHTML = "<span>Format</span>";
   formatBtn.title = "Fix grammar & punctuation of what's typed here";
   fillBtn.addEventListener("click", () => assistFill(ta, fillBtn));
   formatBtn.addEventListener("click", () => assistFormat(ta, formatBtn));

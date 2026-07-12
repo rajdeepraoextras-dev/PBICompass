@@ -231,6 +231,7 @@ textarea { resize: vertical; min-height: 90px; }
 /* per-field "AI Fill" / "Format" buttons (Notes tab) */
 .field-actions { display: flex; align-items: center; gap: 8px; margin: -3px 0 8px; flex-wrap: wrap; }
 .field-ai-btn {
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 12px; border-radius: 100px; cursor: pointer;
   background: hsl(0 0% 100% / .07); color: hsl(0 0% 100% / .88); border: 1px solid hsl(0 0% 100% / .14);
   font-family: inherit; font-size: .72rem; font-weight: 500;
@@ -238,6 +239,7 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .field-ai-btn:hover:not(:disabled) { transform: scale(1.03); background: hsl(0 0% 100% / .14); color: #fff; }
 .field-ai-btn:disabled { opacity: .55; cursor: not-allowed; }
+.field-ai-btn svg { width: 12px; height: 12px; flex: none; }
 .field-ai-msg { font-size: .72rem; color: hsl(0 0% 100% / .68); }
 .field-ai-msg.ok { color: var(--status-ok); }
 .field-ai-msg.err { color: var(--status-err); }
