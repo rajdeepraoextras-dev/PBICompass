@@ -222,8 +222,7 @@ def main(argv: list[str] | None = None) -> int:
     p_gen.add_argument("--provider", default="none",
                        help="LLM provider: 'none' (deterministic, default), 'anthropic', 'gemini', 'cohere', "
                             "or 'meshapi' (https://developers.meshapi.ai — one API key routes to 1000+ models "
-                            "across providers; use a 'provider/model-name' --model id, e.g. "
-                            "'deepseek/deepseek-v4-flash', MeshAPI's own default here)")
+                            "across providers; use a 'provider/model-name' --model id, e.g. 'openai/gpt-4o')")
     p_gen.add_argument("--model", default="claude-opus-4-8", help="Model id for the LLM provider")
     p_gen.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"],
                        help="Reasoning effort (quality vs. latency), applied to every "

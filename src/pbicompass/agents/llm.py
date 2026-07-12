@@ -404,20 +404,18 @@ class MeshAPIClient:
     model ids, which use hyphens (``claude-opus-4-8``, as
     :class:`AnthropicClient` expects) — the two are not interchangeable.
 
-    Defaults to ``deepseek/deepseek-v4-flash`` (owner decision, 2026-07-13):
-    far cheaper than the prior ``openai/gpt-4o`` default ($0.14/$0.28 per 1M
-    input/output tokens vs. gpt-4o's ~$2.50/$10 — confirmed against MeshAPI's
-    own model catalog, https://developers.meshapi.ai/docs/introduction/
-    available-models), with a 1M-token context window. MeshAPI's own
-    dashboard lists this specific model's "Structured Output" capability as
-    unsupported, unlike gpt-4o — ``complete_json`` below degrades to a
-    prompt-only JSON instruction (no ``response_format``) when the strict
-    schema call itself is rejected, so this default stays safe even where a
-    routed model can't do native JSON-schema-constrained decoding. Not a
-    concern for the Anthropic-via-Bedrock structured-output gap the previous
-    default was chosen around (see git history) since DeepSeek isn't routed
-    through Bedrock at all. Pass an explicit ``model=`` to use a different
-    one.
+    Defaults to ``openai/gpt-4o`` rather than a Claude model: MeshAPI routes
+    at least some Anthropic model ids through AWS Bedrock's Converse API,
+    which doesn't support the structured-output parameter MeshAPI's
+    translation layer attaches for them (every ``complete_json`` call here
+    fails with a Bedrock ``ValidationException`` on ``output_config.format``
+    for those ids) — MeshAPI's own docs confirm first-class structured-output
+    support for OpenAI (and Google Gemini) models, not Anthropic-via-Bedrock.
+    Pass an explicit ``model=`` to use a different one (e.g. a DeepSeek model
+    for a cheaper option — 2026-07-13: ``deepseek/deepseek-v4-flash`` was
+    tried as the default but reverted, it was unacceptably slow in practice).
+    ``complete_json`` below still degrades gracefully to a prompt-only JSON
+    instruction if a chosen model rejects ``response_format`` outright.
 
     Implemented with the official ``openai`` SDK pointed at MeshAPI's base
     URL, exactly as MeshAPI's own quickstart recommends ("replace the Base
@@ -470,12 +468,12 @@ class MeshAPIClient:
         )
 
         # MeshAPI fronts 1000+ models of wildly varying structured-output
-        # support with no per-model signal exposed here either (its own
-        # dashboard shows this for the deepseek/deepseek-v4-flash default —
-        # see the class docstring), so a rejected ``response_format`` also
-        # degrades gracefully: the schema is restated as a plain-text
-        # instruction instead and the response is parsed loosely (stripping
-        # a stray ```json fence some models add despite the instruction).
+        # support with no per-model signal exposed here either, so a
+        # rejected ``response_format`` also degrades gracefully: the schema
+        # is restated as a plain-text instruction instead and the response
+        # is parsed loosely (stripping a stray ```json fence some models add
+        # despite the instruction) — useful for whatever non-default model a
+        # caller passes in, even though gpt-4o itself never hits this path.
         def _call(*, include_reasoning: bool, structured: bool):
             sys_prompt = system if structured else (
                 system + "\n\nRespond with only a single valid JSON object (no markdown "
@@ -538,9 +536,10 @@ _DEFAULT_MODEL = {
     "anthropic": "claude-opus-4-8",
     "gemini": "gemini-3.5-flash",
     "cohere": "command-a-03-2025",
-    # deepseek/deepseek-v4-flash, not a Claude id — see MeshAPIClient's
-    # docstring for the cost/context/structured-output rationale.
-    "meshapi": "deepseek/deepseek-v4-flash",
+    # openai/gpt-4o, not a Claude id — see MeshAPIClient's docstring: MeshAPI
+    # routes at least some Anthropic ids through AWS Bedrock's Converse API,
+    # which rejects the structured-output parameter every agent here needs.
+    "meshapi": "openai/gpt-4o",
 }
 
 
