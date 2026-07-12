@@ -24,7 +24,7 @@ pip install -e ".[dev,service,agents]"
 pytest -v
 ```
 
-868 tests pass, 2 skipped, 0 failing (the LLM path is tested via an in-process
+881 tests pass, 2 skipped, 0 failing (the LLM path is tested via an in-process
 fake client — no API key needed). With a bare
 `pip install -e ".[dev]"` (no `service`/`agents` extras) the service- and
 provider-specific tests skip cleanly instead of running — see any test file's

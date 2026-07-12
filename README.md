@@ -21,6 +21,12 @@ a manual write-up takes.
 **[Try it live →](https://pbicompass.duckdns.org)** — create a free account
 (no credit card), upload a `.pbix`/`.pbip`, and download the generated docs.
 
+**[Wiki →](https://github.com/rajdeepraoextras-dev/PBICompass/wiki)** — a
+guided tour: [Built with Claude](https://github.com/rajdeepraoextras-dev/PBICompass/wiki/Built-with-Claude),
+[Architecture](https://github.com/rajdeepraoextras-dev/PBICompass/wiki/Architecture),
+[Getting Started](https://github.com/rajdeepraoextras-dev/PBICompass/wiki/Getting-Started),
+and more.
+
 > **Why it matters:** manually producing this level of documentation
 > (technical, audit & health, executive, and business-user docs) for a
 > mid-size company's Power BI estate — say 50 reports, at a typical US
@@ -81,7 +87,7 @@ client (`claude-opus-4-8`, structured outputs, adaptive thinking).
 
 ## Status — Phases 0–5 complete
 
-The foundation is in place and tested (868 tests passing):
+The foundation is in place and tested (881 tests passing):
 
 - **Canonical schemas** — the `model.json` and `document.json` contracts that
   every parser and AI agent keys off ([src/pbicompass/schemas](src/pbicompass/schemas)).
@@ -269,7 +275,7 @@ wrong attempts from a client are locked out for 15 minutes after 8 failures.
 
 ```bash
 pip install -e ".[dev,service,agents]"
-pytest   # 868 passing, 2 skipped, 0 failing
+pytest   # 881 passing, 2 skipped, 0 failing
 ```
 
 ---
@@ -335,7 +341,7 @@ src/pbicompass/
     static/index.html  static/app.html   # marketing site + the sign-in/upload/dashboard app
     static/admin.html   # SaaS admin dashboard (stats, users, suspend/delete) and self-host fallback
   cli.py
-tests/                  # 868 tests across parser, adapter, agents, renderers, service
+tests/                  # 881 tests across parser, adapter, agents, renderers, service
   fixtures/SampleSales/  # synthetic .pbip exercising every code path
 ```
 
@@ -387,6 +393,7 @@ multi-tenancy with freemium quotas**. Remaining for scale/commercial:
 
 | Doc | Covers |
 |---|---|
+| [Wiki](https://github.com/rajdeepraoextras-dev/PBICompass/wiki) | Guided tour — Built with Claude, Architecture, Getting Started, Feature Tour, Deployment, FAQ, Roadmap |
 | [docs/TOOL_DETAILS.md](docs/TOOL_DETAILS.md) | **Complete start-to-end reference** — every module, CLI command, flag, env var, endpoint, and data-flow stage |
 | [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Full architecture, agent prompts, and phased roadmap |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment (Render/Fly.io/VM), env vars, zero-retention checklist |

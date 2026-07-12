@@ -409,13 +409,6 @@
                 </select>
               </div>
             </div>
-
-            <div class="grid-2" id="model-row">
-              <div class="form-group">
-                <label>MeshAPI Model <small>(optional — routes 1000+ models; leave blank for the default)</small></label>
-                <input type="text" id="model-input" autocomplete="off" placeholder="e.g. deepseek/deepseek-v3.2-speciale (DeepSeek's thinking model)">
-              </div>
-            </div>
           </div>
 
           <!-- Tab 2 -->
@@ -1000,10 +993,6 @@ const providerApikey = $("provider-apikey");
 providerApikey.value = localStorage.getItem("pbicompass_provider_key") || "";
 providerApikey.addEventListener("change", () => localStorage.setItem("pbicompass_provider_key", providerApikey.value.trim()));
 
-const modelInput = $("model-input");
-modelInput.value = localStorage.getItem("pbicompass_meshapi_model") || "";
-modelInput.addEventListener("change", () => localStorage.setItem("pbicompass_meshapi_model", modelInput.value.trim()));
-
 const EFFORT_CAPABLE_PROVIDERS = ["anthropic", "gemini", "cohere", "meshapi"];
 
 // Build the engine picker from server config. Each AI engine is either
@@ -1038,10 +1027,6 @@ function renderProviderOptions() {
 function syncEffortVisibility() {
   const isOffline = $("provider").value === "none";
   $("effort-row").style.display = EFFORT_CAPABLE_PROVIDERS.includes($("provider").value) ? "" : "none";
-  // Free-text model id only makes sense for MeshAPI (1000+ models behind
-  // one key, e.g. "deepseek/deepseek-v3.2-speciale") — the other providers
-  // each have a single sensible server-side default model.
-  $("model-row").style.display = $("provider").value === "meshapi" ? "" : "none";
   // Hosted default runs every job on the server's own provider key
   // (byok_enabled=false) — a visitor is never asked for their own key.
   // Self-host deployments opt per-job BYOK back in via PBICOMPASS_BYOK_UI.
@@ -1131,10 +1116,6 @@ $("gen-form").addEventListener("submit", async e => {
   fd.append("file", f);
   fd.append("provider", $("provider").value);
   if (EFFORT_CAPABLE_PROVIDERS.includes($("provider").value)) fd.append("effort", $("effort").value);
-  if ($("provider").value === "meshapi") {
-    const modelVal = modelInput.value.trim();
-    if (modelVal) fd.append("model", modelVal);
-  }
   if (cfg.byok_enabled && $("provider").value !== "none") {
     const engineKey = providerApikey.value.trim();
     if (engineKey) fd.append("provider_api_key", engineKey);
