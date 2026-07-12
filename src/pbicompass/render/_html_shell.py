@@ -14,6 +14,7 @@ import json
 from ._shared import html_e as _e
 from ._logo import LOGO_DATA_URI
 from ._poppins_font import POPPINS_FONT_FACES_CSS, POPPINS_FONT_STACK
+from ._vendor_svg_pan_zoom import SVG_PAN_ZOOM_JS
 
 _CSS = POPPINS_FONT_FACES_CSS + """
 :root {
@@ -586,6 +587,7 @@ details.collapsible > .code-block pre {
 .diagram svg {
   cursor: grab;
   touch-action: none;
+  user-select: none; /* a pan drag must never also text-select the page underneath it */
 }
 .diagram svg text {
   font-family: 'Poppins', sans-serif !important;
@@ -684,6 +686,48 @@ details.collapsible > .code-block pre {
   opacity: 0.8;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+/* Day 6: the callout list under a wireframe for visuals that render as a
+   ghost outline + numbered chip on the canvas because another, larger
+   visual sits on top of them in the actual report layout. */
+.wf-occluded-list {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+}
+.wf-occluded-title {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.wf-occluded-list ol {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.78rem;
+}
+.wf-occluded-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: var(--bg-code-inline);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.wf-occluded-list a {
+  color: var(--primary);
+  text-decoration: none;
+}
+.wf-occluded-list a:hover {
+  text-decoration: underline;
 }
 /* Uppercase legend for the wireframe/lineage only (a modifier, so the
    shared model/nav-map/measure-deps legends keep their normal case). */
@@ -1299,43 +1343,34 @@ document.addEventListener('DOMContentLoaded', () => {
   function slugify(s) {
     return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
   }
+  // Day 6: pan/zoom on every diagram canvas via the vendored svg-pan-zoom
+  // (mouse drag, scroll-wheel zoom, and — the hand-rolled version's real
+  // gap — actual pinch-to-zoom/touch panning on mobile). ``moved`` still
+  // guards link clicks the same way the hand-rolled version did: svg-pan-
+  // zoom manages pan/zoom only, never touches click events on children,
+  // so a drag ending on top of a linked node would otherwise navigate.
+  // ``isDown`` gates it: ``beforePan`` also fires for *programmatic* pans
+  // (e.g. this file's own ``.reset()`` before printing) with no user
+  // mousedown/touchstart active — without the gate, printing would leave
+  // ``moved`` permanently stuck true (no mouseup ever follows a print) and
+  // silently swallow the very next click on every diagram link.
+  const panZoomInstances = [];
   document.querySelectorAll('.diagram svg').forEach((svg) => {
-    const vb = svg.viewBox.baseVal;
-    const initial = { x: vb.x, y: vb.y, w: vb.width, h: vb.height };
-    let panning = false, lastX = 0, lastY = 0, moved = false;
-
-    // A drag that started on a linked node must not fire the link on
-    // mouseup — suppress the click once the pointer has really moved.
+    if (typeof svgPanZoom !== 'function') return; // vendor script failed to parse — degrade to static, never throw
+    let isDown = false, moved = false;
+    const instance = svgPanZoom(svg, {
+      zoomEnabled: true, panEnabled: true, controlIconsEnabled: true,
+      fit: true, center: true, zoomScaleSensitivity: 0.3, minZoom: 0.5, maxZoom: 8,
+      beforePan: () => { if (isDown) moved = true; },
+    });
+    panZoomInstances.push(instance);
+    svg.addEventListener('mousedown', () => { isDown = true; });
+    svg.addEventListener('touchstart', () => { isDown = true; });
     svg.addEventListener('click', (e) => {
       if (moved) { e.preventDefault(); e.stopPropagation(); }
     }, true);
-
-    svg.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const rect = svg.getBoundingClientRect();
-      const scale = e.deltaY > 0 ? 1.1 : 0.9;
-      const newW = Math.max(initial.w * 0.25, Math.min(initial.w * 4, vb.width * scale));
-      const newH = newW * (initial.h / initial.w);
-      const mx = vb.x + (e.clientX - rect.left) / rect.width * vb.width;
-      const my = vb.y + (e.clientY - rect.top) / rect.height * vb.height;
-      vb.x = mx - (mx - vb.x) * (newW / vb.width);
-      vb.y = my - (my - vb.y) * (newH / vb.height);
-      vb.width = newW;
-      vb.height = newH;
-    }, { passive: false });
-
-    svg.addEventListener('mousedown', (e) => {
-      panning = true; moved = false; lastX = e.clientX; lastY = e.clientY;
-    });
-    window.addEventListener('mousemove', (e) => {
-      if (!panning) return;
-      if (Math.abs(e.clientX - lastX) + Math.abs(e.clientY - lastY) > 3) moved = true;
-      const rect = svg.getBoundingClientRect();
-      vb.x -= (e.clientX - lastX) * (vb.width / rect.width);
-      vb.y -= (e.clientY - lastY) * (vb.height / rect.height);
-      lastX = e.clientX; lastY = e.clientY;
-    });
-    window.addEventListener('mouseup', () => { panning = false; });
+    svg.addEventListener('mouseup', () => { isDown = false; setTimeout(() => { moved = false; }, 0); });
+    svg.addEventListener('touchend', () => { isDown = false; setTimeout(() => { moved = false; }, 0); });
 
     // Lineage hover-connect: hovering a node highlights its own edges,
     // keeps its neighbors lit, and dims every unrelated node/edge. Nodes
@@ -1390,6 +1425,16 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
   });
+
+  // Print/PDF fallback: whatever pan/zoom state a reader left a diagram
+  // in on screen must never clip the printed page — reset every instance
+  // to its fitted, centered default right before printing (Ctrl+P or
+  // window.print()), then restore the reader's on-screen view afterward.
+  if (panZoomInstances.length) {
+    window.addEventListener('beforeprint', () => {
+      panZoomInstances.forEach((inst) => inst.reset());
+    });
+  }
 });
 </script>
 """
@@ -1535,6 +1580,11 @@ def page_shell(
     o.append(body_html)
 
     o.append("</main></div>")
+    # Day 6: vendored svg-pan-zoom, inlined (not a <script src>, and no
+    # CDN) so a downloaded, offline-opened HTML file still gets working
+    # pan/zoom on every diagram — must load before ``_SCRIPT``, which
+    # calls ``svgPanZoom(...)`` in its DOMContentLoaded handler.
+    o.append(f"<script>{SVG_PAN_ZOOM_JS}</script>")
     o.append(_SCRIPT)
     o.append("</body></html>")
     return "\n".join(o)

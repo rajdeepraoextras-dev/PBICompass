@@ -35,6 +35,7 @@ from ..deterministic import business_analyst_deterministic, schema_shape, transl
 from ..grounding import apply_grounding_pass
 from ..llm import LLMClient
 from ..report_facts import business_plain_english, data_source_type_counts, first_sentence
+from ..sanitize import sanitize_narratives
 from .base import Warn, build_core_metadata, call_llm
 
 
@@ -383,6 +384,11 @@ class ExecutiveSummaryGenerator:
             purpose = f"{purpose} This report exists to support: {business_decision}"
         business_value = _business_value(key_kpi_names, audience)
         maintenance_note = _maintenance_note(failed_practice_count, len(governance))
+        # P0: captured before any LLM override, so the final sanitize pass
+        # has a real deterministic fallback if that text turns out corrupted.
+        _deterministic_purpose_text = purpose
+        _deterministic_business_value_text = business_value
+        _deterministic_maintenance_note_text = maintenance_note
 
         if client is not None:
             data = call_llm(
@@ -450,5 +456,14 @@ class ExecutiveSummaryGenerator:
             _run_critic(doc, model, client, warn, ai_context)
             _run_grounding(doc, client, warn, ai_context)
         _run_consistency(doc, client, warn, ai_context, audit_verdicts)
+
+        # P0: the one gate every narrative field passes through (unconditional
+        # — a field's initial LLM draft can carry the leak before critic/
+        # grounding ever run) — see sanitize.sanitize_narratives's docstring.
+        sanitize_narratives(_narrative_triples(doc), {
+            "purpose": _deterministic_purpose_text,
+            "business_value": _deterministic_business_value_text,
+            "maintenance_note": _deterministic_maintenance_note_text,
+        })
 
         return doc

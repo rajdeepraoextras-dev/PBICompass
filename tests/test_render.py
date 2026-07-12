@@ -276,6 +276,48 @@ class HtmlRenderTest(unittest.TestCase):
         self.assertIn("Glossary", html)
 
 
+class PanZoomVendorTest(unittest.TestCase):
+    """Day 6: svg-pan-zoom is vendored inline (never a <script src>/CDN) so
+    the model diagram / lineage graph / page wireframes get real pan/zoom
+    even when the generated HTML is opened offline with no web server."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(_doc())
+
+    def test_vendored_library_is_inlined_not_a_cdn_reference(self):
+        from pbicompass.render._vendor_svg_pan_zoom import SVG_PAN_ZOOM_JS
+        self.assertIn(SVG_PAN_ZOOM_JS, self.html)
+        for banned in ("cdn.", "unpkg.com", "jsdelivr", "<script src="):
+            self.assertNotIn(banned, self.html)
+
+    def test_vendor_script_loads_before_the_init_script(self):
+        # svgPanZoom(...) is called inside _SCRIPT's DOMContentLoaded
+        # handler — the vendor <script> tag defining it must appear earlier
+        # in the document, or the global would be undefined when called.
+        vendor_pos = self.html.find("window.svgPanZoom = window.__spz_require(3);")
+        init_pos = self.html.find("svgPanZoom(svg,")
+        self.assertNotEqual(vendor_pos, -1)
+        self.assertNotEqual(init_pos, -1)
+        self.assertLess(vendor_pos, init_pos)
+
+    def test_beforeprint_resets_every_instance(self):
+        self.assertIn("window.addEventListener('beforeprint'", self.html)
+        self.assertIn("panZoomInstances.forEach((inst) => inst.reset());", self.html)
+
+    def test_click_suppression_is_gated_on_a_real_mousedown(self):
+        # P0-class regression (Day 6): beforePan also fires for the
+        # programmatic .reset() used above — without gating "moved" on an
+        # active user mousedown/touchstart, a print would permanently
+        # suppress the next click on every diagram link.
+        self.assertIn("let isDown = false, moved = false;", self.html)
+        self.assertIn("beforePan: () => { if (isDown) moved = true; }", self.html)
+
+    def test_vendored_js_source_module_has_no_script_close_tag_leak(self):
+        from pbicompass.render._vendor_svg_pan_zoom import SVG_PAN_ZOOM_JS
+        self.assertNotIn("</script>", SVG_PAN_ZOOM_JS)
+
+
 class DocxRenderTest(unittest.TestCase):
     def test_valid_ooxml_package(self):
         with tempfile.TemporaryDirectory() as td:
@@ -334,27 +376,27 @@ class MarkdownRenderTest(unittest.TestCase):
 
 
 class ModelDiagramClaimConsistencyTest(unittest.TestCase):
-    """P2: §18's "The model diagram is in section 6" (and §6's own aside in
-    the markdown renderer) must never claim the diagram exists while its
-    render call is disabled — both are gated on the single
+    """P2 (retuned Day 6, now that ``_model_diagram`` ships): §18's "The
+    model diagram is in section 6" (and §6's own aside in the markdown
+    renderer) must only ever claim the diagram exists in lockstep with
+    whether it's actually rendered — both gated on the single
     ``_shared.MODEL_DIAGRAM_RENDERED`` flag so they can never drift out of
-    sync with each other or with reality."""
+    sync with each other or with reality, in either direction."""
 
-    def test_sentence_absent_while_diagram_rendering_is_disabled(self):
+    def test_sentence_present_now_that_the_diagram_renders(self):
         import pbicompass.render._shared as shared
-        self.assertFalse(shared.MODEL_DIAGRAM_RENDERED, "flip this test's expectations too once re-enabled")
+        self.assertTrue(shared.MODEL_DIAGRAM_RENDERED, "flip this test's expectations too if disabled again")
 
         doc = _doc()
-        self.assertNotIn("The model diagram is in section 6", render_html(doc))
-        self.assertNotIn("The model diagram is in section 6", render_markdown(doc))
-        self.assertNotIn("See the HTML version for the model diagram", render_markdown(doc))
+        self.assertIn("The model diagram is in section 6", render_html(doc))
+        self.assertIn("The model diagram is in section 6", render_markdown(doc))
         with tempfile.TemporaryDirectory() as td:
             path = render_docx(doc, Path(td) / "t.docx")
             with zipfile.ZipFile(path) as zf:
                 text = zf.read("word/document.xml").decode("utf-8")
-        self.assertNotIn("model diagram", text.lower())
+        self.assertIn("model diagram", text.lower())
 
-    def test_sentence_appears_once_the_flag_is_enabled(self):
+    def test_sentence_absent_when_the_flag_is_disabled(self):
         import pbicompass.render._shared as shared
         import pbicompass.render.html as html_mod
         import pbicompass.render.markdown as markdown_mod
@@ -362,11 +404,12 @@ class ModelDiagramClaimConsistencyTest(unittest.TestCase):
         doc = _doc()
         original = shared.MODEL_DIAGRAM_RENDERED
         try:
-            shared.MODEL_DIAGRAM_RENDERED = True
-            html_mod.MODEL_DIAGRAM_RENDERED = True
-            markdown_mod.MODEL_DIAGRAM_RENDERED = True
-            self.assertIn("The model diagram is in section 6", render_html(doc))
-            self.assertIn("The model diagram is in section 6", render_markdown(doc))
+            shared.MODEL_DIAGRAM_RENDERED = False
+            html_mod.MODEL_DIAGRAM_RENDERED = False
+            markdown_mod.MODEL_DIAGRAM_RENDERED = False
+            self.assertNotIn("The model diagram is in section 6", render_html(doc))
+            self.assertNotIn("The model diagram is in section 6", render_markdown(doc))
+            self.assertNotIn("See the HTML version for the model diagram", render_markdown(doc))
         finally:
             shared.MODEL_DIAGRAM_RENDERED = original
             html_mod.MODEL_DIAGRAM_RENDERED = original

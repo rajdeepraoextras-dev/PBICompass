@@ -11,6 +11,7 @@ from pbicompass.agents import generate_document
 from pbicompass.agents.generators import AuditReportGenerator, ExecutiveSummaryGenerator
 from pbicompass.agents.traceability import (
     RequirementCoverage,
+    _deterministic_verdict,
     build_candidates,
     build_requirements_matrix,
     coverage_stat,
@@ -18,6 +19,7 @@ from pbicompass.agents.traceability import (
     parse_requirements,
 )
 from pbicompass.parsers import detect_and_parse
+from pbicompass.schemas.model import Column, Measure, ModelMeta, Page, SemanticModel, Table, Visual
 
 FIXTURE = Path(__file__).parent / "fixtures" / "SampleSales" / "SampleSales.pbip"
 
@@ -123,6 +125,79 @@ class MatchCandidatesTest(unittest.TestCase):
         matched = match_candidates("Show total revenue", candidates)
         self.assertEqual(len(matched), 1)
         self.assertEqual(matched[0]["score"], 2)
+
+
+class DeterministicVerdictTieringTest(unittest.TestCase):
+    """P1 (retuned): a bare score-threshold tiering produced false Gaps for
+    requirements a dimension-only match should have floored at Partial —
+    "the report can't do X" is worse optics than "weak evidence for X"
+    when the report demonstrably can. New rule: any match at all floors
+    at Partial; a matched measure (alone, or paired with a dimension)
+    upgrades to Covered; Gap only when nothing matched."""
+
+    def test_no_match_is_gap(self):
+        status, evidence = _deterministic_verdict([])
+        self.assertEqual(status, "Gap")
+        self.assertEqual(evidence, [])
+
+    def test_dimension_only_match_floors_at_partial_never_gap(self):
+        matched = [{"kind": "column", "name": "Department[Department]", "anchor": "a", "score": 1}]
+        status, evidence = _deterministic_verdict(matched)
+        self.assertEqual(status, "Partial")
+        self.assertTrue(evidence)
+
+    def test_weak_single_word_dimension_match_is_still_partial_not_gap(self):
+        # The old threshold (top_score >= 2) demoted a single-shared-word
+        # match to a status indistinguishable from no evidence at all in
+        # spirit; it must never actually reach Gap.
+        matched = [{"kind": "page", "name": "Overview", "anchor": "page-overview", "score": 1}]
+        status, _ = _deterministic_verdict(matched)
+        self.assertNotEqual(status, "Gap")
+
+    def test_measure_match_alone_is_covered(self):
+        # Sanity check: "Compare actual spend against budget" naming the
+        # literal Actual/Plan measures must be Covered, not downgraded to
+        # Partial just because no dimension also matched.
+        matched = [{"kind": "measure", "name": "Actual", "anchor": "measure-actual", "score": 3}]
+        status, evidence = _deterministic_verdict(matched)
+        self.assertEqual(status, "Covered")
+        self.assertEqual(evidence[0]["name"], "Actual")
+
+    def test_measure_and_dimension_pair_is_covered_with_both_as_evidence(self):
+        matched = [
+            {"kind": "measure", "name": "Actual", "anchor": "measure-actual", "score": 3},
+            {"kind": "column", "name": "Department[Department]", "anchor": "column-department", "score": 2},
+        ]
+        status, evidence = _deterministic_verdict(matched)
+        self.assertEqual(status, "Covered")
+        kinds = {e["kind"] for e in evidence}
+        self.assertEqual(kinds, {"measure", "column"})
+
+    def test_worked_example_against_a_department_and_measure_model(self):
+        # The concrete regression report: a Department dimension table, a
+        # Country Region / Cost Element pair, and Actual/Plan measures.
+        dept = Table(name="Department", columns=[Column(name="Department")])
+        country_region = Table(name="Country Region", columns=[Column(name="Region")])
+        cost_element = Table(name="Cost Element", columns=[Column(name="Category")])
+        fact = Table(name="Fact", columns=[Column(name="Amount")], measures=[
+            Measure(name="Actual", table="Fact", expression="SUM(Fact[Amount])"),
+            Measure(name="Plan", table="Fact", expression="SUM(Fact[Budget])"),
+        ])
+        page = Page(id="p1", display_name="Overview", visuals=[
+            Visual(id="v1", type="card", fields=["Fact.Actual", "Department.Department"]),
+            Visual(id="v2", type="card", fields=["Fact.Actual", "Fact.Plan"]),
+            Visual(id="v3", type="card", fields=["Country Region.Region", "Cost Element.Category"]),
+        ])
+        model = SemanticModel(report_name="R", meta=ModelMeta(),
+                              tables=[dept, country_region, cost_element, fact], pages=[page])
+        candidates = build_candidates(model)
+
+        def verdict_for(text):
+            return _deterministic_verdict(match_candidates(text, candidates))[0]
+
+        self.assertEqual(verdict_for("Monitor total corporate spend by department"), "Partial")
+        self.assertEqual(verdict_for("Analyze spending by category and region"), "Partial")
+        self.assertEqual(verdict_for("Compare actual spend against budget"), "Covered")
 
 
 class TimeIntelligenceKeywordsTest(unittest.TestCase):

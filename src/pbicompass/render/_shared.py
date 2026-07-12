@@ -69,15 +69,15 @@ def truncate_label(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: max(1, limit - 1)].rstrip() + "…"
 
 
-# Model diagram (§6): the actual SVG render call is disabled pending the
-# v6 "Studio" redesign pass the wireframe/lineage diagrams already got
-# (tracked separately). A single flag here so every renderer's own claim
-# about where the diagram lives stays in sync with whether it's actually
-# rendered, instead of three independently-maintained sentences (§6's own
-# markdown aside, §18's own note in all three formats) that can silently
-# drift into a false claim (P2) — flip this to ``True`` in the same change
-# that re-enables the diagram render call(s).
-MODEL_DIAGRAM_RENDERED = False
+# Model diagram (§6): re-enabled (Day 6) — ``render._model_diagram`` ships
+# the v6 "Studio" redesign the wireframe/lineage diagrams already had. A
+# single flag here so every renderer's own claim about where the diagram
+# lives stays in sync with whether it's actually rendered, instead of
+# three independently-maintained sentences (§6's own markdown aside, §18's
+# own note in all three formats) that can silently drift into a false
+# claim (P2) — flip this back to ``False`` only if the render call itself
+# is ever disabled again.
+MODEL_DIAGRAM_RENDERED = True
 
 
 def non_data_note(count: int) -> str:

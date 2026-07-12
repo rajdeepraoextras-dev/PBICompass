@@ -11,6 +11,7 @@ from pbicompass.agents.sanitize import (
     is_meta_commentary,
     is_punt_phrase,
     sanitize,
+    sanitize_narratives,
     strip_punt_leak,
 )
 
@@ -195,6 +196,58 @@ class EnforceScoreConsistencyTest(unittest.TestCase):
     def test_empty_text_is_untouched(self):
         self.assertEqual(enforce_score_consistency("", 79, "Good"), "")
         self.assertIsNone(enforce_score_consistency(None, 79, "Good"))
+
+
+class SanitizeNarrativesTest(unittest.TestCase):
+    """P0 (centralized fix): the one gate every generator's narrative
+    triples must pass through — a leak that survived a per-generator
+    opt-in (audit.py alone) is what motivated pulling this out into a
+    single, mandatory, reusable pass."""
+
+    def _obj(self, text):
+        class _Box:
+            value = text
+        return _Box()
+
+    def _triple(self, location, box):
+        def setter(v):
+            box.value = v
+        return (location, box.value, setter)
+
+    def test_strips_leak_across_multiple_fields(self):
+        a = self._obj("Clean field, no leak here.")
+        b = self._obj("Some prose. Unknown — requires business confirmation. More prose follows.")
+        triples = [self._triple("a", a), self._triple("b", b)]
+        sanitize_narratives(triples)
+        self.assertEqual(a.value, "Clean field, no leak here.")
+        self.assertNotIn("requires business confirmation", b.value)
+        self.assertIn("Some prose.", b.value)
+        self.assertIn("More prose follows.", b.value)
+
+    def test_uses_supplied_fallback_when_field_would_go_empty(self):
+        box = self._obj("Unknown — requires business confirmation.")
+        triples = [self._triple("loc", box)]
+        sanitize_narratives(triples, {"loc": "DETERMINISTIC FALLBACK"})
+        self.assertEqual(box.value, "DETERMINISTIC FALLBACK")
+
+    def test_without_a_fallback_keeps_original_rather_than_blanking(self):
+        # Defensive default: no crash, no empty string — the field is left
+        # exactly as it was (still bad, but never worse) when the caller
+        # supplied no domain-specific replacement.
+        box = self._obj("Unknown — requires business confirmation.")
+        triples = [self._triple("loc", box)]
+        sanitize_narratives(triples)
+        self.assertEqual(box.value, "Unknown — requires business confirmation.")
+
+    def test_fields_without_the_leak_are_never_touched(self):
+        box = self._obj("A perfectly normal sentence.")
+        called = []
+        triples = [("loc", box.value, lambda v: called.append(v))]
+        sanitize_narratives(triples)
+        self.assertEqual(called, [])
+
+    def test_empty_triples_list_is_a_noop(self):
+        sanitize_narratives([])  # must not raise
 
 
 if __name__ == "__main__":

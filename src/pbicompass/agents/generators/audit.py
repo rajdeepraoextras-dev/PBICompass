@@ -23,7 +23,7 @@ from ..context import JobAIContext
 from ..critic import apply_critic_pass, apply_results
 from ..grounding import apply_grounding_pass
 from ..llm import LLMClient
-from ..sanitize import enforce_score_consistency, is_meta_commentary, strip_punt_leak
+from ..sanitize import enforce_score_consistency, is_meta_commentary, sanitize_narratives
 from .base import Warn, build_core_metadata, call_llm
 
 # Day 9 (paid feature, §4.3/4.6): the plan tiers allowed to receive
@@ -438,20 +438,18 @@ class AuditReportGenerator:
         # Unconditional for the same reason as the punt-leak strip below.
         doc.narrative_overview = enforce_score_consistency(doc.narrative_overview, health.overall, health.band)
 
-        # P0: the grounding pass can replace more than one claim in the
-        # same field with the identical "Unknown — requires business
-        # confirmation." sentence — a leaked placeholder, not prose a
-        # reader should see, and its one legitimate home is an unexplained
-        # column/measure description, never a summary/root-cause paragraph.
-        # Runs unconditionally (not gated on ``client``) since it's a pure
-        # cleanup pass with a safe deterministic fallback either way.
-        doc.narrative_overview = strip_punt_leak(doc.narrative_overview, narrative)
+        # P0: the one gate every narrative field passes through — see
+        # sanitize.sanitize_narratives's own docstring for why this must
+        # be centralized rather than each generator inlining its own strip
+        # (a leak that survived this exact per-generator approach in
+        # audit.py alone is what motivated pulling it out). Unconditional
+        # (not gated on ``client``): a field's *initial* draft can itself
+        # carry the leak before critic/grounding ever touch it.
+        fallbacks = {"narrative_overview": narrative}
         if doc.strategic_narrative:
-            doc.strategic_narrative = strip_punt_leak(
-                doc.strategic_narrative, _strategic_narrative_fallback(doc.clusters),
-            )
-        for cluster in doc.clusters:
-            if cluster.narrative:
-                cluster.narrative = strip_punt_leak(cluster.narrative, _cluster_fallback_narrative(cluster))
+            fallbacks["strategic_narrative"] = _strategic_narrative_fallback(doc.clusters)
+        for i, cluster in enumerate(doc.clusters):
+            fallbacks[f"clusters[{i}].narrative"] = _cluster_fallback_narrative(cluster)
+        sanitize_narratives(_narrative_triples(doc), fallbacks)
 
         return doc

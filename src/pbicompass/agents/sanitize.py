@@ -176,6 +176,43 @@ def strip_punt_leak(text: Optional[str], fallback: str) -> str:
     return cleaned
 
 
+def sanitize_narratives(
+    triples: list[tuple[str, str, "Callable[[str], None]"]],
+    fallbacks: Optional[dict[str, str]] = None,
+) -> None:
+    """The one gate every narrative field from every document generator
+    passes through (P0) — call this last, after critic + grounding +
+    consistency have all already run, over triples re-collected fresh so
+    it sees their final text.
+
+    Before this, :func:`strip_punt_leak` was wired into ``audit.py``
+    alone. A leak still reached a reader — it just moved to a document
+    this function wasn't wired into (the executive summary's
+    ``maintenance_note``, corrupted by that document's own grounding
+    pass) — which is exactly the whack-a-mole a per-generator opt-in
+    invites. Every generator must call this unconditionally (not gated on
+    ``client`` — a field's *initial* draft, before critic/grounding ever
+    ran, can itself carry the leak) as its last step before returning a
+    document.
+
+    ``fallbacks``, keyed by location, lets a caller supply a real
+    deterministic replacement for a field it already computed one for
+    (e.g. ``narrative_overview``'s pre-LLM draft) — used only when the
+    strip would otherwise empty the field. A location with no supplied
+    fallback keeps its own pre-strip text in that case (never blanked,
+    never crashed) — imperfect (the leak survives) but strictly no worse
+    than not running this pass at all, and every concrete leak observed
+    in production has left enough surrounding real prose that this branch
+    doesn't fire."""
+    fallbacks = fallbacks or {}
+    for location, text, setter in triples:
+        if not text or not _PUNT_PHRASE_RE.search(text):
+            continue
+        cleaned = strip_punt_leak(text, fallbacks.get(location, text))
+        if cleaned != text:
+            setter(cleaned)
+
+
 # Anchored on the phrase "health score" (never just a bare number, which
 # would false-positive on findings counts, table counts, etc.), tolerant of
 # the several ways an LLM narrator phrases it ("health score of this model

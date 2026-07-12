@@ -230,15 +230,32 @@ def match_candidates(requirement_text: str, candidates: list[dict], *, top_n: in
 
 
 def _deterministic_verdict(matched: list[dict]) -> tuple[str, list[dict]]:
-    """Coarse offline verdict from match scores alone: no candidates at all
-    is a Gap; a strong (>= 2 shared words) top match is Covered; anything
-    weaker but present is Partial — a real, reproducible verdict without an
-    LLM, upgraded by the LLM pass when a client is available."""
+    """Offline verdict tiered by evidence *kind*, not a bare word-count
+    threshold (a prior score-threshold version produced false Gaps for
+    requirements a dimension-only match should have floored at Partial —
+    "false Gap" is worse optics than weak evidence, since it tells the
+    report owner their report can't do something it demonstrably does):
+
+    - Gap: nothing matched at all.
+    - Covered: at least one *measure* candidate matched — a measure name
+      overlapping real requirement vocabulary is itself strong evidence
+      (e.g. "Compare actual spend against budget" naming the literal
+      Actual/Plan measures), whether or not a dimension also matched;
+      when one did, both are shown as corroborating evidence.
+    - Partial: only column/page ("dimension") evidence matched, no
+      measure — real evidence (the report has the attribute a requirement
+      names) but not confirmation a measure quantifies it that way. This
+      is the floor for any non-empty match — it can never fall to Gap.
+
+    A real, reproducible verdict without an LLM, upgraded by the LLM pass
+    when a client is available."""
     if not matched:
         return "Gap", []
-    top_score = matched[0]["score"]
-    if top_score >= 2:
-        return "Covered", [c for c in matched if c["score"] == top_score][:2]
+    measures = [c for c in matched if c["kind"] == "measure"]
+    if measures:
+        dims = [c for c in matched if c["kind"] != "measure"]
+        evidence = measures[:1] + (dims[:1] if dims else measures[1:2])
+        return "Covered", evidence
     return "Partial", matched[:1]
 
 

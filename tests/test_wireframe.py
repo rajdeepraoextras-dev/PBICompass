@@ -321,6 +321,91 @@ class TinyObjectAndOverflowTest(unittest.TestCase):
         self.assertIn("decorative shape", svg)
 
 
+class OcclusionTest(unittest.TestCase):
+    """Day 6: a data visual mostly covered by a larger-or-equal one already
+    placed on the canvas renders as a ghost outline + numbered chip
+    instead of a full card, and is listed under the canvas — never simply
+    invisible on a dense page (the 20-visual Plan Variance page this was
+    built for)."""
+
+    def test_small_visual_fully_behind_a_big_one_is_flagged_occluded(self):
+        visuals = [
+            Visual(id="big", type="clusteredColumnChart", title="Big Chart", x=0, y=0, z=0,
+                  width=600, height=400, fields=["Sales.Actual"]),
+            Visual(id="hidden", type="card", title="Hidden KPI", x=50, y=50, z=1,
+                  width=100, height=80, fields=["Sales.Actual"]),
+        ]
+        svg = render_wireframe(_page(visuals), measure_names=frozenset({"Actual"}))
+        self.assertIn("wf-occluded", svg)
+        self.assertIn("hidden behind another visual", svg)
+        self.assertIn("wf-occluded-list", svg)
+        self.assertIn("Hidden KPI", svg)
+
+    def test_occluded_visual_is_still_a_working_link(self):
+        visuals = [
+            Visual(id="big", type="clusteredColumnChart", title="Big Chart", x=0, y=0, z=0,
+                  width=600, height=400, fields=["Sales.Actual"]),
+            Visual(id="hidden", type="card", title="Hidden KPI", x=50, y=50, z=1,
+                  width=100, height=80, fields=["Sales.Actual"]),
+        ]
+        svg = render_wireframe(_page(visuals), measure_names=frozenset({"Actual"}))
+        # The numbered callout list must link to the same anchor the
+        # (ghosted) canvas card itself links to — one real destination
+        # for "Hidden KPI", referenced twice (canvas ghost + list entry).
+        hidden_hrefs = re.findall(r'href="(#visual-[^"]*hidden[^"]*)"', svg)
+        self.assertEqual(len(set(hidden_hrefs)), 1)
+        self.assertEqual(len(hidden_hrefs), 2)
+
+    def test_non_overlapping_visuals_are_never_flagged(self):
+        visuals = [
+            Visual(id="a", type="card", title="A", x=0, y=0, z=0, width=200, height=100,
+                  fields=["Sales.Actual"]),
+            Visual(id="b", type="card", title="B", x=400, y=0, z=0, width=200, height=100,
+                  fields=["Sales.Actual"]),
+        ]
+        svg = render_wireframe(_page(visuals), measure_names=frozenset({"Actual"}))
+        self.assertNotIn("wf-occluded", svg)
+        self.assertNotIn("wf-occluded-list", svg)
+
+    def test_partial_overlap_below_threshold_is_not_flagged(self):
+        # ~20% overlap — real report layouts routinely have visuals that
+        # graze each other's edges; that's not the same as one being
+        # hidden behind the other.
+        visuals = [
+            Visual(id="a", type="card", title="A", x=0, y=0, z=0, width=200, height=200,
+                  fields=["Sales.Actual"]),
+            Visual(id="b", type="card", title="B", x=160, y=0, z=1, width=200, height=200,
+                  fields=["Sales.Actual"]),
+        ]
+        svg = render_wireframe(_page(visuals), measure_names=frozenset({"Actual"}))
+        self.assertNotIn("wf-occluded", svg)
+
+    def test_draws_larger_area_first_regardless_of_z_order(self):
+        # z-order alone (a small object with a high z drawn "on top") does
+        # not prevent it from being flagged occluded if its footprint is
+        # actually covered by a larger visual — Day 6 sorts by area, not z.
+        visuals = [
+            Visual(id="small_high_z", type="card", title="Small", x=50, y=50, z=99,
+                  width=80, height=60, fields=["Sales.Actual"]),
+            Visual(id="big_low_z", type="clusteredColumnChart", title="Big", x=0, y=0, z=0,
+                  width=500, height=400, fields=["Sales.Actual"]),
+        ]
+        svg = render_wireframe(_page(visuals), measure_names=frozenset({"Actual"}))
+        self.assertIn("wf-occluded", svg)
+
+    def test_decorative_shapes_never_cause_false_occlusion_of_data_visuals(self):
+        # A full-page decorative background must not flag every data
+        # visual on the page as "occluded" — only tracked against other
+        # data visuals.
+        visuals = [
+            Visual(id="bg", type="shape", x=0, y=0, z=0, width=1280, height=720),
+            Visual(id="v1", type="card", title="KPI", x=50, y=50, z=1, width=150, height=100,
+                  fields=["Sales.Actual"]),
+        ]
+        svg = render_wireframe(_page(visuals), measure_names=frozenset({"Actual"}))
+        self.assertNotIn("wf-occluded", svg)
+
+
 class LegendAndTooltipTest(unittest.TestCase):
     def test_legend_present(self):
         page = _page([Visual(id="v1", type="columnChart", title="Revenue", x=0, y=0, z=0,

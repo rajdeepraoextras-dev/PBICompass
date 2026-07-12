@@ -644,6 +644,55 @@ class ExecutiveGeneratorLlmTest(unittest.TestCase):
         self.assertNotIn("FAKE", doc.purpose)
 
 
+class FakeExecutivePuntLeakClient:
+    """P0 (centralized fix): reproduces the exact production leak — the
+    Executive Writer's own ``maintenance_overview`` response carries the
+    "Unknown — requires business confirmation." punt sentence mid-clause
+    (the grounding-style corruption pattern), landing in a document the
+    original, audit.py-only strip was never wired into."""
+
+    def complete_json(self, system: str, user: str, schema: dict, *, effort: str | None = None) -> dict:
+        if "Report Intelligence" in system:
+            return {}
+        if "executive summary" in system:
+            return {
+                "business_purpose": "",
+                "business_value": "",
+                "maintenance_overview": (
+                    "13 items from the latest review should be checked periodically to keep this "
+                    "report reliable and secure. Address hardcoded data paths and Unknown — requires "
+                    "business confirmation.. Add descriptions to the most-used measures and columns first."
+                ),
+                "reframed_risks": [],
+            }
+        if "senior DAX developer" in system:
+            return {"translations": []}
+        if "expert technical editor" in system:
+            return {"violations": []}
+        if "fact-checker" in system:
+            return {"claims": []}
+        return {}
+
+
+class ExecutiveGeneratorPuntLeakTest(unittest.TestCase):
+    """P0: a leak survived by landing in a document (executive) the
+    original per-generator strip wasn't wired into — now centralized in
+    ``sanitize.sanitize_narratives``, called unconditionally by every
+    generator as its last step."""
+
+    def test_maintenance_note_punt_leak_is_stripped(self):
+        doc = ExecutiveSummaryGenerator.generate(_model(), FakeExecutivePuntLeakClient())
+        self.assertNotIn("requires business confirmation", doc.maintenance_note.lower())
+        self.assertNotIn("..", doc.maintenance_note)
+        # Real content on both sides of the leak survives.
+        self.assertIn("13 items", doc.maintenance_note)
+        self.assertIn("Add descriptions to the most-used measures", doc.maintenance_note)
+
+    def test_no_leak_anywhere_in_document_json(self):
+        doc = ExecutiveSummaryGenerator.generate(_model(), FakeExecutivePuntLeakClient())
+        self.assertNotIn("requires business confirmation", doc.to_json().lower())
+
+
 class ApplyReframedRisksTest(unittest.TestCase):
     """D1: a mismatched-count/shape response from the Executive Writer must
     never be trusted to overwrite the deterministic risk wording — it's

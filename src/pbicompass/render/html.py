@@ -16,17 +16,16 @@ Stdlib only. Opens in any browser and prints cleanly to PDF.
 
 from __future__ import annotations
 
-import math
 import re
 
 from ..agents.audit_rules import TOTAL_RULE_COUNT
 from ..schemas.document import Document
 from ._dax_highlight import highlight_dax
 from ._html_shell import page_shell
+from ._model_diagram import render_model_diagram_svg
 from ._shared import HEALTH_COMPONENT_LABELS
 from ._shared import MODEL_DIAGRAM_RENDERED
 from ._shared import anchor_slug
-from ._shared import pluralize_count
 from ._shared import dedupe_ids
 from ._shared import format_timestamp as _fmt_ts
 from ._shared import html_discrepancy_callout
@@ -37,10 +36,6 @@ from ._shared import is_local_path as _is_local_path
 from ._shared import non_data_note as _non_data_note
 from ._shared import section_provenance
 from ._shared import slicer_field_label as _slicer_label
-
-_FACT_FILL, _FACT_LINE = "#eef2fd", "#124fed"
-_DIM_FILL, _DIM_LINE = "#ffffff", "#cbd5e1"
-_CALC_FILL, _CALC_LINE = "#f5f3ff", "#a78bfa"
 
 
 def _render_md(text: str | None) -> str:
@@ -95,104 +90,6 @@ def format_prose_with_code(text: str) -> str:
             else:
                 o.append(f'<div style="margin: 8px 0; position: relative;"><pre><code>{_e(code_text)}</code></pre></div>')
     return "".join(o)
-
-
-# -- model diagram ------------------------------------------------------------
-def _diagram(tables: list[dict], edges: list[dict]) -> str:
-    if not tables:
-        return ""
-    facts = [t for t in tables if t.get("kind") == "fact"]
-    others = [t for t in tables if t.get("kind") != "fact"]
-    bw, bh = 150, 50
-    W = 880
-    n = len(others)
-    R = max(165, int(n * (bw + 26) / (2 * math.pi))) if n else 0
-    H = max(360, 2 * (R + bh) + 90)
-    cx, cy = W / 2, H / 2
-    pos: dict[str, tuple[float, float]] = {}
-
-    if len(facts) == 1:
-        pos[facts[0]["name"]] = (cx, cy)
-    else:
-        for i, t in enumerate(facts):
-            pos[t["name"]] = (cx + (i - (len(facts) - 1) / 2) * (bw + 24), cy)
-    ring = others if facts else tables
-    for i, t in enumerate(ring):
-        ang = -math.pi / 2 + 2 * math.pi * i / max(1, len(ring))
-        pos[t["name"]] = (cx + R * math.cos(ang), cy + R * math.sin(ang))
-    if not facts:
-        pos = {t["name"]: pos[t["name"]] for t in tables}
-
-    table_names = ", ".join(t["name"] for t in tables)
-    svg = [f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" '
-           f'role="img" aria-labelledby="model-diagram-title">\n<style>text {{ font-family: "Poppins", sans-serif !important; }}</style>']
-    svg.append(f'<title id="model-diagram-title">Data model diagram: {_e(table_names)}, connected by '
-               f'{_e(pluralize_count("relationship", len(edges)))}</title>')
-    svg.append('<defs><marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">'
-               '<path d="M0,0 L7,3 L0,6 Z" fill="#94a3b8"/></marker>'
-               '<marker id="arro" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">'
-               '<path d="M0,0 L7,3 L0,6 Z" fill="#d97706"/></marker></defs>')
-
-    # edges first — grouped so hover-highlight/tooltip JS can target one edge
-    # by its endpoints (data-from/data-to) without re-deriving geometry.
-    for ed in edges:
-        a, b = pos.get(ed.get("from")), pos.get(ed.get("to"))
-        if not a or not b:
-            continue
-        both = ed.get("cross_filter") == "both"
-        color = "#d97706" if both else "#94a3b8"
-        dash = ' stroke-dasharray="5 4"' if not ed.get("is_active", True) else ""
-        marker = "arro" if both else "arr"
-        join = ""
-        if ed.get("from_column") and ed.get("to_column"):
-            join = (f'{ed["from"]}[{ed["from_column"]}] → {ed["to"]}[{ed["to_column"]}]')
-        svg.append(f'<g class="dm-edge" data-from="{_e(ed.get("from"))}" data-to="{_e(ed.get("to"))}">')
-        if join:
-            svg.append(f"<title>{_e(join)}</title>")
-        svg.append(f'<line x1="{a[0]:.0f}" y1="{a[1]:.0f}" x2="{b[0]:.0f}" y2="{b[1]:.0f}" '
-                   f'stroke="{color}" stroke-width="1.6"{dash} marker-end="url(#{marker})"/>')
-        mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
-        card = f'{"∞" if ed.get("from_card")=="many" else "1"}:{"1" if ed.get("to_card")=="one" else "∞"}'
-        svg.append(f'<text x="{mx:.0f}" y="{my-3:.0f}" font-size="10" fill="{color}" '
-                   f'text-anchor="middle">{card}</text>')
-        svg.append("</g>")
-
-    # boxes on top — each a clickable, hoverable node keyed by table name.
-    for t in tables:
-        x, y = pos[t["name"]]
-        kind = t.get("kind", "")
-        if kind == "fact":
-            fill, line = _FACT_FILL, _FACT_LINE
-        elif kind in ("calculation", "calculation-group"):
-            fill, line = _CALC_FILL, _CALC_LINE
-        else:
-            fill, line = _DIM_FILL, _DIM_LINE
-        rx, ry = x - bw / 2, y - bh / 2
-        name = t["name"] if len(t["name"]) <= 20 else t["name"][:19] + "…"
-        sub = f'{t.get("columns",0)} col · {t.get("measures",0)} meas'
-        svg.append(f'<g class="dm-node" data-table="{_e(t["name"])}">')
-        svg.append(f"<title>{_e(t['name'])} — {_e(sub)} (click to jump to its row)</title>")
-        svg.append(f'<rect x="{rx:.0f}" y="{ry:.0f}" width="{bw}" height="{bh}" rx="9" '
-                   f'fill="{fill}" stroke="{line}" stroke-width="1.6"/>')
-        svg.append(f'<text x="{x:.0f}" y="{y-4:.0f}" font-size="12.5" font-weight="600" '
-                   f'text-anchor="middle" fill="#1f2933">WIP</text>')
-        svg.append(f'<text x="{x:.0f}" y="{y+12:.0f}" font-size="9.5" text-anchor="middle" '
-                   f'fill="#8a94a3">WIP</text>')
-        svg.append("</g>")
-    svg.append("</svg>")
-
-    legend = (
-        '<div class="legend">'
-        f'<span><i class="swatch" style="background:{_FACT_FILL};border:1px solid {_FACT_LINE}"></i>Fact</span>'
-        f'<span><i class="swatch" style="background:{_DIM_FILL};border:1px solid {_DIM_LINE}"></i>Dimension</span>'
-        f'<span><i class="swatch" style="background:{_CALC_FILL};border:1px solid {_CALC_LINE}"></i>Calculated</span>'
-        '<span><i class="swatch" style="background:#94a3b8"></i>Single-direction</span>'
-        '<span><i class="swatch" style="background:#d97706"></i>Bi-directional</span>'
-        '<span>– – – inactive</span></div>'
-        '<p class="muted diagram-hint">Scroll/pinch to zoom, drag to pan. '
-        'Hover a table to highlight its relationships; click it to jump to its row below.</p>'
-    )
-    return f'<div class="diagram">{"".join(svg)}</div>{legend}'
 
 
 # -- main ---------------------------------------------------------------------
@@ -393,8 +290,9 @@ def render_html(
             o.append(f'<div class="risk">{_e(r)}</div>')
     if MODEL_DIAGRAM_RENDERED and sm.tables:
         o.append("<h3>Model diagram</h3>")
-        o.append(_diagram(sm.tables, sm.relationship_edges))
-        pass
+        o.append(render_model_diagram_svg(sm.tables, sm.relationship_edges))
+        o.append('<p class="muted diagram-hint">Scroll/pinch to zoom, drag to pan. '
+                 'Hover a table to highlight its relationships; click it to jump to its row below.</p>')
     o.append("<h3>Key tables</h3>")
     table_ids = dedupe_ids([f"table-{anchor_slug(t['name'])}" for t in sm.tables])
     if sm.tables:

@@ -1764,3 +1764,269 @@ overlap/pan-zoom, golden-suite hardening) are out of scope today.
   changes are entirely in deterministic code paths (health score, data
   source naming, next-steps table, thumbnails), so the risk is low, but
   it's an explicit gap, not a silently-skipped one.
+
+---
+
+## Day 36 (2026-07-12, same session) — P0/P1/P2 punch list from a real output review
+
+**Objective (from the user, reviewing real `Corporate_Spend_Report` output
+files):** kill a punt-phrase leak reaching the audit/executive docs, fix a
+79-vs-78 health-score self-contradiction within the audit doc, fix RTM
+matcher recall/tiering, and a small batch of polish items (star-schema
+detail wording, a doubled-period caveat bug, field-parameter glossary
+leakage, §18's conditional model-diagram claim, and a first pluralization
+pass). Two follow-up corrections (below) came from the user re-reviewing
+this same day's output afterward.
+
+### P0 — blockers
+- **Punt-phrase leak, centralized.** `sanitize.strip_punt_leak` (added
+  same session, initially wired into `audit.py` only) is now
+  `sanitize.sanitize_narratives(triples, fallbacks=None)` — the one gate
+  every narrative field from every generator passes through, called
+  *unconditionally* (not gated on `client`) as the last step in all four
+  generators (`audit.py`, `executive.py`, `technical.py`,
+  `user_guide.py`), after critic/grounding/consistency have all already
+  run. Motivated by a real regression: the original per-generator strip
+  left a leak reaching the executive doc's `maintenance_note` ("…address
+  hardcoded data paths and Unknown — requires business confirmation..
+  Add descriptions…", doubled period included) because that generator was
+  never wired in. Drops the whole sentence containing the phrase (never a
+  bare substring removal — avoids stranding "Address the ." fragments),
+  falling back to a caller-supplied deterministic replacement (audit.py
+  supplies real ones for `narrative_overview`/`strategic_narrative`/each
+  cluster's `narrative`) or, absent one, leaves the pre-strip text
+  untouched rather than blanking it.
+- **Score self-contradiction.** `sanitize.enforce_score_consistency(text,
+  actual_score, band)`: any sentence claiming a "health score" number
+  that disagrees with the document's own computed score is replaced
+  wholesale with a deterministic sentence ("The overall health score is
+  {score}, classified as '{band}'.") — an LLM narrator can misstate the
+  number even when given it verbatim in its prompt. Wired into
+  `audit.py`'s `narrative_overview`, unconditionally.
+- Also hardened `is_meta_commentary`'s directive list with "Explain" —
+  the observed leak in the user guide's field-parameter glossary entry
+  ("Explain how or why the field selector changes the chart…") was an
+  editing instruction that slipped past the existing
+  Consider/Remove/Verify/Ensure/Add-a/Provide list.
+
+### P1 — RTM matcher
+- **Recall**: `traceability._significant_words` now stems each word
+  (crude suffix-stripping — "spending"→"spend", "trends"→"trend") so
+  "IT Spend Trend" (a page name) matches a requirement asking to "track
+  ... spending trends" — previously zero word overlap. Time-intelligence
+  DAX functions (`TOTALYTD`, `DATESYTD`, `SAMEPERIODLASTYEAR`, `DATEADD`,
+  etc.) now inject trend/period vocabulary into a measure's candidate
+  text, so a measure like `Sale_YTD` (DAX wraps `TOTALYTD`) surfaces for
+  a "yearly trends" requirement even though neither its name nor
+  description says "yearly". Evidence ranking boosts a candidate that's
+  actually bound to a report visual (`used`) and a column that is its own
+  table's canonical attribute (`self_named`, e.g. `Department[Department]`
+  over the coincidentally-keyword-matching `Department[VP]`).
+- **Tiering, retuned after a regression the user caught in the same
+  review pass**: the first version of this fix required a *measure*
+  match to reach anything above Gap, which demoted two real, defensible
+  Partial-or-better rows to false Gaps ("Monitor total corporate spend by
+  department", "Analyze spending by category and region" — both have
+  real dimension-table evidence, just no measure keyword overlap) and
+  downgraded "Compare actual spend against budget" (a literal
+  Actual/Plan measure match) from Covered to Partial. Final rule in
+  `_deterministic_verdict`: no match at all → Gap; any dimension-only
+  match (column/page, no measure) floors at Partial — real evidence,
+  never demoted to Gap; a matched measure (alone, or paired with a
+  dimension as corroborating evidence) → Covered.
+
+### P2 — polish
+- `check_best_practices`'s star-schema detail no longer doubles the
+  phrase ("a star schema — a star schema centred on…" → "Model follows a
+  star schema centred on the 'X' fact table.").
+- New `technical.py::_join_caveat(existing, note)` joins two caveat
+  sentences with exactly one separating period — a bare
+  `f"{existing}. {note}"` doubled up when `existing` already ended in one
+  ("…date filters.. Housed in…").
+- Field parameters/system selectors ("select", "select1") are now
+  excluded from the user guide's business glossary entirely (previously
+  labeled "A field selector that switches what the chart displays.",
+  which also left them exposed to critic/grounding overwriting that
+  fixed text with the "Explain how or why…" leak above) — now consistent
+  with the technical doc's glossary, which already excluded them.
+- §18's "The model diagram is in section 6" (and §6's own markdown
+  aside) are gated on a new `render._shared.MODEL_DIAGRAM_RENDERED` flag
+  (was hardcoded `False`, since the model diagram render call was
+  disabled) — one flag so the claim can never drift from reality in
+  either direction again. (Flipped to `True` in Day 37, below.)
+- `pluralize`/`pluralize_count` (added Day 35 for the exec doc) applied
+  across `audit_rules.py`'s finding/check `detail` strings,
+  `_wireframe.py`, `render/audit.py`, `render/html.py`'s model-diagram
+  title — the count-adjacent "(s)" pattern specifically, not the
+  ambiguous no-adjacent-count cases (fix templates, table column
+  headers) or `io.py`'s LLM-prompt-only text, which stays out of scope
+  per Day 35's own noted limitation.
+
+### Testing
+- New/expanded: `tests/test_sanitize.py` (`sanitize_narratives`,
+  `enforce_score_consistency`, "Explain" directive), `tests/
+  test_generators.py` (`AuditPuntLeakAndScoreConsistencyTest`,
+  `ExecutiveGeneratorPuntLeakTest` — both reproduce the exact leaked text
+  from the real output review), `tests/test_traceability.py`
+  (`DeterministicVerdictTieringTest`, including the worked
+  Department/Country-Region/Cost-Element/Actual-Plan example from the
+  user's own report), `tests/test_audit_rules.py` (star-schema phrase
+  dedup), `tests/test_generators.py::JoinCaveatTest`, `tests/
+  test_report_facts.py` (field-parameter glossary exclusion, replacing
+  two tests that asserted the old "labeled, not excluded" behavior),
+  `tests/test_render.py::ModelDiagramClaimConsistencyTest`.
+- Full suite: **785 passed, 2 skipped**, only the 2 pre-existing
+  model-diagram failures remain (fixed in Day 37, immediately below).
+
+---
+
+## Day 37 (2026-07-12, same session) — Visual layer: ER diagram, wireframe occlusion, pan/zoom
+
+**Objective:** ship the §6 model diagram (star layout, cardinality glyphs,
+active/inactive line styles, grandalf for >12 tables), fix wireframe
+occlusion on dense pages, and vendor svg-pan-zoom across every diagram
+with a print fallback — closing out the "Visual layer" item from the
+user's own Day 6 plan text (a different numbering track than this file's,
+same as Day 35/36's plan).
+
+### Model diagram (`render/_model_diagram.py`, new)
+- Star layout (<=12 tables): fact table(s) centered (a small horizontal
+  cluster for a galaxy schema's multiple facts), dimensions ringed at
+  equal angular spacing. A model with no detected fact table centers on
+  the largest table by column+measure count instead of leaving the ring
+  with nothing to ring around. >12 tables switches to a layered top-down
+  layout via `grandalf` (new optional extra: `pip install pbicompass[diagram]`,
+  added to CI's install line) — pure-Python Sugiyama, no C extension;
+  absent grandalf falls back to the (denser but still correct) star
+  layout, never breaks, verified by a test that simulates `ImportError`
+  on the import.
+- Same v6 "Studio" card design system as the wireframe/lineage diagrams
+  (`_diagram_theme`): white cards, gradient icon chips. Relationship
+  lines carry a cardinality glyph (`1`/`*`) near each end and an
+  active/inactive line style (solid vs. dashed). Every table card deep-
+  links to its §6 data-dictionary row (`#table-{slug}`); every edge
+  carries a `{from}[{col}] → {to}[{col}]` join tooltip.
+- Replaces the old `render/html.py::_diagram()` stub (literal `"WIP"`
+  placeholder text in its card labels — genuinely never finished) and its
+  markup was matched to the exact contract two pre-existing (since Day 1)
+  failing tests already pinned: `class="dm-node" data-table="Sales"`,
+  `class="dm-edge" data-from="…"`. **Both now pass** —
+  `test_accessibility_landmarks_present` and
+  `test_interactive_diagram_nodes_and_edges` are fixed, not just newly
+  covered.
+- `render._shared.MODEL_DIAGRAM_RENDERED` flipped `True` (Day 36 added
+  the flag; this day is the "flip it back on" the flag's own comment
+  anticipated) — §18 and §6's markdown aside now correctly claim the
+  diagram exists, because it finally does.
+
+### Wireframe occlusion (`render/_wireframe.py`)
+- Visuals now draw largest-area-first (was Power BI's own z-order) —
+  the stable "what's already on the canvas" ordering occlusion detection
+  needs. A data visual whose own footprint is >=60% covered by a
+  larger-or-equal one already placed renders as a ghost outline +
+  numbered chip instead of a full card (never simply invisible), and is
+  listed under the canvas with a working link into its data-dictionary
+  row. Tracking is scoped to data visuals checked against other data
+  visuals only — a full-page decorative background shape does not flag
+  every real visual on the page as "occluded" (verified by a dedicated
+  test). Verified against a synthetic 20-visual dense page (2 big charts
+  + 18 randomly-placed small KPI cards): 11 of 20 correctly flagged,
+  zero crashes.
+
+### Pan/zoom (`render/_vendor_svg_pan_zoom.py`, new; `render/_html_shell.py`)
+- Vendored svg-pan-zoom v3.6.2 (BSD-2-Clause, ~29.8 KB minified,
+  `unpkg.com/svg-pan-zoom@3.6.2/dist/svg-pan-zoom.min.js`), inlined as a
+  Python string constant (same pattern as the existing vendored Poppins
+  font) so a downloaded, offline-opened HTML file still gets working
+  pan/zoom — no `<script src>`, no CDN. Replaces the previous hand-rolled
+  wheel/mousedown viewBox-mutation implementation on every `.diagram svg`
+  (lineage, model diagram, all page wireframes); real touch/pinch
+  support (the hand-rolled version's own hint text claimed "pinch to
+  zoom" but never actually implemented it) and discoverable +/−/reset
+  icons are the concrete wins over it.
+- **A real bug in the shipped npm package, found and worked around**: the
+  published `dist/svg-pan-zoom.min.js` is a browserify bundle built
+  *without* the `--standalone` flag — loading it via a plain `<script>`
+  tag leaves `window.svgPanZoom` undefined (confirmed empirically in a
+  real browser before assuming otherwise), contradicting the library's
+  own README usage example. Worked around by capturing the bundle's
+  internal `require()` function (normally discarded by the leading `!`
+  IIFE operator) and calling it for the bundle's own declared entry
+  module id (`3`, from the trailing `...},{},[3])`) to obtain the actual
+  `svgPanZoom` function and assign it to `window.svgPanZoom` — documented
+  inline in `_vendor_svg_pan_zoom.py` next to the one-line patch.
+- **`beforeprint` resets every instance** to its fitted/centered default
+  before printing (svg-pan-zoom's own `.reset()`), so whatever pan/zoom
+  state a reader left a diagram in on screen never clips the printed
+  page — this is the "falling back to static" for `@media print`.
+- **A real regression found via direct instance-API testing (not just
+  visual inspection) and fixed**: `beforePan` fires for *programmatic*
+  pans too (including this file's own `.reset()` before printing), not
+  only real user drags. The click-suppression logic (still needed since
+  svg-pan-zoom itself never touches click events on children) originally
+  set `moved = true` on any `beforePan`, meaning a print — which calls
+  `.reset()` with no user mousedown ever active — would leave `moved`
+  stuck `true` forever (no mouseup ever follows a print to clear it),
+  silently swallowing the very next click on every diagram link after
+  the reader printed. Fixed by gating `moved` on a new `isDown` flag,
+  only ever set between a real `mousedown`/`touchstart` and its matching
+  `mouseup`/`touchend`. Verified directly via the pan-zoom instance API
+  (`inst.zoomIn()` + `beforeprint` dispatch + a synthetic click's
+  `defaultPrevented` before/after the fix) and via a real click (the
+  `computer` tool, a trusted browser event, not `dispatchEvent`) that
+  still correctly navigates to `#table-customer` after the fix.
+- Added `user-select: none` on `.diagram svg` — a drag-to-pan gesture was
+  also text-selecting the page underneath it.
+
+### A test-infrastructure false positive found and fixed along the way
+- `tests/test_output_quality_guards.py`'s D4 field-parameter-leak guard
+  (`\bselect1?\b`) started failing once the new `user-select: none` CSS
+  landed — `\b` treats a hyphen as a non-word boundary, so "user-select"
+  matches "select" as a bare "word" even though it's a real CSS property,
+  not a leaked field-parameter token. Fixed with a negative lookbehind
+  (`(?<!-)\bselect1?\b`).
+
+### Testing
+- New `tests/test_model_diagram.py` (16 tests): star layout, galaxy
+  schema (multiple facts), no-fact-detected fallback, grandalf layout,
+  graceful fallback when grandalf import fails, disconnected tables in
+  both layouts, the exact `dm-node`/`dm-edge`/join-tooltip markup
+  contract.
+- New `OcclusionTest` in `tests/test_wireframe.py` (6 tests): basic
+  detection, working link preserved, non-overlapping visuals never
+  flagged, below-threshold partial overlap never flagged, area-descending
+  draw order (not z), decorative shapes never cause false occlusion.
+- New `PanZoomVendorTest` in `tests/test_render.py` (5 tests): vendored
+  (not CDN), load-order before the init script, `beforeprint` wiring, the
+  `isDown` click-suppression gate, no `</script>` leak in the vendored
+  source.
+- Golden HTML snapshots regenerated for all four doc types
+  (`PBICOMPASS_UPDATE_GOLDEN=1`) — the model diagram only actually
+  changes the technical doc's own content, but the CSS/JS additions are
+  in the shared shell all four documents use.
+- **Live browser verification** (SampleSales fixture, served locally):
+  read_page/accessibility-tree confirmed all 4 tables + join tooltips in
+  the model diagram; direct pan-zoom instance API testing confirmed
+  zoom/pan/reset all apply (with a short `requestAnimationFrame` wait —
+  svg-pan-zoom batches CTM updates); `beforeprint` dispatch confirmed
+  reset fires; a real `computer`-tool click (trusted event) on the
+  "Customer" node correctly navigated to `#table-customer`; a real
+  `computer`-tool drag visibly panned the canvas.
+- Full suite: **814 passed, 2 skipped, 0 pre-existing failures remaining**
+  — the 2 model-diagram tests that have been "known pre-existing (since
+  Day 1)" through every single day's entry in this file up to Day 36 are
+  now genuinely fixed, not carried forward again.
+
+### Honest gaps
+- **No live browser/PDF visual check of print output specifically** —
+  `beforeprint`'s reset behavior was verified via the DOM API
+  (`inst.reset()` fires, transform reverts), not by actually opening the
+  browser's print preview and reading pixels off a rendered PDF page.
+- **Occlusion threshold (60%) is a single hardcoded constant**, not
+  configurable via `pbicompass.rules.toml` like the audit engine's other
+  thresholds — reasonable default, not wired into the existing
+  thresholds config surface.
+- **`grandalf`'s layout quality on a real >12-table galaxy schema** was
+  verified structurally (all tables render, positions are non-overlapping
+  in the synthetic 16-table test) but not against a real customer-scale
+  model with genuinely messy relationship topology.

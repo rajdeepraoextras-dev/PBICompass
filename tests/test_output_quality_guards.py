@@ -55,8 +55,12 @@ _D1_BANNED_PHRASES = ["governance finding", "best practice", "% complete", "fiel
 # D4 - a bare field-parameter token. Lowercase, whole-word: the codebase's
 # own legitimate English usage always capitalizes "Select" (e.g. "Select
 # 'View as'" in the RLS test checklist), so a case-sensitive lowercase match
-# does not false-positive on normal prose.
-_D4_FIELD_SELECTOR_RE = re.compile(r"\bselect1?\b")
+# does not false-positive on normal prose. The negative lookbehind excludes
+# the CSS property "user-select" (Day 6's pan/zoom styling) — \b treats the
+# hyphen as a non-word boundary, so "user-select" would otherwise match
+# "select" as a bare "word" even though it's not a leaked field-parameter
+# token at all.
+_D4_FIELD_SELECTOR_RE = re.compile(r"(?<!-)\bselect1?\b")
 
 _PUNT_PHRASE = "requires business confirmation"
 

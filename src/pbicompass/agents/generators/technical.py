@@ -57,7 +57,7 @@ from ..report_facts import (
     slicers,
     table_priority_key,
 )
-from ..sanitize import is_meta_commentary, is_punt_phrase
+from ..sanitize import is_meta_commentary, is_punt_phrase, sanitize_narratives
 
 
 def _pl(word: str, count: int, plural: str | None = None) -> str:
@@ -967,5 +967,10 @@ class TechnicalDocumentationGenerator:
             _run_critic(doc, model, client, warn, ai_context)
             _run_grounding(doc, client, warn, ai_context)
         _run_consistency(doc, client, warn, ai_context, audit_verdicts)
+
+        # P0: the one gate every narrative field passes through (unconditional
+        # — a field's initial LLM draft can carry the leak before critic/
+        # grounding ever run) — see sanitize.sanitize_narratives's docstring.
+        sanitize_narratives(_narrative_triples(doc))
 
         return doc

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 from ..agents.report_facts import friendly_visual_type, visual_label
 from ._diagram_theme import (
-    ACCENT, CAPTION, EDGE, FAINT, GHOST_EDGE, HAIRLINE, INK, MUTED,
+    ACCENT, CAPTION, EDGE, FAINT, GHOST_EDGE, GHOST_FILL, HAIRLINE, INK, MUTED,
     SKELETON, SKELETON_SOFT, canvas, canvas_defs, chip, legend,
 )
 from ._shared import anchor_slug, html_e, pluralize_count
@@ -599,11 +599,40 @@ def render_wireframe(
         svg.append(_tab_bar(ox, right, bottom + 12, page.display_name, sibling_pages or [],
                             page_w, page_h))
 
-    sorted_visuals = sorted(valid_visuals, key=lambda v: v.z or 0)
+    # Day 6: draw largest-area first (not Power BI's own z-order) so
+    # occlusion detection below has a stable "what's already on the
+    # canvas" set to test each subsequent, smaller-or-equal visual
+    # against — a dense page (the 20-visual Plan Variance page this was
+    # built for) routinely stacks a small card or button on top of a
+    # larger chart; z-order alone doesn't tell a reader that happened.
+    sorted_visuals = sorted(valid_visuals, key=lambda v: -(v.width * v.height))
 
     decorative_shown = 0
     decorative_total = sum(1 for v in sorted_visuals if _category(v) == "decorative")
     decorative_overflow = 0
+
+    # Occlusion tracking (data visuals only — a decorative background
+    # shape "covering" every real visual would otherwise flood this with
+    # false positives). ``drawn_rects`` accumulates every data visual's
+    # canvas-space box as it's placed; a later (smaller-or-equal) visual
+    # whose own area is mostly covered by one already on the canvas is
+    # rendered as a ghost outline + numbered chip instead of a full card,
+    # and listed under the diagram so it's never simply invisible.
+    _OCCLUSION_THRESHOLD = 0.6
+    drawn_rects: list[tuple[float, float, float, float]] = []
+    occluded_entries: list[tuple[int, str, str]] = []  # (number, label, href)
+
+    def _overlap_fraction(x0: float, y0: float, w: float, h: float) -> float:
+        area = w * h
+        if area <= 0:
+            return 0.0
+        best = 0.0
+        for dx0, dy0, dx1, dy1 in drawn_rects:
+            ix0, iy0 = max(x0, dx0), max(y0, dy0)
+            ix1, iy1 = min(x0 + w, dx1), min(y0 + h, dy1)
+            iw, ih = max(0.0, ix1 - ix0), max(0.0, iy1 - iy0)
+            best = max(best, (iw * ih) / area)
+        return best
 
     for v in sorted_visuals:
         vx, vy = ox + v.x * scale, oy + v.y * scale
@@ -650,6 +679,42 @@ def render_wireframe(
         # raw type — this is what makes the mock read like the real report.
         link_label = visual_label(v.title, v.type, metrics, dims)
         label = v.title or (link_label if category == "data" else friendly)
+
+        href = ""
+        if category == "data":
+            # report_pages()'s own group key for this exact visual — look up
+            # its *resolved* (relabeled/deduped) row anchor; only a caller
+            # with no map (no matching table) falls back to the raw slug.
+            visual_key = (v.title, friendly, frozenset(metrics), frozenset(dims))
+            visual_slug = (visual_anchor_map or {}).get(visual_key) or anchor_slug(link_label)
+            href = f"#visual-{page_title_slug}-{visual_slug}"
+
+        # Day 6: occlusion — a data visual whose own footprint is mostly
+        # covered by a larger-or-equal one already placed on the canvas
+        # (report authors routinely stack a card/button in front of a
+        # bigger chart) renders as a ghost outline + numbered chip instead
+        # of a full card, so it's never simply invisible — its real
+        # content is still linked, and listed under the canvas.
+        if category == "data" and _overlap_fraction(vx, vy, vw, vh) >= _OCCLUSION_THRESHOLD:
+            drawn_rects.append((vx, vy, vx + vw, vy + vh))
+            number = len(occluded_entries) + 1
+            occluded_entries.append((number, label, href))
+            tooltip = f"{label} — {friendly} (hidden behind another visual on this page)"
+            rx_ghost = 10 if min(vw, vh) >= 40 else 8
+            chip_r = 9.0
+            chip_cx, chip_cy = vx + chip_r + 3, vy + chip_r + 3
+            svg.append(f'<a href="{html_e(href)}">')
+            svg.append(f"<title>{html_e(tooltip)}</title>")
+            svg.append(f'<g class="wf-node cat-{category} wf-occluded">')
+            svg.append(f'<rect x="{vx:.1f}" y="{vy:.1f}" width="{vw:.1f}" height="{vh:.1f}" rx="{rx_ghost}" '
+                       f'fill="{GHOST_FILL}" fill-opacity=".6" stroke="{GHOST_EDGE}" stroke-width="1" '
+                       f'stroke-dasharray="3 3"/>')
+            svg.append(f'<circle cx="{chip_cx:.1f}" cy="{chip_cy:.1f}" r="{chip_r}" fill="#ffffff" '
+                       f'stroke="{GHOST_EDGE}" stroke-width="1"/>')
+            svg.append(f'<text x="{chip_cx:.1f}" y="{chip_cy + 3.5:.1f}" font-size="10" font-weight="700" '
+                       f'text-anchor="middle" fill="{MUTED}">{number}</text>')
+            svg.append('</g></a>')
+            continue
 
         # ---- the card ----
         rx = 10 if min(vw, vh) >= 40 else 8
@@ -730,16 +795,12 @@ def render_wireframe(
         group = [f'<g class="wf-node cat-{category}">'] + card + ["</g>"]
 
         if category == "data":
+            drawn_rects.append((vx, vy, vx + vw, vy + vh))
             field_leaves = ", ".join(
                 f.split(".")[-1] for f in v.fields if not is_field_selector(f, field_param_tables)
             ) or "no fields bound"
             tooltip = f"{label} — {friendly} ({field_leaves})"
-            # report_pages()'s own group key for this exact visual — look up
-            # its *resolved* (relabeled/deduped) row anchor; only a caller
-            # with no map (no matching table) falls back to the raw slug.
-            visual_key = (v.title, friendly, frozenset(metrics), frozenset(dims))
-            visual_slug = (visual_anchor_map or {}).get(visual_key) or anchor_slug(link_label)
-            svg.append(f'<a href="#visual-{page_title_slug}-{visual_slug}">')
+            svg.append(f'<a href="{html_e(href)}">')
             svg.append(f"<title>{html_e(tooltip)}</title>")
             svg.extend(group)
             svg.append("</a>")
@@ -760,4 +821,19 @@ def render_wireframe(
     if decorative_overflow:
         footer = f'<p class="wf-footer">+{pluralize_count("decorative shape", decorative_overflow)}</p>'
 
-    return f'<div class="diagram">{"".join(svg)}{footer}{_LEGEND}</div>'
+    occluded_list = ""
+    if occluded_entries:
+        rows = "".join(
+            f'<li><span class="wf-occluded-num">{n}</span> '
+            + (f'<a href="{html_e(href)}">{html_e(lbl)}</a>' if href else html_e(lbl))
+            + '</li>'
+            for n, lbl, href in occluded_entries
+        )
+        occluded_list = (
+            '<div class="wf-occluded-list">'
+            f'<p class="wf-occluded-title">{pluralize_count("visual", len(occluded_entries))} hidden '
+            'behind another visual on this page:</p>'
+            f'<ol>{rows}</ol></div>'
+        )
+
+    return f'<div class="diagram">{"".join(svg)}{footer}{_LEGEND}{occluded_list}</div>'
