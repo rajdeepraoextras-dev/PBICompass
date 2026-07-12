@@ -230,6 +230,7 @@
 
       <!-- Sign in -->
       <form id="login-form">
+        <div class="ok-text" id="login-info"></div>
         <div class="form-group"><label>Email</label><input type="email" name="email" autocomplete="email" required></div>
         <div class="form-group"><label>Password</label><input type="password" name="password" autocomplete="current-password" required></div>
         <div class="err-text" id="login-err"></div>
@@ -610,6 +611,11 @@ const $ = s => document.getElementById(s);
 let supa = null;         // supabase-js client, created once /app/api/config resolves
 let accessToken = null;
 let cfg = {};
+// Set once at boot if the page was reached via a "?confirmed=1" email-confirmation
+// redirect (see signup's emailRedirectTo below) -- consumed exactly once by
+// showSignedOut() to show the "account created" banner, then cleared so a later,
+// ordinary sign-out doesn't keep re-showing it.
+let justConfirmedEmail = false;
 let planLimits = { free: 1, pro: 10, business: 30 };
 let currentPlan = "free";
 
@@ -639,6 +645,7 @@ function showAuthTab(which) {
   $("auth-sub").textContent = isLogin
     ? "Sign in to generate documentation and manage your account."
     : "Free to start — then upload a Power BI report and let AI write four documents.";
+  if (!isLogin) $("login-info").textContent = "";
 }
 
 /* ---------- plan pickers (signup + profile) ---------- */
@@ -706,19 +713,26 @@ $("signup-form").addEventListener("submit", async e => {
   const { data, error } = await supa.auth.signUp({
     email: f.email.value,
     password: f.password.value,
-    options: { data: {
-      name: (f.name.value || "").trim(),
-      company: (f.company.value || "").trim(),
-      role: (f.role.value || "").trim(),
-      plan: signupPlan,
-    } },
+    options: {
+      data: {
+        name: (f.name.value || "").trim(),
+        company: (f.company.value || "").trim(),
+        role: (f.role.value || "").trim(),
+        plan: signupPlan,
+      },
+      // Without this, Supabase falls back to the project's dashboard-configured
+      // Site URL for the confirmation-email link -- which defaults to
+      // http://localhost:3000 and silently sends every new user there instead
+      // of back to this site. Explicit beats dashboard-default.
+      emailRedirectTo: location.origin + "/app?confirmed=1",
+    },
   });
   $("signup-spin").style.display = "none";
   if (error) { $("signup-err").textContent = error.message || "Could not create account."; return; }
   if (!data.session) {
     // Email confirmation required by the project's settings before a session
     // is issued — nothing more for this page to do until they click the link.
-    $("signup-info").textContent = "Check your email to confirm your account, then sign in.";
+    $("signup-info").textContent = "Check your email to confirm your account (check your spam/junk folder too if it doesn't show up in a minute or two).";
   }
   // If a session WAS issued immediately, onAuthStateChange drives the UI.
 });
@@ -1258,6 +1272,11 @@ function showSignedOut() {
   // Landing-page CTAs deep-link here with #signup so new visitors land on the
   // "Create account" tab instead of the sign-in form.
   if (location.hash === "#signup") showAuthTab("signup");
+  if (justConfirmedEmail) {
+    justConfirmedEmail = false;
+    showAuthTab("login");
+    $("login-info").textContent = "Account created — please log in to continue.";
+  }
 }
 
 async function onAuthState(session) {
@@ -1288,8 +1307,18 @@ async function onAuthState(session) {
   }
   supa = supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
   supa.auth.onAuthStateChange((_e, session) => onAuthState(session));
+  if (new URLSearchParams(location.search).get("confirmed") === "1") {
+    justConfirmedEmail = true;
+    history.replaceState(null, "", location.pathname + location.hash);
+  }
+  // If the confirmation redirect auto-established a session (depends on the
+  // Supabase project's Auth flow settings), onAuthState below logs them
+  // straight into the app. If it didn't, showSignedOut() shows the "account
+  // created, please log in" banner instead -- either way justConfirmedEmail
+  // is only consumed (and cleared) by whichever path actually runs.
   const { data: { session } } = await supa.auth.getSession();
   await onAuthState(session);
+  justConfirmedEmail = false;  // one-shot regardless of which path consumed it (auto-login never calls showSignedOut(), which is the only other place that clears it)
 })();
 </script>
 </body>
