@@ -208,3 +208,64 @@ class SemanticModel:
 
     def to_json(self, *, indent: int | None = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+
+    # -- round-trip ---------------------------------------------------
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SemanticModel":
+        """Reconstruct a :class:`SemanticModel` from ``to_dict()``'s own
+        output. Every field here is a plain dataclass of primitives/lists
+        (no unions beyond the ``Literal`` string vocabularies, which JSON
+        already round-trips as plain strings), so this is a direct nested
+        construction rather than a generic reflection-based loader.
+
+        Lets a real, already-parsed ``model.json`` (e.g. one saved by a
+        prior CLI run, or shipped as a fixture) be reloaded as a fixture
+        without re-parsing the original .pbip/.pbix — useful when only the
+        rendered output/model.json of a real report is available, not its
+        source project."""
+        tables = [
+            Table(
+                name=t["name"], is_hidden=t.get("is_hidden", False),
+                description=t.get("description"), kind=t.get("kind", "unknown"),
+                is_calculated=t.get("is_calculated", False),
+                columns=[Column(**c) for c in t.get("columns", [])],
+                measures=[Measure(**m) for m in t.get("measures", [])],
+                partitions=[Partition(**p) for p in t.get("partitions", [])],
+            )
+            for t in data.get("tables", [])
+        ]
+        relationships = [Relationship(**r) for r in data.get("relationships", [])]
+        roles = [
+            Role(
+                name=r["name"], model_permission=r.get("model_permission"),
+                table_permissions=[TablePermission(**tp) for tp in r.get("table_permissions", [])],
+                members=r.get("members", []),
+                members_description=r.get("members_description", ""),
+                filter_logic_explanation=r.get("filter_logic_explanation", ""),
+            )
+            for r in data.get("roles", [])
+        ]
+        expressions = [MExpression(**e) for e in data.get("expressions", [])]
+        data_sources = [DataSource(**d) for d in data.get("data_sources", [])]
+        pages = [
+            Page(
+                id=p["id"], display_name=p["display_name"], ordinal=p.get("ordinal"),
+                is_hidden=p.get("is_hidden", False), is_drillthrough=p.get("is_drillthrough", False),
+                width=p.get("width"), height=p.get("height"),
+                visuals=[Visual(**v) for v in p.get("visuals", [])],
+                drillthrough_fields=p.get("drillthrough_fields", []),
+            )
+            for p in data.get("pages", [])
+        ]
+        bookmarks = [Bookmark(**b) for b in data.get("bookmarks", [])]
+        meta = ModelMeta(**data["meta"]) if data.get("meta") else ModelMeta()
+        return cls(
+            report_name=data["report_name"], model_name=data.get("model_name"),
+            tables=tables, relationships=relationships, roles=roles,
+            expressions=expressions, data_sources=data_sources, pages=pages,
+            bookmarks=bookmarks, meta=meta,
+        )
+
+    @classmethod
+    def from_json(cls, text: str) -> "SemanticModel":
+        return cls.from_dict(json.loads(text))

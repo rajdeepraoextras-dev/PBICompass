@@ -60,6 +60,27 @@ data), stdlib-only parsers, graceful degradation, free-tier infra, and the
 > Phase 5 implemented and test-verified (2026-07-06) — see Part K for the
 > full work order. Part G is still open.
 >
+> **Day 7 golden-suite hardening (2026-07-12) implemented and
+> test-verified — see Part L.** A real output review (2026-07-12,
+> Corporate Spend) found three more defects past everything above: a
+> punt-phrase leak that had moved from `audit.py` (the only place it was
+> guarded) into the executive doc's `maintenance_note`; a narrative
+> sentence self-contradicting the document's own computed health score
+> (79 vs. 78); and RTM tiering that produced a false Gap for a
+> dimension-only match. All three are fixed (P0's `sanitize_narratives`
+> centralization, P1's `enforce_score_consistency`, P1's re-tiered
+> `_deterministic_verdict`) and now guarded by tests against Corporate
+> Spend's own real data — a genuine 11-table, 2-fact galaxy schema with
+> Auto Date/Time artifacts, a hardcoded Dropbox path, a 20-visual page,
+> and bare `select`/`select1` field-parameter tokens — committed as
+> `tests/fixtures/CorporateSpend/model.json`, the second regression
+> fixture alongside SampleSales. The same real-data pass also caught and
+> fixed a live, previously-undetected sibling of I2: the technical
+> document's own Measure Catalog anchors (`id="measure-{slug}"`) were
+> never deduped the way the glossary's `term-{slug}` anchors were, so
+> Corporate Spend's real "Var LE1" / "Var LE1 %" pair (and three others)
+> produced literal duplicate `id=` attributes in the rendered HTML.
+>
 > **Part J (2026-07-06) implemented and test-verified.** J.A: every finding/
 > check/recommendation now carries a stable rule ID pill; audit §1 gained
 > the "Checks run/passed/failed/suppressed" ledger plus a per-component
@@ -1127,3 +1148,162 @@ alike).
 
 Full suite: 337 passed, 2 skipped (service extras not installed in every
 environment).
+
+---
+
+# Part L — Day 7 golden-suite hardening (2026-07-12)
+
+**Objective:** every defect the real output review has ever found — P0-P2
+(the punt-leak/score/RTM commit), D1-D6 (Sprint 1), and I1-I6 (Part I's
+punch list) — has a test guarding its grave, verified against a second
+real regression fixture, not just SampleSales or hand-built snippets.
+
+## L.1 New fixture: Corporate Spend, from real data
+
+Corporate Spend's original `.pbix`/`.pbip` source project is not in this
+repo — only its previously-generated `model.json` is (inside
+`examples/Corporate_Spend_Report.zip`, the archived 2026-07-05/07 output
+that Parts H/I/J were written against). Rather than fabricate a synthetic
+stand-in, `schemas/model.py` gained `SemanticModel.from_dict`/`from_json`
+classmethods (a direct nested-dataclass reconstruction — every field is
+already a plain-primitive dataclass, so this is a real inverse of
+`to_dict`/`to_json`, not a heuristic loader) so the real, already-parsed
+model can be reloaded as a fixture without re-parsing a source project
+that doesn't exist here. Committed as
+`tests/fixtures/CorporateSpend/model.json`.
+
+This one fixture already carries every property the adversarial-fixture
+brief asked for, because it's the real report that motivated the brief:
+
+- **A real galaxy schema** — 11 tables, 2 classified `fact` (`Date`,
+  `Fact`), sharing 6 conformed dimensions through proper many-to-one
+  relationships (never many-to-many) — `star_schema` correctly fails,
+  `disconnected_tables`/`m2m_no_bridge` correctly stay silent (no
+  many-to-many relationship exists in this model at all).
+- **Auto Date/Time on** — real `LocalDateTable_<guid>`/
+  `DateTableTemplate_<guid>` hidden tables; `PBIC-PERF-007` fires.
+- **A 20-visual page** — "Plan Variance Analysis" has exactly 20 visuals;
+  `PBIC-PERF-004` (`visual_density`, default threshold 12) fires.
+- **Field parameters** — bare `select`/`select1` tokens in that same
+  page's visual field lists, with no backing table object in
+  `model.tables` at all (the exact bare-token shape I4/D4 fixed).
+- **A hardcoded local path** — the M source is a literal
+  `C:\Users\mad\Dropbox\...` path; `PBIC-GOV-010` fires.
+
+`m2m_no_bridge`'s fire/silence split (a genuinely bridged many-to-many
+vs. an unbridged one) can't be exercised by this fixture, since it has no
+many-to-many relationships at all — that's covered separately by the
+hand-built cases already in `tests/test_audit_rules.py::BridgeAndFactChecksTest`
+(fires on a direct m:n between two substantive tables; stays silent when
+either side is bridge-shaped or bridge-named), which this pass verified
+still cover both branches rather than duplicating them.
+
+## L.2 New/extended test coverage
+
+- `tests/test_parser.py::SemanticModelRoundTripTest` — `from_dict`/
+  `from_json` round-trip stability, including on the real CS fixture.
+- `tests/test_golden_html.py::CorporateSpendGoldenHtmlSnapshotTest` —
+  byte-exact HTML snapshots for all four doc types on Corporate Spend,
+  alongside the existing SampleSales snapshots (F.3's own discipline, on
+  a second, messier fixture).
+- `tests/test_hub.py` (new) — builds the real hub + 4-doc bundle the way
+  `cli.py`'s `--bundle` path does, against Corporate Spend (whose model
+  can't go through `cli.main` directly, having no source project on
+  disk): hub links every doc, every doc links back to the hub and its
+  siblings, doc-switcher never self-links, hub stats match the real
+  fixture. `render/hub.py` had no dedicated test before this.
+- `tests/test_output_quality_guards.py::CorporateSpendOutputQualityGuardsTest`
+  (new, 20 tests) — the same D1-D6 holistic guards as the existing
+  SampleSales class, plus: P0 (no punt-phrase leak in any narrative
+  field, checked directly via each generator's `_narrative_triples`), P1
+  (every "health score" mention agrees with the computed score, plus a
+  wiring test reproducing the real 79-vs-78 shape against this fixture's
+  actual score), P2 (no doubled star-schema phrase, no doubled terminal
+  period anywhere in any rendered doc), I2 (no duplicate `id=` anywhere,
+  plus a targeted check that the real Var LE1/LE2/LE3/Plan collision
+  pairs each get a base id and a `-2` suffix), I3 (every intra-document
+  `href="#..."` resolves to a real id), and a rules-that-must-fire check
+  (`auto_datetime`, `visual_density`, `hardcoded_paths`, `star_schema`
+  failing) proving the rule engine still reacts to this real data.
+- `tests/test_consistency.py::CorporateSpendAuditVerdictsTest` — verdicts
+  reflect the real galaxy schema (`is_star_schema=False`, `fact_count=2`,
+  `rls_role_count=0`); a false star-schema claim is corrected against the
+  real schema-shape text ("a multi-fact (galaxy) schema with 2 fact
+  tables"), not a hand-built snowflake string.
+- `tests/test_traceability.py::CorporateSpendRequirementsMatrixTest` —
+  RTM against real measures/pages (Actual/Plan/Var Plan → Covered for a
+  spend-vs-plan requirement, inventory → Gap), and confirms `select`/
+  `select1` never surface as RTM candidates (I4 reaching the RTM too).
+- `tests/test_sanitize.py::CorporateSpendSanitizeWiringTest` — a leak
+  injected into the real generated `narrative_overview` (not a
+  hand-written "FALLBACK" string) is cleaned by `sanitize_narratives`
+  using the real deterministic fallback text.
+
+## L.3 A live defect this pass found and fixed
+
+The real-data pass surfaced a genuine, previously-undetected bug: I2 (the
+glossary anchor-collision fix — `dedupe_ids`, "Var LE1"/"Var LE1 %" both
+slugging to `term-var-le1`) was never applied to the technical document's
+own Measure Catalog anchors (`render/html.py`'s `§7` cards,
+`id="measure-{slug}"`) or its search-index entries — both independently
+recomputed the bare, colliding slug. Corporate Spend's real measures
+(`Var LE1`/`Var LE1 %`, `Var LE2`/`Var LE2 %`, `Var LE3`/`Var LE3 %`,
+`Var Plan`/`Var Plan %`) produced 4 literal duplicate `id=` pairs in the
+rendered technical doc — caught by `test_i2_no_duplicate_ids_in_any_rendered_doc`
+before it was fixed (confirmed failing pre-fix, per this pass's own
+verification). Fixed by deduping once and reusing the same ids for both
+the card markup and the search index (`measure_ids = dedupe_ids(...)` in
+`render/html.py`).
+
+**Known, honestly-scoped gap left behind:** three *other* places
+(`render/audit.py::_measure_cell`'s cross-doc links, `agents/
+traceability.py`'s RTM candidate anchors, `render/_lineage.py`'s lineage
+node links) still compute the bare slug when linking *into* the
+technical doc from a sibling document or graph, because none of them
+receive the technical doc's own deduped anchor map — only its href. A
+link to the second measure in a collision group lands on the first
+measure's card instead of its own (wrong, not dead — no regression from
+today's fix, since all four call sites had this exact same limitation
+before it too). Flagged in-code (`_measure_cell`'s own docstring) and
+spun off as a separate follow-up rather than folded into this pass, since
+it requires threading an anchor map across a document boundary the
+current renderer signatures don't carry.
+
+## L.4 Closing the defect list
+
+Every defect line item from Parts H, I, and J, plus the ed24be3 P0/P1/P2
+commit, now has a named test:
+
+| Defect | Guarded by |
+|---|---|
+| D1 (audit-speak in exec doc) | `OutputQualityGuardsTest`/`CorporateSpendOutputQualityGuardsTest::test_d1_*` |
+| D2 (meta-commentary leaks) | `test_sanitize.py::IsMetaCommentaryTest`, `*::test_d2_*` |
+| D3 (mid-sentence splice) | `test_grounding.py`, `*::test_d3_*` |
+| D4/I4 (bare field-selector leak) | `test_report_facts.py::BareFieldSelectorRegressionTest`, `test_traceability.py::CorporateSpendRequirementsMatrixTest::test_field_parameter_tokens_never_surface_as_candidates`, `*::test_d4_*` |
+| D6 (over-applied punt phrase) | `test_agents.py::AntiPuntGuardTest`, `*::test_d6_*` |
+| P0 (punt-leak centralization) | `test_sanitize.py::SanitizeNarrativesTest`, `CorporateSpendSanitizeWiringTest`, `CorporateSpendOutputQualityGuardsTest::test_p0_*` |
+| P1 (score self-contradiction) | `test_sanitize.py::EnforceScoreConsistencyTest`, `CorporateSpendOutputQualityGuardsTest::test_p1_*` |
+| P1 (RTM false-Gap tiering) | `test_traceability.py::DeterministicVerdictTieringTest`, `TimeIntelligenceKeywordsTest` |
+| P2 (doubled star-schema/caveats) | `test_generators.py::_join_caveat` tests, `CorporateSpendOutputQualityGuardsTest::test_p2_*` |
+| I1 (hub emission) | `test_cli.py::test_all_html_creates_hub_and_doc_switcher_links`, `test_hub.py` |
+| I2 (glossary anchor collisions) | `test_render.py` (glossary), `CorporateSpendOutputQualityGuardsTest::test_i2_*` (measure catalog — the gap this pass found and closed) |
+| I3 (wireframe/anchor dead links) | `test_wireframe.py`, `CorporateSpendOutputQualityGuardsTest::test_i3_*` |
+| I5 (exec risk deep links) | `test_render.py` (per-finding anchors) |
+| I6/G.1 (exec restructure) | `test_generators.py` (6-section shape), verified section-count + zero-raw-path on the real regenerated Corporate Spend bundle |
+| Rule engine fire/silence (m2m_no_bridge, dev_leftover, hardcoded year/path, visual density, auto date/time) | `test_audit_rules.py::BridgeAndFactChecksTest`/`DevLeftoverAndDisconnectedTablesTest`/`HardcodedYearAndPathFindingsTest`, `CorporateSpendOutputQualityGuardsTest::test_rules_that_must_fire_on_real_corporate_spend_data` |
+
+**Done when:** confirmed — a fresh regeneration of all four Corporate
+Spend documents + hub (via the real generator/renderer pipeline, not the
+CLI's file path, since Corporate Spend has no source project on disk to
+hand `cli.main`) was grepped end-to-end for every string above and found
+none of them; the golden HTML snapshots for both fixtures are committed
+and reviewed; `examples/Corporate_Spend_Report.zip` (the original,
+defect-carrying 2026-07-05/07 output Parts H/I/J were written against) is
+deliberately left untouched as the historical "before" record this whole
+plan document narrates against.
+
+Full suite: see `ROADMAP_PROGRESS.md` for the running pass count; this
+pass added `tests/test_hub.py` (new, 7 tests) and extended
+`test_parser.py`, `test_golden_html.py`, `test_output_quality_guards.py`
+(+20 tests), `test_consistency.py`, `test_traceability.py`, and
+`test_sanitize.py` — zero regressions in the pre-existing suite.

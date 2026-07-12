@@ -302,7 +302,18 @@ def _rule_pill(rule_id: str) -> str:
 def _measure_cell(name: str, technical_href: str | None) -> str:
     """A measure name, linked to its entry in the technical document's
     Measure Catalog when that sibling doc was generated in the same job —
-    never a dead link when it wasn't (2.7)."""
+    never a dead link when it wasn't (2.7).
+
+    Known gap (I2): this cross-document link computes the bare
+    ``anchor_slug(name)`` because this renderer never receives the
+    technical doc's own measure order/collision map — only its href. When
+    two measure names collapse to the same slug (e.g. "Var LE1"/"Var LE1
+    %"), ``render/html.py`` dedupes its own card ids so the *first* such
+    measure keeps the bare slug and resolves correctly here; a link
+    naming the *second* one in the same collision group still lands on
+    the first measure's card instead of its own (not a dead link, but the
+    wrong target) until the technical doc's anchor map is threaded across
+    this document boundary too."""
     if not technical_href:
         return _e(name)
     return f'<a href="{_e(technical_href)}#measure-{_e(anchor_slug(name))}">{_e(name)}</a>'

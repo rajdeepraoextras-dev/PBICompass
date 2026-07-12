@@ -21,12 +21,18 @@ from pbicompass.agents.generators import (
     TechnicalDocumentationGenerator,
 )
 from pbicompass.parsers import detect_and_parse
+from pbicompass.schemas.model import SemanticModel
 
 FIXTURE = Path(__file__).parent / "fixtures" / "SampleSales" / "SampleSales.pbip"
+CS_FIXTURE = Path(__file__).parent / "fixtures" / "CorporateSpend" / "model.json"
 
 
 def _model():
     return detect_and_parse(FIXTURE)
+
+
+def _cs_model():
+    return SemanticModel.from_json(CS_FIXTURE.read_text(encoding="utf-8"))
 
 
 def _verdicts(**overrides) -> AuditVerdicts:
@@ -57,6 +63,41 @@ class BuildAuditVerdictsTest(unittest.TestCase):
         self.assertEqual(verdicts.rls_role_count, len(model.roles))
         star_check = next(c for c in audit_doc.best_practices if c.id == "star_schema")
         self.assertEqual(verdicts.is_star_schema, star_check.passed)
+
+
+class CorporateSpendAuditVerdictsTest(unittest.TestCase):
+    """Day 7: ``build_audit_verdicts`` against the real Corporate Spend
+    fixture — a genuine 2-fact galaxy schema, not a hand-built star-schema
+    fixture, so ``is_star_schema`` must correctly come back False and the
+    fact/dimension counts must match the model's own real shape."""
+
+    def test_verdicts_reflect_the_real_galaxy_schema(self):
+        model = _cs_model()
+        audit_doc = AuditReportGenerator.generate(model)
+        verdicts = build_audit_verdicts(model, audit_doc)
+
+        self.assertFalse(verdicts.is_star_schema, "Corporate Spend is a 2-fact galaxy schema, not a star schema")
+        self.assertEqual(verdicts.fact_count, 2)
+        self.assertEqual(verdicts.rls_role_count, 0)
+
+    def test_false_star_schema_claim_is_corrected_against_the_real_galaxy_schema(self):
+        # The exact P2/consistency scenario: an LLM narrator claiming a
+        # star schema this specific fixture demonstrably does not have.
+        model = _cs_model()
+        audit_doc = AuditReportGenerator.generate(model)
+        verdicts = build_audit_verdicts(model, audit_doc)
+
+        doc = ExecutiveSummaryGenerator.generate(model)
+        doc.purpose = "This report is built on a well-structured star schema for fast analysis."
+
+        from pbicompass.agents.generators.executive import _narrative_triples
+
+        triples = _narrative_triples(doc)
+        fields = [(loc, text) for loc, text, _ in triples]
+        results = check_consistency(fields, None, verdicts=verdicts)
+        apply_results(triples, results)
+
+        self.assertNotIn("star schema", doc.purpose)
 
 
 class CheckDeterministicConsistencyTest(unittest.TestCase):

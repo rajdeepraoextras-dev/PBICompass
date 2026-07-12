@@ -325,9 +325,18 @@ def render_html(
         # o.append("<h3>Measure dependency graph</h3>")
         # o.append(doc.measure_catalog.dependency_svg)
         pass
-    for m in doc.measure_catalog.measures:
+    # I2 (measure-catalog sibling of the glossary anchor-collision fix):
+    # two distinct measure names can still collapse to the same slug once
+    # symbols are stripped — e.g. "Var LE1" and "Var LE1 %" both become
+    # "var-le1" — even though Power BI itself requires measure *names* to
+    # be unique. Dedupe once here and reuse the exact same ids for both
+    # the card's own id= and the search index below, or the two drift out
+    # of sync (the bug this replaces: both were computing the bare,
+    # colliding slug independently, so the div ids collided outright).
+    measure_ids = dedupe_ids([f"measure-{anchor_slug(m.name)}" for m in doc.measure_catalog.measures])
+    for m, measure_id in zip(doc.measure_catalog.measures, measure_ids):
         cat = f'<span class="pill">{_e(m.category)}</span>' if m.category else ""
-        o.append(f'<div class="measure" id="measure-{_e(anchor_slug(m.name))}">')
+        o.append(f'<div class="measure" id="{_e(measure_id)}">')
         o.append(f"<h3>{_e(m.name)}{cat}</h3>")
         operates_on = [t for t in (m.operates_on or []) if t and t != m.table]
         if m.table:
@@ -720,11 +729,12 @@ def render_html(
 
     search_index = [{"title": title, "type": "section", "anchor": sec_id} for sec_id, title in TOC]
     search_index += [
-        # Not deduped: measure names are unique model-wide in Power BI, and
-        # the audit doc's cross-links (render/audit.py's _measure_cell)
-        # independently compute this same slug — they must stay in sync.
-        {"title": m.name, "type": "measure", "anchor": f"measure-{anchor_slug(m.name)}"}
-        for m in doc.measure_catalog.measures
+        # I2: reuses the exact same deduped ids the cards above were given
+        # (measure *names* are unique model-wide, but their slugs are not —
+        # "Var LE1"/"Var LE1 %" is a real production collision). A search
+        # hit must jump to the same id the card actually carries.
+        {"title": m.name, "type": "measure", "anchor": measure_id}
+        for m, measure_id in zip(doc.measure_catalog.measures, measure_ids)
     ]
     search_index += [
         {"title": t["name"], "type": "table", "anchor": tid}

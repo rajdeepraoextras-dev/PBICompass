@@ -1,0 +1,1767 @@
+{
+  "report_name": "Corporate Spend",
+  "model_name": "Model",
+  "tables": [
+    {
+      "name": "Business Area",
+      "is_hidden": false,
+      "description": null,
+      "kind": "dimension",
+      "is_calculated": false,
+      "columns": [
+        {
+          "name": "Business Area",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Business Area ID",
+          "data_type": "double",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        }
+      ],
+      "measures": [],
+      "partitions": [
+        {
+          "name": "Business Area",
+          "source_kind": "m",
+          "mode": "import",
+          "expression": "let\n        Source = Excel.Workbook(File.Contents(\"C:\\Users\\mad\\Dropbox\\Work\\Obvience\\IP\\IT\\Data\\Clean\\Data.xlsx\"), null, true),\n        Sheet = Source{[Item=\"Business Area\",Kind=\"Sheet\"]}[Data],\n        #\"Promoted Headers\" = Table.PromoteHeaders(Sheet),\n        #\"Renamed Columns\" = Table.RenameColumns(#\"Promoted Headers\", {{\"Business Area\", \"Business Area\"}, {\"Business Area ID\", \"Business Area ID\"}}),\n        #\"Changed Type\" = Table.TransformColumnTypes(#\"Renamed Columns\", {{\"Business Area\", type text}, {\"Business Area ID\", type number}})\n     in\n        #\"Changed Type\""
+        }
+      ]
+    },
+    {
+      "name": "Cost Element",
+      "is_hidden": false,
+      "description": null,
+      "kind": "dimension",
+      "is_calculated": false,
+      "columns": [
+        {
+          "name": "Cost element name",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Cost Element Group",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Cost Element Sub Group",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Cost Element ID",
+          "data_type": "double",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        }
+      ],
+      "measures": [],
+      "partitions": [
+        {
+          "name": "Cost Element",
+          "source_kind": "m",
+          "mode": "import",
+          "expression": "let\n        Source = Excel.Workbook(File.Contents(\"C:\\Users\\mad\\Dropbox\\Work\\Obvience\\IP\\IT\\Data\\Clean\\Data.xlsx\"), null, true),\n        Sheet = Source{[Item=\"Cost Element\",Kind=\"Sheet\"]}[Data],\n        #\"Promoted Headers\" = Table.PromoteHeaders(Sheet),\n        #\"Renamed Columns\" = Table.RenameColumns(#\"Promoted Headers\", {{\"Cost element name\", \"Cost element name\"}, {\"Cost Element Group\", \"Cost Element Group\"}, {\"Cost Element Sub Group\", \"Cost Element Sub Group\"}, {\"Cost Element ID\", \"Cost Element ID\"}}),\n        #\"Changed Type\" = Table.TransformColumnTypes(#\"Renamed Columns\", {{\"Cost element name\", type text}, {\"Cost Element Group\", type text}, {\"Cost Element Sub Group\", type text}, {\"Cost Element ID\", type number}})\n     in\n        #\"Changed Type\""
+        }
+      ]
+    },
+    {
+      "name": "Country Region",
+      "is_hidden": false,
+      "description": null,
+      "kind": "dimension",
+      "is_calculated": false,
+      "columns": [
+        {
+          "name": "Sales Region",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "Country",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Country/Region",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "Country",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Country/Region ID",
+          "data_type": "double",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        }
+      ],
+      "measures": [],
+      "partitions": [
+        {
+          "name": "Country",
+          "source_kind": "m",
+          "mode": "import",
+          "expression": "let\n        Source = Excel.Workbook(File.Contents(\"C:\\Users\\mad\\Dropbox\\Work\\Obvience\\IP\\IT\\Data\\Clean\\Data.xlsx\"), null, true),\n        Sheet = Source{[Item=\"Country\",Kind=\"Sheet\"]}[Data],\n        #\"Promoted Headers\" = Table.PromoteHeaders(Sheet),\n        #\"Renamed Columns\" = Table.RenameColumns(#\"Promoted Headers\", {{\"Region\", \"Sales Region\"}, {\"Country\", \"Country/Region\"}, {\"Country ID\", \"Country/Region ID\"}}),\n        #\"Changed Type\" = Table.TransformColumnTypes(#\"Renamed Columns\", {{\"Sales Region\", type text}, {\"Country/Region\", type text}, {\"Country/Region ID\", type number}})\n     in\n        #\"Changed Type\""
+        }
+      ]
+    },
+    {
+      "name": "Date",
+      "is_hidden": false,
+      "description": null,
+      "kind": "fact",
+      "is_calculated": false,
+      "columns": [
+        {
+          "name": "Date",
+          "data_type": "dateTime",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": "General Date",
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": true,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Year",
+          "data_type": "int64",
+          "is_hidden": false,
+          "summarize_by": "sum",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Period",
+          "data_type": "int64",
+          "is_hidden": false,
+          "summarize_by": "sum",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Month",
+          "data_type": "unknown",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": "Period",
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "Format([Date],\"MMM\")\nannotation SummarizationSetBy = Automatic"
+        }
+      ],
+      "measures": [],
+      "partitions": [
+        {
+          "name": "Date",
+          "source_kind": "m",
+          "mode": "import",
+          "expression": "let\n        Source = Excel.Workbook(File.Contents(\"C:\\Users\\mad\\Dropbox\\Work\\Obvience\\IP\\IT\\Data\\Clean\\Data.xlsx\"), null, true),\n        Sheet = Source{[Item=\"Date\",Kind=\"Sheet\"]}[Data],\n        #\"Promoted Headers\" = Table.PromoteHeaders(Sheet),\n        #\"Renamed Columns\" = Table.RenameColumns(#\"Promoted Headers\", {{\"Date\", \"Date\"}, {\"Year\", \"Year\"}, {\"Period\", \"Period\"}}),\n        #\"Changed Type\" = Table.TransformColumnTypes(#\"Renamed Columns\", {{\"Date\", type datetime}, {\"Year\", Int64.Type}, {\"Period\", Int64.Type}})\n     in\n        #\"Changed Type\""
+        }
+      ]
+    },
+    {
+      "name": "DateTableTemplate_5db4a9d0-37ae-4eb8-b985-081b6a9bccc6",
+      "is_hidden": true,
+      "description": null,
+      "kind": "calculation",
+      "is_calculated": true,
+      "columns": [
+        {
+          "name": "Date",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "PaddedDateTableDates",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Year",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "Years",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "YEAR([Date])\nannotation SummarizationSetBy = User\nannotation TemplateId = Year"
+        },
+        {
+          "name": "MonthNo",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "MonthOfYear",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "MONTH([Date])\nannotation SummarizationSetBy = User\nannotation TemplateId = MonthNumber"
+        },
+        {
+          "name": "Month",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "Months",
+          "sort_by_column": "MonthNo",
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "FORMAT([Date], \"MMMM\")\nannotation SummarizationSetBy = User\nannotation TemplateId = Month"
+        },
+        {
+          "name": "QuarterNo",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "QuarterOfYear",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "INT(([MonthNo] + 2) / 3)\nannotation SummarizationSetBy = User\nannotation TemplateId = QuarterNumber"
+        },
+        {
+          "name": "Quarter",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "Quarters",
+          "sort_by_column": "QuarterNo",
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "\"Qtr \" & [QuarterNo]\nannotation SummarizationSetBy = User\nannotation TemplateId = Quarter"
+        },
+        {
+          "name": "Day",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "DayOfMonth",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "DAY([Date])\nannotation SummarizationSetBy = User\nannotation TemplateId = Day"
+        }
+      ],
+      "measures": [],
+      "partitions": [
+        {
+          "name": "DateTableTemplate_5db4a9d0-37ae-4eb8-b985-081b6a9bccc6-db4ef748-4da9-4455-a73c-0c1645c85a2b",
+          "source_kind": "calculated",
+          "mode": "import",
+          "expression": "Calendar(Date(2015,1,1), Date(2015,1,1))"
+        }
+      ]
+    },
+    {
+      "name": "Department",
+      "is_hidden": false,
+      "description": null,
+      "kind": "dimension",
+      "is_calculated": false,
+      "columns": [
+        {
+          "name": "VP",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Department",
+          "data_type": "int64",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        }
+      ],
+      "measures": [],
+      "partitions": [
+        {
+          "name": "Department",
+          "source_kind": "m",
+          "mode": "import",
+          "expression": "let\n        Source = Excel.Workbook(File.Contents(\"C:\\Users\\mad\\Dropbox\\Work\\Obvience\\IP\\IT\\Data\\Clean\\Data.xlsx\"), null, true),\n        Sheet = Source{[Item=\"Department\",Kind=\"Sheet\"]}[Data],\n        #\"Promoted Headers\" = Table.PromoteHeaders(Sheet),\n        #\"Renamed Columns\" = Table.RenameColumns(#\"Promoted Headers\", {{\"VP\", \"VP\"}, {\"Department\", \"Department\"}}),\n        #\"Changed Type\" = Table.TransformColumnTypes(#\"Renamed Columns\", {{\"VP\", type text}, {\"Department\", Int64.Type}})\n     in\n        #\"Changed Type\""
+        }
+      ]
+    },
+    {
+      "name": "Fact",
+      "is_hidden": false,
+      "description": null,
+      "kind": "fact",
+      "is_calculated": false,
+      "columns": [
+        {
+          "name": "Date",
+          "data_type": "dateTime",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": "General Date",
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Value",
+          "data_type": "double",
+          "is_hidden": false,
+          "summarize_by": "sum",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Department",
+          "data_type": "double",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Cost Element ID",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Country/Region ID",
+          "data_type": "double",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Business Area ID",
+          "data_type": "double",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "IT Sub Area ID",
+          "data_type": "double",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Scenario ID",
+          "data_type": "double",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        }
+      ],
+      "measures": [
+        {
+          "name": "Amount",
+          "expression": "TOTALYTD(SUM([Value]), 'Date'[Date])*.3\nannotation PBI_FormatHint = {\"currencyCulture\":\"en-US\"}",
+          "table": "Fact",
+          "format_string": "\\$#,0;(\\$#,0);\\$#,0",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Actual",
+          "expression": "CALCULATE([Amount], Scenario[ScenarioDescription]=\"Actual\")\nannotation PBI_FormatHint = {\"currencyCulture\":\"en-US\"}",
+          "table": "Fact",
+          "format_string": "\\$#,0;(\\$#,0);\\$#,0",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "LE1",
+          "expression": "CALCULATE([Amount], Scenario[ScenarioDescription]=\"Latest Estimate 1\")\nannotation PBI_FormatHint = {\"currencyCulture\":\"en-US\"}",
+          "table": "Fact",
+          "format_string": "\\$#,0;(\\$#,0);\\$#,0",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "LE2",
+          "expression": "CALCULATE([Amount], Scenario[ScenarioDescription]=\"Latest Estimate 2\")\nannotation PBI_FormatHint = {\"currencyCulture\":\"en-US\"}",
+          "table": "Fact",
+          "format_string": "\\$#,0;(\\$#,0);\\$#,0",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "LE3",
+          "expression": "CALCULATE([Amount], Scenario[ScenarioDescription]=\"Latest Estimate 3\")\nannotation PBI_FormatHint = {\"currencyCulture\":\"en-US\"}",
+          "table": "Fact",
+          "format_string": "\\$#,0;(\\$#,0);\\$#,0",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Plan",
+          "expression": "CALCULATE([Amount], Scenario[ScenarioDescription]=\"Plan\")\nannotation PBI_FormatHint = {\"currencyCulture\":\"en-US\"}",
+          "table": "Fact",
+          "format_string": "\\$#,0;(\\$#,0);\\$#,0",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Var LE1",
+          "expression": "[Actual]-[LE1]\nannotation PBI_FormatHint = {\"currencyCulture\":\"en-US\"}",
+          "table": "Fact",
+          "format_string": "\\$#,0;(\\$#,0);\\$#,0",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Var LE2",
+          "expression": "[Actual]-[LE2]\nannotation PBI_FormatHint = {\"currencyCulture\":\"en-US\"}",
+          "table": "Fact",
+          "format_string": "\\$#,0;(\\$#,0);\\$#,0",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Var LE3",
+          "expression": "[Actual]-[LE3]\nannotation PBI_FormatHint = {\"currencyCulture\":\"en-US\"}",
+          "table": "Fact",
+          "format_string": "\\$#,0;(\\$#,0);\\$#,0",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Var Plan",
+          "expression": "[Actual]-[Plan]\nannotation PBI_FormatHint = {\"isGeneralNumber\":true}",
+          "table": "Fact",
+          "format_string": null,
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Var LE1 %",
+          "expression": "DIVIDE([Var LE1],[LE1], BLANK())",
+          "table": "Fact",
+          "format_string": "0.00%;-0.00%;0.00%",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Var LE2 %",
+          "expression": "DIVIDE([Var LE2],[LE2], BLANK())",
+          "table": "Fact",
+          "format_string": "0.00%;-0.00%;0.00%",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Var LE3 %",
+          "expression": "DIVIDE([Var LE3],[LE3], BLANK())",
+          "table": "Fact",
+          "format_string": "0.00%;-0.00%;0.00%",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Var Plan %",
+          "expression": "DIVIDE([Var Plan],[Plan], BLANK())",
+          "table": "Fact",
+          "format_string": "0.00%;-0.00%;0.00%",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        },
+        {
+          "name": "Actual/Plan",
+          "expression": "[Actual]\nannotation PBI_FormatHint = {\"currencyCulture\":\"en-US\"}",
+          "table": "Fact",
+          "format_string": "\\$#,0;(\\$#,0);\\$#,0",
+          "display_folder": null,
+          "description": null,
+          "is_hidden": false,
+          "provenance": null
+        }
+      ],
+      "partitions": [
+        {
+          "name": "Fact",
+          "source_kind": "m",
+          "mode": "import",
+          "expression": "let\n        Source = Excel.Workbook(File.Contents(\"C:\\Users\\mad\\Dropbox\\Work\\Obvience\\IP\\IT\\Data\\Clean\\Data.xlsx\"), null, true),\n        Sheet = Source{[Item=\"Fact\",Kind=\"Sheet\"]}[Data],\n        #\"Promoted Headers\" = Table.PromoteHeaders(Sheet),\n        #\"Renamed Columns\" = Table.RenameColumns(#\"Promoted Headers\", {{\"Date\", \"Date\"}, {\"Value\", \"Value\"}, {\"Department\", \"Department\"}, {\"Cost Element ID\", \"Cost Element ID\"}, {\"Country ID\", \"Country/Region ID\"}, {\"Business Area ID\", \"Business Area ID\"}, {\"IT Sub Area ID\", \"IT Sub Area ID\"}, {\"Scenario ID\", \"Scenario ID\"}}),\n        #\"Changed Type\" = Table.TransformColumnTypes(#\"Renamed Columns\", {{\"Date\", type datetime}, {\"Value\", type number}, {\"Department\", type number}, {\"Cost Element ID\", type text}, {\"Country/Region ID\", type number}, {\"Business Area ID\", type number}, {\"IT Sub Area ID\", type number}, {\"Scenario ID\", type number}})\n     in\n        #\"Changed Type\""
+        }
+      ]
+    },
+    {
+      "name": "IT Area",
+      "is_hidden": false,
+      "description": null,
+      "kind": "dimension",
+      "is_calculated": false,
+      "columns": [
+        {
+          "name": "IT Area",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "IT Sub Area",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "IT Sub Area ID",
+          "data_type": "double",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        }
+      ],
+      "measures": [],
+      "partitions": [
+        {
+          "name": "IT Area",
+          "source_kind": "m",
+          "mode": "import",
+          "expression": "let\n        Source = Excel.Workbook(File.Contents(\"C:\\Users\\mad\\Dropbox\\Work\\Obvience\\IP\\IT\\Data\\Clean\\Data.xlsx\"), null, true),\n        Sheet = Source{[Item=\"IT Area\",Kind=\"Sheet\"]}[Data],\n        #\"Promoted Headers\" = Table.PromoteHeaders(Sheet),\n        #\"Renamed Columns\" = Table.RenameColumns(#\"Promoted Headers\", {{\"IT Area\", \"IT Area\"}, {\"IT Sub Area\", \"IT Sub Area\"}, {\"IT Sub Area ID\", \"IT Sub Area ID\"}}),\n        #\"Changed Type\" = Table.TransformColumnTypes(#\"Renamed Columns\", {{\"IT Area\", type text}, {\"IT Sub Area\", type text}, {\"IT Sub Area ID\", type number}})\n     in\n        #\"Changed Type\""
+        }
+      ]
+    },
+    {
+      "name": "LocalDateTable_c659a3fc-ad91-4f80-b458-6b22a6d14a66",
+      "is_hidden": true,
+      "description": null,
+      "kind": "calculation",
+      "is_calculated": true,
+      "columns": [
+        {
+          "name": "Date",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "PaddedDateTableDates",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Year",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "Years",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "YEAR([Date])\nannotation SummarizationSetBy = User\nannotation TemplateId = Year"
+        },
+        {
+          "name": "MonthNo",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "MonthOfYear",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "MONTH([Date])\nannotation SummarizationSetBy = User\nannotation TemplateId = MonthNumber"
+        },
+        {
+          "name": "Month",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "Months",
+          "sort_by_column": "MonthNo",
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "FORMAT([Date], \"MMMM\")\nannotation SummarizationSetBy = User\nannotation TemplateId = Month"
+        },
+        {
+          "name": "QuarterNo",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "QuarterOfYear",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "INT(([MonthNo] + 2) / 3)\nannotation SummarizationSetBy = User\nannotation TemplateId = QuarterNumber"
+        },
+        {
+          "name": "Quarter",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "Quarters",
+          "sort_by_column": "QuarterNo",
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "\"Qtr \" & [QuarterNo]\nannotation SummarizationSetBy = User\nannotation TemplateId = Quarter"
+        },
+        {
+          "name": "Day",
+          "data_type": "unknown",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": "DayOfMonth",
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": true,
+          "expression": "DAY([Date])\nannotation SummarizationSetBy = User\nannotation TemplateId = Day"
+        }
+      ],
+      "measures": [],
+      "partitions": [
+        {
+          "name": "LocalDateTable_c659a3fc-ad91-4f80-b458-6b22a6d14a66-befc4558-5178-4a6c-8daa-0449b38c9931",
+          "source_kind": "calculated",
+          "mode": "import",
+          "expression": "Calendar(Date(Year(MIN('Date'[Date])), 1, 1), Date(Year(MAX('Date'[Date])), 12, 31))"
+        }
+      ]
+    },
+    {
+      "name": "Range",
+      "is_hidden": false,
+      "description": null,
+      "kind": "unknown",
+      "is_calculated": false,
+      "columns": [
+        {
+          "name": "www.obvience.com",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        }
+      ],
+      "measures": [],
+      "partitions": [
+        {
+          "name": "Range",
+          "source_kind": "m",
+          "mode": "import",
+          "expression": "let\n        Source = Table.FromRows(Json.Document(Binary.Decompress(Binary.FromText(\"hY4xTgNBDEWv8pUKCnIIJIoUiEhINFGK2Rln12DGI9uTaG/DWTgZuysKOirb+rbfO512L8OVqWYCO1LF4fVtKWVra5AI5ehJcDRtZDHj7nC8X6LchxRquGjuTgVa8czZ1PUSeOzOldx/X/C4AvbfX9AF9rTCbmofjizqJDNuHNOf81AUupJow0AeaJZycCbfzGLSPk4BoVTIfOK2SBje+2d78EgWXMdtsVATndfpHzO4Sg/W6vvd+fwD\", BinaryEncoding.Base64), Compression.Deflate))),\n        #\"Renamed Columns\" = Table.RenameColumns(Source, {{\"Column1\", \"www.obvience.com\"}}),\n        #\"Changed Type\" = Table.TransformColumnTypes(#\"Renamed Columns\", {{\"www.obvience.com\", type text}})\n     in\n        #\"Changed Type\""
+        }
+      ]
+    },
+    {
+      "name": "Scenario",
+      "is_hidden": false,
+      "description": null,
+      "kind": "dimension",
+      "is_calculated": false,
+      "columns": [
+        {
+          "name": "Scenario",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": "'Scenario ID'",
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "Scenario ID",
+          "data_type": "double",
+          "is_hidden": true,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        },
+        {
+          "name": "ScenarioDescription",
+          "data_type": "string",
+          "is_hidden": false,
+          "summarize_by": "none",
+          "description": null,
+          "format_string": null,
+          "display_folder": null,
+          "data_category": null,
+          "sort_by_column": null,
+          "is_key": false,
+          "cardinality": null,
+          "size_bytes": null,
+          "provenance": null,
+          "is_calculated": false,
+          "expression": null
+        }
+      ],
+      "measures": [],
+      "partitions": [
+        {
+          "name": "Scenario",
+          "source_kind": "m",
+          "mode": "import",
+          "expression": "let\n        Source = Excel.Workbook(File.Contents(\"C:\\Users\\mad\\Dropbox\\Work\\Obvience\\IP\\IT\\Data\\Clean\\Data.xlsx\"), null, true),\n        Sheet = Source{[Item=\"Scenario\",Kind=\"Sheet\"]}[Data],\n        #\"Promoted Headers\" = Table.PromoteHeaders(Sheet),\n        #\"Renamed Columns\" = Table.RenameColumns(#\"Promoted Headers\", {{\"Scenario\", \"Scenario\"}, {\"Scenario ID\", \"Scenario ID\"}, {\"ScenarioDescription\", \"ScenarioDescription\"}}),\n        #\"Changed Type\" = Table.TransformColumnTypes(#\"Renamed Columns\", {{\"Scenario\", type text}, {\"Scenario ID\", type number}, {\"ScenarioDescription\", type text}})\n     in\n        #\"Changed Type\""
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from_table": "Fact",
+      "from_column": "Scenario ID",
+      "to_table": "Scenario",
+      "to_column": "Scenario ID",
+      "name": "5eb17777-e9c8-493b-9d81-c5adb900e09a",
+      "from_cardinality": "many",
+      "to_cardinality": "one",
+      "cross_filter": "single",
+      "is_active": true
+    },
+    {
+      "from_table": "Fact",
+      "from_column": "IT Sub Area ID",
+      "to_table": "IT Area",
+      "to_column": "IT Sub Area ID",
+      "name": "16eae15a-3aea-445b-94b6-43eb0d1c86b0",
+      "from_cardinality": "many",
+      "to_cardinality": "one",
+      "cross_filter": "single",
+      "is_active": true
+    },
+    {
+      "from_table": "Fact",
+      "from_column": "Business Area ID",
+      "to_table": "Business Area",
+      "to_column": "Business Area ID",
+      "name": "c4633d95-838e-4156-a8c1-906d157a153f",
+      "from_cardinality": "many",
+      "to_cardinality": "one",
+      "cross_filter": "single",
+      "is_active": true
+    },
+    {
+      "from_table": "Fact",
+      "from_column": "Country/Region ID",
+      "to_table": "Country Region",
+      "to_column": "Country/Region ID",
+      "name": "8f584f25-177a-4def-ac05-f3ba08364533",
+      "from_cardinality": "many",
+      "to_cardinality": "one",
+      "cross_filter": "single",
+      "is_active": true
+    },
+    {
+      "from_table": "Fact",
+      "from_column": "Cost Element ID",
+      "to_table": "Cost Element",
+      "to_column": "Cost Element ID",
+      "name": "f18fc136-4954-40db-9c7a-08bab06c5a8d",
+      "from_cardinality": "many",
+      "to_cardinality": "one",
+      "cross_filter": "single",
+      "is_active": true
+    },
+    {
+      "from_table": "Fact",
+      "from_column": "Department",
+      "to_table": "Department",
+      "to_column": "Department",
+      "name": "3a0ed39a-366d-407a-ade6-67c9755849f8",
+      "from_cardinality": "many",
+      "to_cardinality": "one",
+      "cross_filter": "single",
+      "is_active": true
+    },
+    {
+      "from_table": "Fact",
+      "from_column": "Date",
+      "to_table": "Date",
+      "to_column": "Date",
+      "name": "b8fa9cc0-0e1d-45c7-853c-1533595a20b0",
+      "from_cardinality": "many",
+      "to_cardinality": "one",
+      "cross_filter": "single",
+      "is_active": true
+    },
+    {
+      "from_table": "Date",
+      "from_column": "Date",
+      "to_table": "LocalDateTable_c659a3fc-ad91-4f80-b458-6b22a6d14a66",
+      "to_column": "Date",
+      "name": "9c249f02-e6dc-4107-8564-81d8f98ee1c6",
+      "from_cardinality": "many",
+      "to_cardinality": "one",
+      "cross_filter": "single",
+      "is_active": true
+    }
+  ],
+  "roles": [],
+  "expressions": [],
+  "data_sources": [
+    {
+      "type": "File.Contents",
+      "server": null,
+      "database": null,
+      "detail": "C:\\Users\\mad\\Dropbox\\Work\\Obvience\\IP\\IT\\Data\\Clean\\Data.xlsx",
+      "authentication_status": null
+    }
+  ],
+  "pages": [
+    {
+      "id": "ReportSection2",
+      "display_name": "IT Spend Trend",
+      "ordinal": 0,
+      "is_hidden": false,
+      "is_drillthrough": false,
+      "width": 1280,
+      "height": 720,
+      "visuals": [
+        {
+          "id": "347f3b2ca2cc6c364213",
+          "type": "basicShape",
+          "title": null,
+          "x": 218.77276326207442,
+          "y": 500,
+          "z": 0,
+          "width": 12,
+          "height": 12,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "1c2c190ba9bf5cd56a08",
+          "type": "basicShape",
+          "title": null,
+          "x": 219,
+          "y": 500,
+          "z": 1000,
+          "width": 12,
+          "height": 12,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "286d3c83eaf854cf80f1",
+          "type": "textbox",
+          "title": null,
+          "x": 14.945054945054945,
+          "y": 22.857142857142858,
+          "z": 2000,
+          "width": 584.6153846153846,
+          "height": 50.10989010989011,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "0c36a2daf574c7066a4f",
+          "type": "actionButton",
+          "title": null,
+          "x": 1215.8241758241759,
+          "y": 22.857142857142858,
+          "z": 3000,
+          "width": 56.26373626373626,
+          "height": 41.31868131868132,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "VisualContainer1",
+          "type": "filledMap",
+          "title": null,
+          "x": 663.7362637362637,
+          "y": 88.79120879120879,
+          "z": 4000,
+          "width": 608.3516483516484,
+          "height": 255.82417582417582,
+          "fields": [
+            "Country Region.Country/Region",
+            "Fact.Var Plan %"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "VisualContainer3",
+          "type": "lineStackedColumnComboChart",
+          "title": null,
+          "x": 14.945054945054945,
+          "y": 88.79120879120879,
+          "z": 5000,
+          "width": 599.5604395604396,
+          "height": 255.82417582417582,
+          "fields": [
+            "select",
+            "select1",
+            "Fact.Actual",
+            "Fact.Plan"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "ace3cabe7089bcaea3b3",
+          "type": "slicer",
+          "title": null,
+          "x": 799.1208791208792,
+          "y": 19.340659340659343,
+          "z": 6000,
+          "width": 231.2087912087912,
+          "height": 49.23076923076923,
+          "fields": [
+            "Country Region.Sales Region"
+          ],
+          "is_slicer": true,
+          "action": null
+        },
+        {
+          "id": "e2f6783e023464142923",
+          "type": "textbox",
+          "title": null,
+          "x": 663.7362637362637,
+          "y": 29.89010989010989,
+          "z": 7000,
+          "width": 145.05494505494505,
+          "height": 36.92307692307693,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "fedfc8a803e764e8d499",
+          "type": "stackedAreaChart",
+          "title": null,
+          "x": 14.945054945054945,
+          "y": 373.62637362637366,
+          "z": 8000,
+          "width": 599.5604395604396,
+          "height": 327.91208791208794,
+          "fields": [
+            "Date.Period",
+            "Business Area.Business Area",
+            "Fact.Actual"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "51517b950503686cead1",
+          "type": "decompositionTreeVisual",
+          "title": null,
+          "x": 663.7362637362637,
+          "y": 373.62637362637366,
+          "z": 9000,
+          "width": 608.3516483516484,
+          "height": 328.7912087912088,
+          "fields": [
+            "Fact.Var Plan",
+            "Country Region.Sales Region",
+            "Date.Period",
+            "IT Area.IT Area",
+            "IT Area.IT Sub Area",
+            "Country Region.Country/Region"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "f99581435010a0b08d4a",
+          "type": "actionButton",
+          "title": null,
+          "x": 1203.5164835164835,
+          "y": 702.4175824175825,
+          "z": 10000,
+          "width": 76.48351648351648,
+          "height": 17.582417582417584,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        }
+      ],
+      "drillthrough_fields": []
+    },
+    {
+      "id": "ReportSection32e53fe7c4f4cd87dd85",
+      "display_name": "Plan Variance Analysis",
+      "ordinal": 1,
+      "is_hidden": false,
+      "is_drillthrough": false,
+      "width": 1280,
+      "height": 720,
+      "visuals": [
+        {
+          "id": "f8f06b9bb2ea45767083",
+          "type": "basicShape",
+          "title": null,
+          "x": 219,
+          "y": 500,
+          "z": 0,
+          "width": 12,
+          "height": 12,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "1cf9884ac63e01273557",
+          "type": "basicShape",
+          "title": null,
+          "x": 219,
+          "y": 500,
+          "z": 1000,
+          "width": 12,
+          "height": 12,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "6613f728dbb0e902d993",
+          "type": "basicShape",
+          "title": null,
+          "x": 219,
+          "y": 500,
+          "z": 2000,
+          "width": 12,
+          "height": 12,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "ae0af73d45f3bbc631f5",
+          "type": "basicShape",
+          "title": null,
+          "x": 219,
+          "y": 500,
+          "z": 3000,
+          "width": 12,
+          "height": 12,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "ebf96c2c5648c2a833a9",
+          "type": "basicShape",
+          "title": null,
+          "x": 218.77276326207442,
+          "y": 500,
+          "z": 4000,
+          "width": 12,
+          "height": 12,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "VisualContainer1",
+          "type": "card",
+          "title": null,
+          "x": 228.57142857142858,
+          "y": 211.86813186813188,
+          "z": 5000,
+          "width": 191.64835164835165,
+          "height": 93.1868131868132,
+          "fields": [
+            "Fact.Var Plan %"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "VisualContainer2",
+          "type": "card",
+          "title": null,
+          "x": 6.153846153846154,
+          "y": 94.06593406593407,
+          "z": 6000,
+          "width": 189.8901098901099,
+          "height": 93.1868131868132,
+          "fields": [
+            "Fact.Var LE1 %"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "VisualContainer3",
+          "type": "card",
+          "title": null,
+          "x": 228.57142857142858,
+          "y": 93.1868131868132,
+          "z": 7000,
+          "width": 191.64835164835165,
+          "height": 94.06593406593407,
+          "fields": [
+            "Fact.Var LE2 %"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "VisualContainer4",
+          "type": "card",
+          "title": null,
+          "x": 6.153846153846154,
+          "y": 211.86813186813188,
+          "z": 8000,
+          "width": 189.8901098901099,
+          "height": 93.1868131868132,
+          "fields": [
+            "Fact.Var LE3 %"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "VisualContainer8",
+          "type": "clusteredBarChart",
+          "title": null,
+          "x": 6.153846153846154,
+          "y": 328.7912087912088,
+          "z": 9000,
+          "width": 414.0659340659341,
+          "height": 370.1098901098901,
+          "fields": [
+            "select",
+            "select1"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "VisualContainer9",
+          "type": "pivotTable",
+          "title": null,
+          "x": 461.53846153846155,
+          "y": 328.7912087912088,
+          "z": 10000,
+          "width": 818.4615384615385,
+          "height": 376.2637362637363,
+          "fields": [
+            "Business Area.Business Area",
+            "select",
+            "Fact.Var Plan %"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "576a88b05cfdd3e248a3",
+          "type": "textbox",
+          "title": null,
+          "x": 18.461538461538463,
+          "y": 22.857142857142858,
+          "z": 11000,
+          "width": 595.1648351648352,
+          "height": 55.38461538461539,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "700e0446dfb61cce2790",
+          "type": "actionButton",
+          "title": null,
+          "x": 778.2214156079855,
+          "y": 68.52994555353902,
+          "z": 12000,
+          "width": 471.57894736842104,
+          "height": 48.78402903811252,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "VisualContainer10",
+          "type": "barChart",
+          "title": null,
+          "x": 361.2341197822141,
+          "y": 117.31397459165154,
+          "z": 13000,
+          "width": 888.5662431941923,
+          "height": 245.08166969147004,
+          "fields": [
+            "select",
+            "Fact.Var Plan %"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "dba787bcac749b14409a",
+          "type": "actionButton",
+          "title": null,
+          "x": 361.2341197822141,
+          "y": 68.52994555353902,
+          "z": 14000,
+          "width": 416.9872958257713,
+          "height": 48.78402903811252,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "VisualContainer11",
+          "type": "clusteredBarChart",
+          "title": null,
+          "x": 448.35164835164835,
+          "y": 94.06593406593407,
+          "z": 15000,
+          "width": 823.7362637362638,
+          "height": 210.989010989011,
+          "fields": [
+            "select",
+            "select1"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "8eac0b416cccd33c0057",
+          "type": "actionButton",
+          "title": null,
+          "x": 1215.8241758241759,
+          "y": 22.857142857142858,
+          "z": 16000,
+          "width": 56.26373626373626,
+          "height": 41.31868131868132,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "7acf1fd5084b819c079e",
+          "type": "slicer",
+          "title": null,
+          "x": 799.1208791208792,
+          "y": 19.340659340659343,
+          "z": 17000,
+          "width": 231.2087912087912,
+          "height": 49.23076923076923,
+          "fields": [
+            "Country Region.Sales Region"
+          ],
+          "is_slicer": true,
+          "action": null
+        },
+        {
+          "id": "5d66e05c0bc95982506e",
+          "type": "textbox",
+          "title": null,
+          "x": 663.7362637362637,
+          "y": 29.89010989010989,
+          "z": 18000,
+          "width": 145.05494505494505,
+          "height": 36.92307692307693,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "d34d1855155a9201c6ea",
+          "type": "actionButton",
+          "title": null,
+          "x": 1203.5164835164835,
+          "y": 702.4175824175824,
+          "z": 19000,
+          "width": 76.48351648351648,
+          "height": 17.582417582417584,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        }
+      ],
+      "drillthrough_fields": []
+    },
+    {
+      "id": "ReportSectionaad1fe93e01b608cbcaa",
+      "display_name": "Tooltip",
+      "ordinal": 2,
+      "is_hidden": true,
+      "is_drillthrough": false,
+      "width": 311,
+      "height": 285,
+      "visuals": [
+        {
+          "id": "c602e000e3c6fe65429f",
+          "type": "lineChart",
+          "title": null,
+          "x": 0,
+          "y": 129.7985347985348,
+          "z": 0,
+          "width": 311.0989010989011,
+          "height": 144.76190476190476,
+          "fields": [
+            "Date.Month",
+            "Fact.Var Plan %"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "3c21ea573874d43460c5",
+          "type": "card",
+          "title": null,
+          "x": 0,
+          "y": 57.069597069597066,
+          "z": 1000,
+          "width": 147.8937728937729,
+          "height": 60.8974358974359,
+          "fields": [
+            "Fact.Actual"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "d953e02ee89c90ce4d28",
+          "type": "card",
+          "title": null,
+          "x": 162.50915750915752,
+          "y": 57.069597069597066,
+          "z": 2000,
+          "width": 148.5897435897436,
+          "height": 60.8974358974359,
+          "fields": [
+            "Fact.Plan"
+          ],
+          "is_slicer": false,
+          "action": null
+        },
+        {
+          "id": "304a03d1d83415cb90d9",
+          "type": "textbox",
+          "title": null,
+          "x": 0,
+          "y": 11.831501831501832,
+          "z": 3000,
+          "width": 311.0989010989011,
+          "height": 32.014652014652015,
+          "fields": [],
+          "is_slicer": false,
+          "action": null
+        }
+      ],
+      "drillthrough_fields": []
+    }
+  ],
+  "bookmarks": [],
+  "meta": {
+    "parser_version": "0.1.0",
+    "source_format": "pbip-tmdl",
+    "source_path": "/tmp/pbicompass/pbicompass_30a6096202ab45e89e6f0a2d895fb953_o08nehi0/extracted",
+    "generated_at": "2026-07-07T16:58:20.308817+00:00",
+    "warnings": [],
+    "counts": {
+      "tables": 11,
+      "columns": 44,
+      "measures": 15,
+      "relationships": 8,
+      "roles": 0,
+      "pages": 3,
+      "visuals": 35,
+      "data_sources": 1
+    },
+    "overridden_fields": []
+  }
+}

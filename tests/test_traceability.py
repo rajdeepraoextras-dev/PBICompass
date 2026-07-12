@@ -22,6 +22,11 @@ from pbicompass.parsers import detect_and_parse
 from pbicompass.schemas.model import Column, Measure, ModelMeta, Page, SemanticModel, Table, Visual
 
 FIXTURE = Path(__file__).parent / "fixtures" / "SampleSales" / "SampleSales.pbip"
+CS_FIXTURE = Path(__file__).parent / "fixtures" / "CorporateSpend" / "model.json"
+
+
+def _cs_model():
+    return SemanticModel.from_json(CS_FIXTURE.read_text(encoding="utf-8"))
 
 # The 5-requirement fixture the "done when" bar names: 4 real requirements
 # the SampleSales model can satisfy, and one deliberate gap (nothing in the
@@ -425,6 +430,41 @@ class ExecutiveGeneratorWiringTest(unittest.TestCase):
         html = render_executive_html(doc)
         self.assertIn("Requirements coverage:", html)
         self.assertIn("4/5", html)
+
+
+class CorporateSpendRequirementsMatrixTest(unittest.TestCase):
+    """Day 7: the RTM against the real Corporate Spend fixture — its
+    Actual/Plan/Var LE*/Var Plan measures and IT Spend Trend/Plan Variance
+    Analysis pages are real production vocabulary, not a hand-built
+    candidate list. Also proves I4's field-parameter exclusion reaches the
+    RTM: the fixture's real 'select'/'select1' bare tokens must never
+    surface as evidence for a requirement, even though they're real
+    (if meaningless) field references on a real page."""
+
+    REQUIREMENTS = """\
+[Must] Compare actual spend against plan
+[Must] Break down spend by department
+[Should] Forecast next quarter inventory needs"""
+
+    def test_measure_backed_requirement_is_covered(self):
+        model = _cs_model()
+        matrix = build_requirements_matrix(model, self.REQUIREMENTS)
+        actual_vs_plan = next(r for r in matrix if "actual spend against plan" in r.text.lower())
+        self.assertEqual(actual_vs_plan.status, "Covered")
+        self.assertTrue(any(e.name in ("Actual", "Plan", "Var Plan", "Var Plan %") for e in actual_vs_plan.evidence))
+
+    def test_unrelated_requirement_is_a_gap(self):
+        model = _cs_model()
+        matrix = build_requirements_matrix(model, self.REQUIREMENTS)
+        inventory = next(r for r in matrix if "inventory" in r.text.lower())
+        self.assertEqual(inventory.status, "Gap")
+
+    def test_field_parameter_tokens_never_surface_as_candidates(self):
+        model = _cs_model()
+        candidates = build_candidates(model)
+        names = {c["name"] for c in candidates}
+        self.assertNotIn("select", names)
+        self.assertNotIn("select1", names)
 
 
 class AuditGeneratorWiringTest(unittest.TestCase):

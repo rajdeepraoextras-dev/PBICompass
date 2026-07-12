@@ -154,5 +154,35 @@ class TmdlFenceTest(unittest.TestCase):
         self.assertIn("RANKX", expr)
 
 
+class SemanticModelRoundTripTest(unittest.TestCase):
+    """``SemanticModel.from_dict``/``from_json`` (Day 7): lets an
+    already-parsed ``model.json`` be reloaded directly as a fixture,
+    without re-parsing the original .pbip/.pbix — the basis for the
+    Corporate Spend regression fixture, whose real source project is not
+    in this repo, only its previously-generated ``model.json``."""
+
+    def test_round_trip_is_stable_for_a_parsed_fixture(self):
+        model = detect_and_parse(FIXTURE)
+        reloaded = SemanticModel.from_dict(model.to_dict())
+        self.assertEqual(reloaded.to_dict(), model.to_dict())
+
+    def test_from_json_round_trips_through_the_wire_format(self):
+        model = detect_and_parse(FIXTURE)
+        reloaded = SemanticModel.from_json(model.to_json())
+        self.assertEqual(reloaded.report_name, model.report_name)
+        self.assertEqual(len(reloaded.tables), len(model.tables))
+        self.assertEqual(reloaded.to_dict(), model.to_dict())
+
+    def test_corporate_spend_real_fixture_loads(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "CorporateSpend" / "model.json"
+        model = SemanticModel.from_json(fixture_path.read_text(encoding="utf-8"))
+        self.assertEqual(model.report_name, "Corporate Spend")
+        self.assertEqual(len(model.tables), 11)
+        # A round trip of the real fixture must also be stable, not just
+        # a freshly-parsed one — this is the shape every downstream test
+        # actually exercises.
+        self.assertEqual(SemanticModel.from_dict(model.to_dict()).to_dict(), model.to_dict())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

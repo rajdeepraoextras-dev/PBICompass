@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import unittest
 
+from pathlib import Path
+
 from pbicompass.agents.sanitize import (
     enforce_score_consistency,
     is_low_content_fragment,
@@ -14,6 +16,8 @@ from pbicompass.agents.sanitize import (
     sanitize_narratives,
     strip_punt_leak,
 )
+
+CS_FIXTURE = Path(__file__).parent / "fixtures" / "CorporateSpend" / "model.json"
 
 
 class IsMetaCommentaryTest(unittest.TestCase):
@@ -248,6 +252,34 @@ class SanitizeNarrativesTest(unittest.TestCase):
 
     def test_empty_triples_list_is_a_noop(self):
         sanitize_narratives([])  # must not raise
+
+
+class CorporateSpendSanitizeWiringTest(unittest.TestCase):
+    """Day 7: the P0 gate exercised against a real generated audit doc's
+    own fallback text (the real Corporate Spend narrative_overview), not a
+    hand-written 'FALLBACK' string — proves the mechanism the generators
+    actually wire in (a real deterministic sentence, not a placeholder)
+    produces clean prose when a leak is injected."""
+
+    def test_leak_injected_into_the_real_narrative_is_cleaned_with_the_real_fallback(self):
+        from pbicompass.schemas.model import SemanticModel
+        from pbicompass.agents.generators import AuditReportGenerator
+        from pbicompass.agents.generators.audit import _narrative_triples
+
+        model = SemanticModel.from_json(CS_FIXTURE.read_text(encoding="utf-8"))
+        doc = AuditReportGenerator.generate(model)
+        clean_fallback = doc.narrative_overview
+        self.assertNotIn("requires business confirmation", clean_fallback)
+
+        corrupted = clean_fallback + " Unknown — requires business confirmation."
+        box_value = {"v": corrupted}
+
+        def setter(v):
+            box_value["v"] = v
+
+        sanitize_narratives([("narrative_overview", corrupted, setter)], {"narrative_overview": clean_fallback})
+        self.assertNotIn("requires business confirmation", box_value["v"])
+        self.assertIn("scores", box_value["v"].lower())
 
 
 if __name__ == "__main__":
