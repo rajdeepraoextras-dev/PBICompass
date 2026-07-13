@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1a15">
-<title>PBICompass — AI Documentation & Governance for Power BI</title>
+<title>PBICompass (Beta) — AI Documentation & Governance for Power BI</title>
 <meta name="description" content="Turn any Power BI report (.pbix or .pbip) into enterprise-grade technical, audit, executive and business documentation — written by AI, in minutes. Metadata only. Zero retention. Create a free account to get started.">
-<meta property="og:title" content="PBICompass — AI Documentation & Governance for Power BI">
+<meta property="og:title" content="PBICompass (Beta) — AI Documentation & Governance for Power BI">
 <meta property="og:description" content="Upload a .pbix or .pbip. Get four AI-written, enterprise-ready documents in about a minute. Metadata only — nothing stored.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M15 42V8h10a13 13 0 0 1 0 26h-6' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M32.5 15.5 20 21l5.5 2.5L28 29z' fill='white'/%3E%3C/svg%3E">
@@ -195,6 +195,11 @@ body.no-video .hero-video { display: none; }
 }
 .brand-name { font-size: 1.5rem; font-weight: 600; letter-spacing: -.045em; color: #fff; }
 .brand-name span { color: hsl(0 0% 100% / .82); font-weight: 400; }
+/* ".brand-name .beta-tag" (not just ".beta-tag") so it outranks the
+   ".brand-name span" rule above. */
+.brand-name .beta-tag, .foot-brand .beta-tag { font-size: .58rem; font-weight: 600; letter-spacing: .18em;
+  text-transform: uppercase; color: hsl(0 0% 100% / .92); border: 1px solid hsl(0 0% 100% / .35);
+  padding: 2px 7px; border-radius: 100px; margin-left: 8px; vertical-align: middle; }
 
 .menu-wrap { position: relative; z-index: 40; }
 /* Lift the whole nav above the hero title: hero-nav and hero-mid are sibling
@@ -1003,7 +1008,7 @@ button[type=submit] .spin {
           <path d="M15 42V8h10a13 13 0 0 1 0 26h-6" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M33 14.5 19.5 20.6l6 2.7 2.7 6z" fill="currentColor" stroke="none"/>
         </svg>
-        <span class="brand-name">PBI<span>Compass</span></span>
+        <span class="brand-name">PBI<span>Compass</span><span class="beta-tag">Beta</span></span>
       </a>
       <div class="menu-wrap">
         <button class="menu-btn liquid-glass scale-hover" id="menu-btn" aria-expanded="false" aria-controls="menu-sheet">
@@ -1566,7 +1571,7 @@ button[type=submit] .spin {
         <path d="M15 42V8h10a13 13 0 0 1 0 26h-6" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M33 14.5 19.5 20.6l6 2.7 2.7 6z" fill="currentColor" stroke="none"/>
       </svg>
-      <b>PBICompass</b>
+      <b>PBICompass</b><span class="beta-tag">Beta</span>
     </span>
     <nav class="foot-links" aria-label="Footer">
       <a href="#story">How it works</a>

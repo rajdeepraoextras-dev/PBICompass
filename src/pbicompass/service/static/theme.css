@@ -154,6 +154,11 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 .brand-mark { width: 32px; height: 32px; flex: none; color: #fff; filter: drop-shadow(0 2px 8px rgba(0,0,0,.35)); }
 .brand-name { font-size: 1.5rem; font-weight: 600; letter-spacing: -.045em; color: #fff; }
 .brand-name span { color: hsl(0 0% 100% / .82); font-weight: 400; }
+/* ".brand-name .beta-tag" (not just ".beta-tag") so it outranks the
+   ".brand-name span" rule above. */
+.brand-name .beta-tag, .foot-brand .beta-tag { font-size: .58rem; font-weight: 600; letter-spacing: .18em;
+  text-transform: uppercase; color: hsl(0 0% 100% / .92); border: 1px solid hsl(0 0% 100% / .35);
+  padding: 2px 7px; border-radius: 100px; margin-left: 8px; vertical-align: middle; }
 
 .pill {
   display: inline-flex; align-items: center;

@@ -199,7 +199,7 @@
         <path d="M15 42V8h10a13 13 0 0 1 0 26h-6" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M33 14.5 19.5 20.6l6 2.7 2.7 6z" fill="currentColor" stroke="none"/>
       </svg>
-      <span class="brand-name">PBI<span>Compass</span></span>
+      <span class="brand-name">PBI<span>Compass</span><span class="beta-tag">Beta</span></span>
     </a>
     <div class="appbar-right" id="appbar-right">
       <a class="account-btn liquid-glass scale-hover" href="/">← Back to site</a>
@@ -1031,12 +1031,14 @@ function collectFormContext(excludeId) {
   return ctx;
 }
 
-function fieldAiMsg(btn, text, cls) {
+function fieldAiMsg(btn, text, cls, sticky) {
   const row = btn.closest(".field-actions");
   let msg = row.querySelector(".field-ai-msg");
   if (!msg) { msg = document.createElement("span"); msg.className = "field-ai-msg"; row.appendChild(msg); }
   msg.textContent = text; msg.className = "field-ai-msg " + (cls || "");
-  if (text) setTimeout(() => { if (msg.textContent === text) msg.textContent = ""; }, 4000);
+  // Sticky messages (e.g. the "may take a minute" hint while a call runs)
+  // stay until overwritten by the completion message instead of auto-fading.
+  if (text && !sticky) setTimeout(() => { if (msg.textContent === text) msg.textContent = ""; }, 4000);
 }
 
 function setFieldBusy(row, btn, busyLabel, busy) {
@@ -1050,6 +1052,7 @@ async function assistFill(ta, btn) {
   if (!f) { fieldAiMsg(btn, "Upload a report on tab 1 first.", "err"); return; }
   const row = btn.closest(".field-actions");
   setFieldBusy(row, btn, "Working…", true);
+  fieldAiMsg(btn, "This may take a minute or two…", "", true);
   try {
     const fd = new FormData();
     fd.append("file", f);
@@ -1092,7 +1095,7 @@ document.querySelectorAll("#tab-details .form-group").forEach(group => {
   fillBtn.innerHTML = AI_FILL_ICON + "<span>AI Fill</span>";
   fillBtn.title = "Draft this field from the uploaded report";
   const formatBtn = document.createElement("button");
-  formatBtn.type = "button"; formatBtn.className = "field-ai-btn"; formatBtn.innerHTML = "<span>Format</span>";
+  formatBtn.type = "button"; formatBtn.className = "field-ai-btn"; formatBtn.innerHTML = "<span>Format text</span>";
   formatBtn.title = "Fix grammar & punctuation of what's typed here";
   fillBtn.addEventListener("click", () => assistFill(ta, fillBtn));
   formatBtn.addEventListener("click", () => assistFormat(ta, formatBtn));
