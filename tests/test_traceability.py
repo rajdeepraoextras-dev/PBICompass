@@ -363,6 +363,29 @@ class ApplyLlmPassGroundingTest(unittest.TestCase):
         self.assertEqual(matrix[0].status, "Covered")
         self.assertTrue(any(e.anchor == real_measure_anchor for e in matrix[0].evidence))
 
+    def test_gap_verdict_never_keeps_evidence_anchors(self):
+        # Benchmark C4 coherence: the agent sometimes cites the candidates it
+        # *rejected* while declaring a Gap. A "Gap with evidence" row is
+        # internally incoherent and used to flow straight through into the
+        # matrix (failing C4 on the user's own bundle); the evidence must be
+        # dropped when a Gap verdict is accepted.
+        model = _cs_model()
+        candidates = build_candidates(model)
+        # A measure-only match ("Compare actual spend against plan" hits the
+        # Actual/Plan measures, no self-named dimension/table), so the AI's
+        # Gap verdict is *accepted* — the protection path is a different test.
+        matched = match_candidates("Compare actual spend against plan", candidates)
+        self.assertFalse(any(c.get("self_named") or c["kind"] == "table" for c in matched),
+                         "fixture requirement must not be downgrade-protected for this test")
+        cited = next(c["anchor"] for c in matched if c["kind"] == "measure")
+        client = FakeTraceabilityClient([
+            {"requirement": "Compare actual spend against plan", "status": "Gap",
+             "evidence": [cited], "rationale": "Rejected these candidates."},
+        ])
+        matrix = build_requirements_matrix(model, "[Must] Compare actual spend against plan", client)
+        self.assertEqual(matrix[0].status, "Gap")
+        self.assertEqual(matrix[0].evidence, [])
+
     def test_offline_client_none_uses_deterministic_only(self):
         model = _model()
         matrix = build_requirements_matrix(model, "[Must] Show total revenue by region", None)

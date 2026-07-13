@@ -455,6 +455,10 @@
             <div class="form-group"><label>Support Escalation &amp; Maintenance Policy</label><textarea id="support_notes" placeholder="First line support contacts, SLA policies, code backups..."></textarea></div>
           </div>
 
+          <p class="muted" style="text-align:center; margin:0 0 14px;">Please fill
+            <button type="button" class="field-ai-btn" data-goto-tab="tab-control">Step 2 · Metadata</button> and
+            <button type="button" class="field-ai-btn" data-goto-tab="tab-details">Step 3 · Notes</button>
+            for the best and most complete output.</p>
           <button type="submit" id="gen-submit" class="btn-primary"><span class="spin" id="gen-spin"></span><span id="gen-label">Generate documentation</span></button>
         </form>
 
@@ -1011,6 +1015,16 @@ document.querySelectorAll("#gen-form .tab-btn").forEach(tab => {
   });
 });
 
+// "Step 2 / Step 3" pills above the Generate button: jump to that tab.
+document.querySelectorAll("[data-goto-tab]").forEach(pill => {
+  pill.addEventListener("click", () => {
+    const tab = document.querySelector(`#gen-form .tab-btn[data-tab="${pill.dataset.gotoTab}"]`);
+    if (!tab) return;
+    tab.click();
+    tab.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+});
+
 /* ---------- Notes tab: per-field "AI Fill" / "Format" (MeshAPI-backed) ---------- */
 // Field ids whose backend Form param name matches the element id exactly
 // (everything on tabs 2 & 3 except "status", handled separately since its
@@ -1156,27 +1170,23 @@ $("select-all-docs").addEventListener("click", () => {
   $("select-all-docs").textContent = allChecked ? "Select all four" : "Reset to Technical only";
 });
 
-const ESTIMATED_SECONDS = {
-  none: 4,
-  anthropic: { low: 18, medium: 35, high: 60, xhigh: 100, max: 150 },
-  gemini: { low: 15, medium: 25, high: 40, xhigh: 65, max: 90 },
-  cohere: { low: 20, medium: 30, high: 45, xhigh: 65, max: 65 },
-  meshapi: { low: 20, medium: 30, high: 50, xhigh: 80, max: 80 },
-};
+// No numeric "estimated ~Ns total" — real durations vary too much per model
+// for that to be honest. The bar just creeps against a pacing constant and
+// the label shows a broad duration range instead.
 let progressTimer = null;
-function estimatedSeconds() {
-  const provider = $("provider").value;
-  if (EFFORT_CAPABLE_PROVIDERS.includes(provider)) return ESTIMATED_SECONDS[provider][$("effort").value] || 60;
-  return ESTIMATED_SECONDS[provider] || 10;
+function progressPacing() {
+  return EFFORT_CAPABLE_PROVIDERS.includes($("provider").value)
+    ? { seconds: 240, hint: "output takes about 3–4 minutes, max 7–8 minutes" }
+    : { seconds: 120, hint: "output takes max 2–3 minutes" };
 }
 function startProgress() {
-  const startedAt = Date.now(), estimate = estimatedSeconds();
+  const startedAt = Date.now(), pacing = progressPacing();
   const wrap = $("progress-wrap"), fill = $("progress-fill"), text = $("progress-text");
   fill.classList.remove("done"); wrap.style.display = "";
   function tick() {
     const elapsed = (Date.now() - startedAt) / 1000;
-    fill.style.width = Math.min(96, (elapsed / estimate) * 100) + "%";
-    text.textContent = `Elapsed ${elapsed.toFixed(0)}s · estimated ~${estimate}s total (${EFFORT_CAPABLE_PROVIDERS.includes($("provider").value) ? $("effort").value + " effort" : $("provider").options[$("provider").selectedIndex].text})`;
+    fill.style.width = Math.min(96, (elapsed / pacing.seconds) * 100) + "%";
+    text.textContent = `Elapsed ${elapsed.toFixed(0)}s · ${pacing.hint}`;
   }
   tick(); progressTimer = setInterval(tick, 500);
 }
@@ -1357,7 +1367,13 @@ async function submitFeedback(jobId) {
 async function downloadFile(url, fmt) {
   try {
     const r = await fetch(url, { headers: authHeaders() });
-    if (!r.ok) { alert("Download failed (" + r.status + ")."); return; }
+    if (!r.ok) {
+      alert(r.status === 404
+        ? "These files are no longer available — outputs are held in memory for one hour only and are "
+          + "cleared when the server restarts (zero retention). Please generate the documentation again."
+        : "Download failed (" + r.status + ").");
+      return;
+    }
     const blob = await r.blob();
     let name = "documentation." + fmt;
     const cd = r.headers.get("content-disposition"), mm = cd && cd.match(/filename="?([^"]+)"?/);

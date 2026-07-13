@@ -399,6 +399,12 @@ def build_requirements_matrix(
         # Grounding: only anchors this requirement was actually offered as a
         # candidate may be cited as evidence — never trust an invented one.
         evidence_anchors = [a for a in item.get("evidence", []) if a in allowed]
+        if status == "Gap":
+            # A Gap verdict never carries evidence links: the agent sometimes
+            # cites the candidates it *rejected* while declaring a Gap, and a
+            # "Gap with evidence" row is internally incoherent (benchmark C4
+            # flags exactly that shape).
+            evidence_anchors = []
         if status != "Gap" and not evidence_anchors:
             # A "Covered"/"Partial" verdict with no real evidence left after
             # grounding is worse than the deterministic fallback already in
