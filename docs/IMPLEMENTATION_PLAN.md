@@ -94,7 +94,7 @@
 
 ## 3. AI Orchestration Layer (The Reasoning Engine)
 
-A **LangGraph** orchestrator fans out to specialized agents, then a reducer assembles the canonical document JSON. All agents return **schema-validated JSON** (not prose) so document assembly is deterministic.
+A **LangGraph**-style orchestrator fans out to specialized agents, then a reducer assembles the canonical document JSON. All agents return **schema-validated JSON** (not prose) so document assembly is deterministic: provider structured-output mode is backed by PBICompass's own dependency-free schema validator before a response can be cached or rendered. Report metadata is treated as untrusted source text, so table names, titles, DAX/M, and descriptions can be cited as evidence but never followed as prompt instructions.
 
 ### Agent roster
 

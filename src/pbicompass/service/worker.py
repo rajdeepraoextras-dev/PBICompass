@@ -177,37 +177,12 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
         if client_warning:
             warn(client_warning)
 
-        # Phase 0: one DAX Translator pass shared by every requested document
-        # type this job generates (previously up to 3x redundant per job),
-        # cached at a path inside this job's own sandbox — shredded with
-        # everything else in the outer ``finally``, and never the env-var
-        # default (which would race across jobs running concurrently in
-        # this same worker process; the CLI keeps that persistent default).
-        # Raw ``options`` (not yet merged with the enrichment file's
-        # metadata -- ``meta`` below computes that merge, but only after
-        # this call) covers the common case: a value the caller typed into
-        # the request itself. An enrichment-file-only value with no
-        # matching request field would be missed here, unlike everywhere
-        # else these fields are used after ``meta`` exists.
-        ai_context = (
-            build_job_context(
-                model, client, warn, cache_path=str(sandbox.path("llm_cache.db")),
-                business_decision=options.get("business_decision"),
-                target_audience=options.get("audience"),
-                assumptions=options.get("assumptions"),
-                security_notes=options.get("security_notes"),
-                refresh_notes=options.get("refresh_notes"),
-                deployment_notes=options.get("deployment_notes"),
-                access_notes=options.get("access_notes"),
-                support_notes=options.get("support_notes"),
-            )
-            if client is not None else None
-        )
-
         # Per-job rule-suppression/severity/threshold config (4.3 / J.A.3).
         # Invalid TOML is a warning, not a failure — the job still runs,
-        # just without any overrides applied. Always reset afterward (see
-        # the outer finally) since this is process-wide module state.
+        # just without any overrides applied. Applied before AI context is
+        # built so Report Intelligence sees the same audit counts as the
+        # final rendered documents. Always reset afterward (see the outer
+        # finally) since this is process-wide module state.
         audit_rules.set_rules_override_config({})
         rules_file_path = options.get("rules_file_path")
         if rules_file_path:
@@ -248,6 +223,26 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
                 history["previous_fingerprint"] = current_fp
 
         meta = _effective_metadata(options, enrichment_meta)
+
+        # Phase 0/2: one DAX Translator pass and one Report Intelligence pass
+        # shared by every requested document type. Build this only after
+        # rules/enrichment/metadata have been applied, otherwise the hosted
+        # service's first AI pass can miss enrichment-only business context
+        # that the later generators and renderers do see.
+        ai_context = (
+            build_job_context(
+                model, client, warn, cache_path=str(sandbox.path("llm_cache.db")),
+                business_decision=meta.get("business_decision"),
+                target_audience=meta.get("audience"),
+                assumptions=meta.get("assumptions"),
+                security_notes=meta.get("security_notes"),
+                refresh_notes=meta.get("refresh_notes"),
+                deployment_notes=meta.get("deployment_notes"),
+                access_notes=meta.get("access_notes"),
+                support_notes=meta.get("support_notes"),
+            )
+            if client is not None else None
+        )
 
         document_types = _resolve_document_types(options.get("document_types"))
         multi = len(document_types) > 1

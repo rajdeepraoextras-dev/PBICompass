@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import random
 import time
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from ...schemas.model import SemanticModel
 from ...schemas.shared import DocMetadataCore
@@ -41,6 +41,78 @@ def _record_usage(ai_context: Optional["JobAIContext"], client: LLMClient, name:
     )
 
 
+def _schema_type_matches(value: Any, expected: str) -> bool:
+    if expected == "object":
+        return isinstance(value, dict)
+    if expected == "array":
+        return isinstance(value, list)
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "null":
+        return value is None
+    return True
+
+
+def validate_json_schema(value: Any, schema: dict, path: str = "$") -> list[str]:
+    """Small dependency-free validator for the JSON-schema subset our agents use.
+
+    Provider-side structured output is still the first line of defense. This
+    local check is the final gate before caching/rendering, especially for
+    provider fallbacks that can only ask for JSON in plain text.
+    """
+    errors: list[str] = []
+    if not isinstance(schema, dict):
+        return errors
+
+    expected_type = schema.get("type")
+    if isinstance(expected_type, list):
+        if not any(_schema_type_matches(value, t) for t in expected_type):
+            return [f"{path}: expected one of {expected_type}, got {type(value).__name__}"]
+    elif isinstance(expected_type, str) and not _schema_type_matches(value, expected_type):
+        return [f"{path}: expected {expected_type}, got {type(value).__name__}"]
+
+    if "enum" in schema and value not in schema["enum"]:
+        errors.append(f"{path}: value {value!r} is not in enum {schema['enum']!r}")
+
+    if expected_type == "object" and isinstance(value, dict):
+        required = schema.get("required") or []
+        for key in required:
+            if key not in value:
+                errors.append(f"{path}.{key}: missing required property")
+        properties = schema.get("properties") or {}
+        if schema.get("additionalProperties") is False:
+            for key in value:
+                if key not in properties:
+                    errors.append(f"{path}.{key}: additional property not allowed")
+        for key, child_schema in properties.items():
+            if key in value:
+                errors.extend(validate_json_schema(value[key], child_schema, f"{path}.{key}"))
+
+    if expected_type == "array" and isinstance(value, list):
+        item_schema = schema.get("items")
+        if isinstance(item_schema, dict):
+            for i, item in enumerate(value):
+                errors.extend(validate_json_schema(item, item_schema, f"{path}[{i}]"))
+
+    return errors
+
+
+def _validate_response(response: dict, schema: dict) -> dict:
+    errors = validate_json_schema(response, schema)
+    if errors:
+        preview = "; ".join(errors[:5])
+        if len(errors) > 5:
+            preview += f"; +{len(errors) - 5} more"
+        raise ValueError(f"LLM response did not match schema: {preview}")
+    return response
+
+
 def call_llm(client: LLMClient, system: str, payload: dict, schema: dict,
              warn: Warn, name: str, *,
              ai_context: Optional["JobAIContext"] = None,
@@ -60,9 +132,13 @@ def call_llm(client: LLMClient, system: str, payload: dict, schema: dict,
     try:
         cached = cache.get(system, payload, schema, model_id, effort)
         if cached is not None:
-            return cached
+            try:
+                return _validate_response(cached, schema)
+            except ValueError as exc:
+                warn(f"{name}: ignored invalid cached LLM response ({exc})")
         res = client.complete_json(system, json.dumps(payload, ensure_ascii=False), schema, effort=effort)
         if res is not None:
+            res = _validate_response(res, schema)
             cache.set(system, payload, schema, model_id, res, effort)
             _record_usage(ai_context, client, name)
         return res
@@ -101,12 +177,16 @@ def call_llm_with_retry(
     try:
         cached = cache.get(system, payload, schema, model_id, effort)
         if cached is not None:
-            return cached
+            try:
+                return _validate_response(cached, schema)
+            except ValueError:
+                pass
         attempt = 0
         while True:
             try:
                 res = client.complete_json(system, json.dumps(payload, ensure_ascii=False), schema, effort=effort)
                 if res is not None:
+                    res = _validate_response(res, schema)
                     cache.set(system, payload, schema, model_id, res, effort)
                     _record_usage(ai_context, client, name)
                 return res

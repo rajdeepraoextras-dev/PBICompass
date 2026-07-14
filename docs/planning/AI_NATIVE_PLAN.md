@@ -1,5 +1,29 @@
 # PBICompass: AI-Native Output Plan
 
+## Current implementation status
+
+This plan began as a critique of an earlier implementation where AI mostly
+polished deterministic drafts. The codebase has since implemented the main
+AI-native plumbing described below: shared per-job AI context, Report
+Intelligence, grounding, consistency checks, audit synthesis, and the senior
+reviewer loop.
+
+As of the current implementation, the AI boundary also includes:
+
+- Local dependency-free schema validation for every LLM response before it is
+  cached or rendered, including provider fallback JSON paths.
+- Prompt-injection hardening in the shared editorial rules: report metadata is
+  treated as untrusted source text, never as instructions.
+- A priority-budgeted whole-model digest that preserves report identity and
+  audit summary before adding larger sections.
+- Hosted-service parity with the CLI: uploaded rules and enrichment metadata
+  are applied before the shared AI context is built, so Report Intelligence and
+  job-shared DAX translations see the same business context as the final docs.
+
+The historical sections below are still useful as design rationale and a record
+of sequencing, but the "current scenario" section describes the original gap,
+not the present state of the code.
+
 ## Context — current scenario (verified by reading the source)
 
 The product pitches "AI-powered documentation", but today the AI is a **text-polish layer, not the reasoning core**:

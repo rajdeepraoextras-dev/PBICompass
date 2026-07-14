@@ -55,6 +55,11 @@ strict JSON-schema output, not a single do-everything prompt.
 - **Claude Opus 4.8** is the default engine, called with **structured outputs**
   so every agent returns a schema-validated object the renderer can trust —
   never freeform text to parse.
+- **A local schema gate backs up provider structured output.** Every LLM
+  response, including cached responses and fallback JSON from OpenAI-compatible
+  providers, is validated against the agent schema before it can be cached or
+  rendered; invalid output falls back to the deterministic engine for that
+  agent.
 - **Adaptive reasoning effort** — agents run Claude's extended thinking at
   `high` by default and can be dialed to `xhigh`/`max` per job; the same knob
   is implemented cross-provider (Gemini `thinking_budget`, Cohere reasoning
@@ -78,6 +83,10 @@ strict JSON-schema output, not a single do-everything prompt.
   Covered/Partial/Gap matrix with links to the actual measures/columns/pages
   that satisfy each one — and is only allowed to cite evidence it was
   actually offered, never an invented anchor.
+- **Customer metadata is treated as untrusted evidence.** Names, descriptions,
+  DAX/M expressions, visual titles, and other report text are never allowed to
+  act as prompt instructions; agents may quote or summarize them only as source
+  material.
 
 See [src/pbicompass/agents](src/pbicompass/agents) for the agent prompts/schemas
 and [src/pbicompass/agents/llm.py](src/pbicompass/agents/llm.py) for the Claude

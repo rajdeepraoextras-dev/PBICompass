@@ -352,12 +352,25 @@ Cohere/MeshAPI only for reasoning-capable models. There is no plan clamp on
 reasoning depth; the per-job quota is the only cost guardrail. A
 retry-without-reasoning fallback covers models/providers that reject the knob.
 
+**Structured-output validation:** every agent response is checked twice where
+possible: first by the provider's structured-output mode, then by
+PBICompass's dependency-free schema validator before the response can be cached
+or rendered. This second gate also covers cached responses and MeshAPI's
+plain-JSON fallback path; invalid shapes degrade to deterministic output for
+that agent.
+
 **Passes** (beyond the four base agents — Business Analyst, DAX Translator, Data
 Modeler, deterministic Auditor):
 
 - **Shared job context** (`context.py`) — one DAX-Translator pass reused across
-  every requested document type.
-- **Report Intelligence** (`insights.py`) — a whole-model reasoning pass.
+  every requested document type. In the hosted worker this context is built only
+  after uploaded rules and enrichment metadata have been applied, so the first
+  AI pass sees the same business context and audit configuration as the final
+  documents.
+- **Report Intelligence** (`insights.py`) — a whole-model reasoning pass over a
+  priority-budgeted digest. Report identity and audit summary are preserved
+  first, then tables/measures/pages/relationships/RLS/data sources are included
+  until the prompt budget is reached with explicit omission markers.
 - **Grounding** (`grounding.py`) — LLM-routed fact-check anchoring prose to the
   extracted facts (`report_facts.py`).
 - **Critic** (`critic.py`) — a senior-reviewer whole-document pass.
@@ -365,10 +378,13 @@ Modeler, deterministic Auditor):
 **Guardrails:** the AI may only *improve* prose, never downgrade a deterministic
 description or invent facts. Mechanically-obvious columns must not be labelled
 "Unknown / requires business confirmation." The orphaned-measure audit is always
-a deterministic set difference.
+a deterministic set difference. Report metadata is treated as untrusted source
+text: table/page/measure names, descriptions, visual titles, and DAX/M
+expressions may be cited as evidence but never followed as instructions.
 
 **Cache** (`cache.py`): the CLI defaults an on-disk SQLite response cache
-(`PBICOMPASS_LLM_CACHE`); the service leaves it off.
+(`PBICOMPASS_LLM_CACHE`); the service uses a sandbox-scoped cache file for the
+duration of an AI job and shreds it with the job sandbox.
 
 ---
 

@@ -207,6 +207,55 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(regenerated["measure_descriptions"][first_measure],
                         "A human-written definition.")
 
+    def test_enrichment_metadata_reaches_shared_ai_context(self):
+        # The hosted worker must apply enrichment before build_job_context.
+        # Otherwise Report Intelligence and the shared DAX Translator miss
+        # enrichment-only business context even though later generators see it.
+        import yaml
+        from pbicompass.agents import generate_document
+        from pbicompass.service import worker
+
+        seen: dict = {}
+
+        def fake_build_job_context(model, client, warn, **kwargs):
+            seen.update(kwargs)
+            return None
+
+        def offline_generate_one(document_type, model, client, meta, warn, ai_context,
+                                 top_cluster=None, plan=None, audit_verdicts=None,
+                                 requirements_matrix=None):
+            self.assertEqual(document_type, "technical")
+            return generate_document(model, None, **meta, on_warning=warn)
+
+        enrichment_yaml = yaml.safe_dump({
+            "metadata": {
+                "business_decision": "Monthly margin steering",
+                "target_audience": "Finance leadership",
+                "assumptions": "Only certified revenue is in scope.",
+            },
+        })
+        with mock.patch.object(worker, "_make_client", return_value=(object(), None)), \
+             mock.patch.object(worker, "build_job_context", side_effect=fake_build_job_context), \
+             mock.patch.object(worker, "_generate_one", side_effect=offline_generate_one):
+            res = self.client.post(
+                "/jobs",
+                files={
+                    "file": ("SampleSales.zip", _zip_fixture(), "application/zip"),
+                    "enrichment_file": ("report.enrichment.yaml", enrichment_yaml, "application/x-yaml"),
+                },
+                data={
+                    "provider": "anthropic",
+                    "provider_api_key": "test-key",
+                    "document_types": "technical",
+                },
+            )
+            job = self._wait(res.json()["job_id"], timeout=30.0)
+
+        self.assertEqual(job["status"], "done", job)
+        self.assertEqual(seen["business_decision"], "Monthly margin steering")
+        self.assertEqual(seen["target_audience"], "Finance leadership")
+        self.assertEqual(seen["assumptions"], "Only certified revenue is in scope.")
+
     def test_invalid_enrichment_file_warns_but_job_still_succeeds(self):
         res = self.client.post(
             "/jobs",

@@ -36,17 +36,37 @@ MAX_DAX_CHARS = 300
 
 
 def build_model_digest(model: SemanticModel, audit_summary: dict, char_budget: int = 45_000) -> str:
-    """A compact, deterministic whole-model summary for the Report
-    Intelligence prompt. Reuses ``report_facts`` helpers rather than
-    re-deriving friendly names/source summaries. Truncated to
-    ``char_budget`` characters (a hard tail cut, not a per-section one) so a
-    very large model still produces a boundedly-sized prompt."""
-    lines: list[str] = [f"Report: {model.report_name}"]
-    if model.model_name:
-        lines.append(f"Model: {model.model_name}")
+    """A compact, deterministic whole-model summary for Report Intelligence.
 
-    lines.append("")
-    lines.append("== Tables ==")
+    The digest is budgeted by section instead of tail-cutting the final text:
+    report identity and audit summary are always highest priority, then the
+    largest sections are added until the budget is exhausted. This keeps the
+    grounding facts useful for large models where a raw tail cut could remove
+    data sources, RLS, or audit counts entirely.
+    """
+    from ..render._shared import pluralize_count  # lazy: avoids the agents<->render import cycle
+
+    prefix: list[str] = [f"Report: {model.report_name}"]
+    if model.model_name:
+        prefix.append(f"Model: {model.model_name}")
+
+    audit_lines = [
+        "",
+        "== Audit Summary ==",
+        (
+            f"Health score: {audit_summary['health_overall']}/100 ({audit_summary['health_band']}); "
+            f"complexity: {audit_summary['complexity_level']}"
+        ),
+        (
+            f"Findings: {audit_summary['dax_finding_count']} DAX, "
+            f"{audit_summary['failed_practice_count']} failed best-practice, "
+            f"{audit_summary['performance_risk_count']} performance risk, "
+            f"{audit_summary['governance_finding_count']} governance, "
+            f"{pluralize_count('unused asset finding', audit_summary['unused_asset_count'])}"
+        ),
+    ]
+
+    table_lines = []
     for t in model.tables:
         cols = [c for c in t.columns if not c.is_hidden][:MAX_COLUMNS_PER_TABLE]
         col_strs = []
@@ -59,27 +79,24 @@ def build_model_digest(model: SemanticModel, audit_summary: dict, char_budget: i
             col_strs.append(f"{c.name}:{c.data_type}{stats}")
         omitted = len(t.columns) - len(cols)
         more = f" (+{omitted} more)" if omitted > 0 else ""
-        lines.append(f"- {t.name} [{t.kind}]: {', '.join(col_strs)}{more}")
+        table_lines.append(f"- {t.name} [{t.kind}]: {', '.join(col_strs)}{more}")
 
-    lines.append("")
-    lines.append("== Measures ==")
+    measure_lines = []
     for m in model.all_measures():
         expr = " ".join((m.expression or "").split())
         if len(expr) > MAX_DAX_CHARS:
             expr = expr[:MAX_DAX_CHARS] + "..."
-        lines.append(f"- {m.name} ({m.table}): {expr}")
+        measure_lines.append(f"- {m.name} ({m.table}): {expr}")
 
-    lines.append("")
-    lines.append("== Relationships ==")
+    relationship_lines = []
     for r in model.relationships:
         flag = "" if r.is_active else " [inactive]"
-        lines.append(
+        relationship_lines.append(
             f"- {r.from_table}[{r.from_column}] {r.from_cardinality}-to-{r.to_cardinality} "
             f"{r.to_table}[{r.to_column}] ({r.cross_filter} cross-filter){flag}"
         )
 
-    lines.append("")
-    lines.append("== Pages ==")
+    page_lines = []
     for p in model.pages:
         if p.is_hidden:
             continue
@@ -88,40 +105,60 @@ def build_model_digest(model: SemanticModel, audit_summary: dict, char_budget: i
             for v in p.visuals if v.fields and not v.is_slicer
         ]
         flag = " [drillthrough]" if p.is_drillthrough else ""
-        lines.append(f"- {p.display_name}{flag}: {'; '.join(bindings) or 'no field bindings'}")
+        page_lines.append(f"- {p.display_name}{flag}: {'; '.join(bindings) or 'no field bindings'}")
 
-    if model.roles:
-        lines.append("")
-        lines.append("== RLS Roles ==")
-        for role in model.roles:
-            filters = "; ".join(f"{tp.table}: {tp.filter_expression}" for tp in role.table_permissions)
-            lines.append(f"- {role.name}: {filters or 'no row filters'}")
+    rls_lines = []
+    for role in model.roles:
+        filters = "; ".join(f"{tp.table}: {tp.filter_expression}" for tp in role.table_permissions)
+        rls_lines.append(f"- {role.name}: {filters or 'no row filters'}")
 
-    if model.data_sources:
-        lines.append("")
-        lines.append("== Data Sources ==")
-        for summary in data_source_type_counts(model):
-            lines.append(f"- {summary}")
+    source_lines = [f"- {summary}" for summary in data_source_type_counts(model)]
 
-    lines.append("")
-    lines.append("== Audit Summary ==")
-    lines.append(
-        f"Health score: {audit_summary['health_overall']}/100 ({audit_summary['health_band']}); "
-        f"complexity: {audit_summary['complexity_level']}"
-    )
-    from ..render._shared import pluralize_count  # lazy: avoids the agents<->render import cycle
+    sections: list[tuple[str, list[str]]] = [
+        ("Tables", table_lines),
+        ("Measures", measure_lines),
+        ("Pages", page_lines),
+        ("Relationships", relationship_lines),
+        ("RLS Roles", rls_lines),
+        ("Data Sources", source_lines),
+    ]
 
-    lines.append(
-        f"Findings: {audit_summary['dax_finding_count']} DAX, "
-        f"{audit_summary['failed_practice_count']} failed best-practice, "
-        f"{audit_summary['performance_risk_count']} performance risk, "
-        f"{audit_summary['governance_finding_count']} governance, "
-        f"{pluralize_count('unused asset finding', audit_summary['unused_asset_count'])}"
-    )
+    lines = prefix + audit_lines
+    truncated = False
+
+    def current_len(extra: list[str] | None = None) -> int:
+        candidate = lines + (extra or [])
+        return len("\n".join(candidate))
+
+    for title, section_lines in sections:
+        if not section_lines:
+            continue
+        header = ["", f"== {title} =="]
+        if current_len(header) > char_budget:
+            truncated = True
+            break
+        lines.extend(header)
+        included = 0
+        for line in section_lines:
+            if current_len([line]) > char_budget:
+                truncated = True
+                break
+            lines.append(line)
+            included += 1
+        omitted = len(section_lines) - included
+        if omitted > 0:
+            marker = f"- ... ({omitted} {title.lower()} omitted for prompt budget)"
+            if current_len([marker]) <= char_budget:
+                lines.append(marker)
+            truncated = True
+            break
 
     digest = "\n".join(lines)
+    suffix = "\n... (truncated)"
     if len(digest) > char_budget:
-        digest = digest[:char_budget] + "\n... (truncated)"
+        return digest[:char_budget] + suffix
+    if truncated:
+        return digest + suffix
     return digest
 
 
