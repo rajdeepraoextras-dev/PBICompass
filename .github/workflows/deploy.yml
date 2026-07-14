@@ -1,8 +1,6 @@
-name: Deploy to production
+name: Deploy to old VM production
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 # Only one production deploy at a time. Rapid successive pushes otherwise

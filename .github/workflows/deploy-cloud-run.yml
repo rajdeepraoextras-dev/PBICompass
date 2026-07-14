@@ -1,0 +1,68 @@
+name: Deploy Cloud Run production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-cloud-run-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: gold-atlas-501305-t1
+      REGION: us-central1
+      SERVICE: pbicompass
+      SERVICE_URL: https://pbicompass-3phuqyy4ba-uc.a.run.app
+      SUPABASE_URL: https://pxruqotkfozeadkenbth.supabase.co
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install -e ".[dev,service,agents,diagram]"
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --source . \
+            --project "$PROJECT_ID" \
+            --region "$REGION" \
+            --allow-unauthenticated \
+            --memory 4Gi \
+            --cpu 2 \
+            --concurrency 1 \
+            --timeout 1800 \
+            --max-instances 1 \
+            --min-instances 0 \
+            --cpu-boost \
+            --use-http2 \
+            --set-env-vars "PBICOMPASS_ENV=production,PBICOMPASS_REQUIRE_AUTH=1,PBICOMPASS_QUEUE=inline,PBICOMPASS_PUBLIC_URL=$SERVICE_URL,PBICOMPASS_OUTPUT_STORE=supabase,PBICOMPASS_OUTPUT_BUCKET=pbicompass-outputs,PBICOMPASS_OUTPUT_PREFIX=outputs,PBICOMPASS_MAX_UPLOAD_MB=100,PBICOMPASS_JOB_TIMEOUT_SECONDS=900,PBICOMPASS_UPLOAD_RATE_LIMIT=20,PBICOMPASS_UPLOAD_RATE_WINDOW_SECONDS=60,SUPABASE_URL=$SUPABASE_URL" \
+            --set-secrets "PBICOMPASS_DB=PBICOMPASS_DB:latest,PBICOMPASS_JOBS_DB=PBICOMPASS_DB:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,PBICOMPASS_ADMIN_TOKEN=PBICOMPASS_ADMIN_TOKEN:latest,MESHAPI_API_KEY=MESHAPI_API_KEY:latest" \
+            --quiet
+
+      - name: Verify production health
+        run: |
+          curl --fail --show-error --silent "$SERVICE_URL/app/api/health"
