@@ -76,7 +76,7 @@ Optional extras, declared in [`pyproject.toml`](../pyproject.toml):
 | `pbix` | `pip install -e ".[pbix]"` | `pbixray` — legacy `.pbix` semantic-model extraction (needs Python ≤ 3.13) |
 | `enrich` | `pip install -e ".[enrich]"` | `PyYAML` — the enrichment round-trip file |
 | `agents` | `pip install -e ".[agents]"` | `anthropic`, `google-genai`, `cohere`, `openai` — AI provider clients |
-| `service` | `pip install -e ".[service]"` | `fastapi`, `uvicorn`, `python-multipart` — the web service |
+| `service` | `pip install -e ".[service]"` | `fastapi`, `uvicorn`, `hypercorn[h2]`, `python-multipart` — the web service |
 | `postgres` | `pip install -e ".[postgres]"` | `psycopg[binary]` — managed Postgres backend for accounts |
 | `queue` | `pip install -e ".[queue]"` | `celery`, `redis` — async worker |
 | `observability` | `pip install -e ".[observability]"` | `sentry-sdk` — error tracking |
@@ -188,10 +188,10 @@ stages, and `sandbox.py` shreds the working directory when done.
 ### `service/` — the web service
 
 See [§11](#11-the-web-service) for full detail. Modules: `app.py` (routes),
-`ingest.py`, `worker.py`, `jobs.py`, `sandbox.py`, `accounts.py`, `admin.py`,
-`passwords.py`, `oidc.py`, `email.py`, `ratelimit.py`, `celery_app.py`,
-`db_backup.py`, `metrics.py`, `logging_config.py`, `sentry_config.py`, and the
-`static/` upload/admin/app UIs.
+`ingest.py`, `worker.py`, `jobs.py`, `sandbox.py`, `accounts.py`,
+`supabase_auth.py`, `admin.py`, `email.py`, `output_store.py`, `ratelimit.py`,
+`celery_app.py`, `db_backup.py`, `metrics.py`, `logging_config.py`,
+`sentry_config.py`, and the `static/` upload/admin/app UIs.
 
 ### Top-level modules
 
@@ -426,22 +426,23 @@ extracted metadata is ever logged or persisted.
 | `GET /jobs/{id}` | Job status. |
 | `GET /jobs/{id}/download?format=html\|docx\|md\|json\|pdf` | Download a rendered doc. |
 | `GET /me` | Caller's plan + remaining quota. |
-| `GET /healthz` | Health check. |
+| `GET /app/api/health` | Public health check used by production smoke tests. |
+| `GET /healthz` | Internal/readiness health check. |
 | `GET /metrics` | Prometheus-style metrics (`metrics.py`). |
-| `POST /auth/signup`, `/auth/login`, `/auth/logout` | Email/password sessions. |
-| `GET /auth/verify`, `POST /auth/reset-request`, `GET/POST /auth/reset` | Email verification + password reset. |
-| `GET /auth/oidc/login`, `/auth/oidc/callback` | "Sign in with Microsoft" (Entra ID OIDC). |
 | `GET /app/api/config`, `/me`, `/keys`, `POST /app/api/keys`, `DELETE /app/api/keys/{id}`, `GET /app/api/jobs` | Dashboard API. |
 | `POST /admin/api/verify`, `GET/POST /admin/api/accounts`, `DELETE /admin/api/accounts/{id}` | Admin API. |
 
 ### Auth & multi-tenancy
 
-Off by default (open `public` tenant, no limits) — ideal for self-hosting.
-Enable with `PBICOMPASS_REQUIRE_AUTH=1`. Then every request needs
-`Authorization: Bearer <key>` (or `X-API-Key`). Jobs are isolated per tenant
-(another tenant's key gets `404`). Per-plan monthly quotas, mirroring
-`/#pricing`: `free` 1, `pro` 10, `business` 30 → `429` when exhausted
-(`accounts.py`).
+Off by default (open `public` tenant, no limits) — ideal for local development.
+Enable with `PBICOMPASS_REQUIRE_AUTH=1`. Hosted production uses Supabase Auth:
+the browser signs in with Supabase, the app verifies the Supabase JWT, and an
+account row is created on first sign-in. The self-host API-key path also remains:
+requests can use `Authorization: Bearer <key>` or `X-API-Key`.
+
+Jobs are isolated per tenant (another tenant's key gets `404`). Per-plan monthly
+quotas, mirroring `/#pricing`: `free` 1, `pro` 10, `business` 30 → `429` when
+exhausted (`accounts.py`).
 
 Accounts, keys, and per-billing-period usage **counts** are stored in SQLite by
 default, or managed Postgres via `PBICOMPASS_DB=postgres://...` + the `postgres`
@@ -454,18 +455,13 @@ the browser. The admin token is a single shared secret with brute-force lockout
 (15 min after 8 failed attempts). Without the token set, `/admin/api/*` returns
 503.
 
-### Sessions, email & OIDC
+### Supabase Auth
 
-- **Sessions** (`passwords.py`, cookies): signup/login create a server-side
-  session (opaque hashed cookie token) plus a CSRF cookie for the double-submit
-  check. Active only when `PBICOMPASS_DB` is configured. TTL and cookie-Secure
-  are configurable.
-- **Email** (`email.py`): transactional verify/reset emails via `console`
-  (logs the link, default) or `smtp` (any provider, via stdlib `smtplib`).
-  Emails only ever contain an auth link + the recipient's own address.
-- **OIDC** (`oidc.py`): Entra ID auth-code + PKCE flow, zero new deps. Enabled
-  only when client id/secret + a resolvable redirect URI are all set; otherwise
-  the routes report 404.
+Hosted production delegates browser identity to Supabase Auth. Configure
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and the verifier secret/JWKS settings, then
+serve the dashboard from `/app`. The service maps a verified Supabase user to
+an internal account and applies the same tenant isolation, API-key management,
+and quota accounting used by the self-host path.
 
 ### Async worker & scale
 
@@ -515,29 +511,17 @@ required to run locally with the offline engine.
 | `PBICOMPASS_UPLOAD_RATE_LIMIT` / `PBICOMPASS_UPLOAD_RATE_WINDOW_SECONDS` | `20` / `60` |
 | `PBICOMPASS_AUTH_RATE_LIMIT` / `PBICOMPASS_AUTH_RATE_WINDOW_SECONDS` | `10` / `60` |
 
-**Sessions & cookies**
-
-| Var | Default |
-|---|---|
-| `PBICOMPASS_SESSION_TTL_SECONDS` | `2592000` (30 days) |
-| `PBICOMPASS_COOKIE_SECURE` | `1` (HTTPS-only; set `0` only for local http dev) |
-
-**Email**
+**Supabase**
 
 | Var | Default | Purpose |
 |---|---|---|
-| `PBICOMPASS_EMAIL_BACKEND` | `console` | `console` (logs link) or `smtp`. |
-| `PBICOMPASS_PUBLIC_URL` | (unset) | Base URL for emailed links. |
-| `PBICOMPASS_SMTP_HOST/PORT/USER/PASSWORD/FROM/TLS` | — / `587` / — / — / — / `1` | SMTP settings (when backend is `smtp`). |
-| `PBICOMPASS_REQUIRE_EMAIL_VERIFICATION` | `0` | Require a verified email before login. |
-
-**Microsoft OIDC**
-
-| Var | Default | Purpose |
-|---|---|---|
-| `PBICOMPASS_OIDC_CLIENT_ID` / `_CLIENT_SECRET` | (unset) | Entra ID app credentials. |
-| `PBICOMPASS_OIDC_TENANT` | `common` | Tenant GUID or `common`/`organizations`/`consumers`. |
-| `PBICOMPASS_OIDC_REDIRECT_URI` | (derived from `PBICOMPASS_PUBLIC_URL`) | Registered redirect URI. |
+| `SUPABASE_URL` | (unset) | Supabase project URL for hosted auth and storage. |
+| `SUPABASE_ANON_KEY` | (unset) | Browser Supabase client key exposed through `/app/api/config`. |
+| `SUPABASE_JWT_SECRET` | (unset) | JWT verifier secret, when using HS256 Supabase tokens. |
+| `SUPABASE_JWKS_URL` | (derived when possible) | JWKS endpoint, when using asymmetric Supabase tokens. |
+| `SUPABASE_SERVICE_ROLE_KEY` | (unset) | Server-side storage writes for the Supabase output backend. |
+| `PBICOMPASS_OUTPUT_BUCKET` | `pbicompass-outputs` | Supabase Storage bucket for rendered output bytes. |
+| `PBICOMPASS_OUTPUT_PREFIX` | `outputs` | Object-key prefix inside the output bucket. |
 
 **Admin, logging & observability**
 
@@ -620,8 +604,7 @@ pbicompass/
   docs/
     TOOL_DETAILS.md           # this file
     IMPLEMENTATION_PLAN.md    # architecture + phased roadmap
-    DEPLOYMENT.md             # production deployment guide
-    BEGINNER_DEPLOY.md        # click-by-click first host
+    DEPLOYMENT.md             # Cloud Run production runbook
     planning/                 # AI_NATIVE_PLAN, PRODUCTION_ROADMAP,
                               #   ROADMAP_PROGRESS, DOCUMENTATION_QUALITY_PLAN
     design/                   # wireframe / lineage HTML mockups
@@ -637,8 +620,7 @@ pbicompass/
 |---|---|
 | [README.md](../README.md) | Quick start, usage, project overview |
 | [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Full architecture, agent prompts, phased roadmap |
-| [docs/DEPLOYMENT.md](DEPLOYMENT.md) | Production deployment, env vars, zero-retention checklist |
-| [docs/BEGINNER_DEPLOY.md](BEGINNER_DEPLOY.md) | Click-by-click deploy for a first-time host |
+| [docs/DEPLOYMENT.md](DEPLOYMENT.md) | Cloud Run production runbook, health checks, rollback, and domain setup |
 | [docs/planning/](planning/) | AI-native plan, production roadmap, roadmap progress, doc-quality plan |
 | [SECURITY.md](../SECURITY.md) | Data-handling model, zero-leakage guarantees |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Dev setup, test workflow, ground rules |

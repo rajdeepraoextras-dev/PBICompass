@@ -305,7 +305,7 @@ pbicompass/
   tests/                  # test suite + synthetic fixtures
   docs/                   # all documentation
     TOOL_DETAILS.md       # complete start-to-end reference
-    IMPLEMENTATION_PLAN.md  DEPLOYMENT.md  BEGINNER_DEPLOY.md
+    IMPLEMENTATION_PLAN.md  DEPLOYMENT.md
     planning/             # AI_NATIVE_PLAN, PRODUCTION_ROADMAP, ROADMAP_PROGRESS, DOCUMENTATION_QUALITY_PLAN
     design/               # wireframe / lineage HTML mockups
   assets/                 # logo and brand images
@@ -406,8 +406,7 @@ multi-tenancy with freemium quotas**. Remaining for scale/commercial:
 | [Wiki](https://github.com/rajdeepraoextras-dev/PBICompass/wiki) | Guided tour — Built with Claude, Architecture, Getting Started, Feature Tour, Deployment, FAQ, Roadmap |
 | [docs/TOOL_DETAILS.md](docs/TOOL_DETAILS.md) | **Complete start-to-end reference** — every module, CLI command, flag, env var, endpoint, and data-flow stage |
 | [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Full architecture, agent prompts, and phased roadmap |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment (Render/Fly.io/VM), env vars, zero-retention checklist |
-| [docs/BEGINNER_DEPLOY.md](docs/BEGINNER_DEPLOY.md) | Click-by-click deploy guide for a first-time host |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Cloud Run production runbook, Supabase storage, health checks, rollback, and domain setup |
 | [SECURITY.md](SECURITY.md) | Data-handling model, zero-leakage guarantees, reporting a vulnerability |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, test workflow, ground rules for changes |
 | [.env.example](.env.example) | Every environment variable the app reads, with defaults |
