@@ -23,6 +23,13 @@ HEALTH_COMPONENT_LABELS = {
     "unused_assets": "Maintainability",
 }
 
+OPTIONAL_CONTEXT_FIELDS = (
+    "owner", "refresh_schedule", "target_audience", "version", "status",
+    "author", "reviewer", "classification", "business_decision", "requirements",
+    "security_notes", "refresh_notes", "deployment_notes", "access_notes",
+    "glossary", "assumptions", "support_notes",
+)
+
 
 def pluralize(word: str, count: int, plural: str | None = None) -> str:
     """Regular-English pluralization for microcopy. Kills the "asset(s)"
@@ -147,8 +154,8 @@ def is_local_path(path_str: str) -> bool:
 
 
 def md_todo(text: str) -> str:
-    """Markdown ``To complete`` placeholder blockquote."""
-    return f"> **✎ To complete:** {text}\n"
+    """Neutral note for optional context not supplied during generation."""
+    return f"> **Not provided during generation:** {text}\n"
 
 
 def md_table(headers: list[str], rows: list[list[str]], empty: str = "_None._") -> str:
@@ -166,8 +173,8 @@ def html_e(v) -> str:
 
 
 def html_todo(text: str) -> str:
-    """HTML ``To complete`` placeholder div. Escapes ``text`` itself."""
-    return f'<div class="todo"><b>✎ To complete:</b> {html_e(text)}</div>'
+    """Neutral note for optional context not supplied during generation."""
+    return f'<div class="todo"><b>Not provided during generation:</b> {html_e(text)}</div>'
 
 
 def html_table(
@@ -193,13 +200,8 @@ def html_table(
 
 
 def compute_completeness(metadata: Any) -> tuple[int, int, list[str]]:
-    """Count how many human metadata fields are filled vs total, returning (pct, missing_count, missing_list)."""
-    fields = [
-        "owner", "refresh_schedule", "target_audience", "version", "status",
-        "author", "reviewer", "classification", "business_decision", "requirements",
-        "security_notes", "refresh_notes", "deployment_notes", "access_notes",
-        "glossary", "assumptions", "support_notes"
-    ]
+    """Report optional context coverage without treating absent input as a quality score."""
+    fields = OPTIONAL_CONTEXT_FIELDS
     from typing import Any as TypAny
     filled = 0
     missing = []

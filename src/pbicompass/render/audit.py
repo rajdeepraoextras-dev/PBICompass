@@ -19,7 +19,7 @@ from ..schemas.audit_document import AuditDocument
 from ._docx_writer import _Docx
 from ._html_shell import page_shell
 from .docx import _add_para_with_md
-from ._shared import HEALTH_COMPONENT_LABELS
+from ._shared import HEALTH_COMPONENT_LABELS, OPTIONAL_CONTEXT_FIELDS
 from ._shared import anchor_slug
 from ._shared import pluralize
 from ._shared import pluralize_count
@@ -181,7 +181,9 @@ def render_markdown(doc: AuditDocument) -> str:
     
     from ._shared import compute_completeness
     pct, missing_count, _ = compute_completeness(md)
-    out.append(f"**Completeness:** {pct}% ({missing_count} fields awaiting input)\n")
+    out.append(f"**Optional context supplied:** {len(OPTIONAL_CONTEXT_FIELDS) - missing_count}/"
+               f"{len(OPTIONAL_CONTEXT_FIELDS)} "
+               f"({missing_count} optional fields not provided)\n")
     if doc.narrative_overview:
         out.append(f"\n{doc.narrative_overview}\n")
     if getattr(doc, "changelog", None):
@@ -544,7 +546,9 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
     
     from ._shared import compute_completeness
     pct, missing_count, _ = compute_completeness(md)
-    d.para([d._run(f"Completeness: {pct}% ({missing_count} fields awaiting input)", italic=True)])
+    d.para([d._run(f"Optional context supplied: {len(OPTIONAL_CONTEXT_FIELDS) - missing_count}/"
+                   f"{len(OPTIONAL_CONTEXT_FIELDS)} "
+                   f"({missing_count} optional fields not provided)", italic=True)])
     if doc.narrative_overview:
         d.para(doc.narrative_overview)
     if getattr(doc, "changelog", None):

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 
-from ._shared import html_e as _e
+from ._shared import OPTIONAL_CONTEXT_FIELDS, html_e as _e
 from ._logo import LOGO_DATA_URI
 from ._poppins_font import POPPINS_FONT_FACES_CSS, POPPINS_FONT_STACK
 from ._vendor_svg_pan_zoom import SVG_PAN_ZOOM_JS
@@ -261,8 +261,10 @@ body {
 .content-wrapper {
   margin-left: var(--sidebar-w);
   flex-grow: 1;
+  min-width: 0;
+  width: calc(100% - var(--sidebar-w));
   padding: 48px 56px;
-  max-width: calc(100vw - var(--sidebar-w));
+  max-width: none;
 }
 .main-content {
   max-width: 900px;
@@ -554,11 +556,11 @@ details.collapsible > .code-block pre {
 }
 .pill.suppressed { background: var(--bg-code-inline); color: var(--text-faint); text-transform: none; }
 
-/* Todo items */
+/* Optional context unavailable at generation time. */
 .todo {
-  border: 1px dashed #fbbf24;
-  background-color: #fffbeb;
-  color: #b45309;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-code-inline);
+  color: var(--text-muted);
   border-radius: 8px;
   padding: 12px 16px;
   font-size: 0.86rem;
@@ -1389,7 +1391,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ``moved`` permanently stuck true (no mouseup ever follows a print) and
   // silently swallow the very next click on every diagram link.
   const panZoomInstances = [];
-  document.querySelectorAll('.diagram svg').forEach((svg) => {
+  document.querySelectorAll('.diagram svg').forEach((svg, diagramIndex) => {
     if (typeof svgPanZoom !== 'function') return; // vendor script failed to parse — degrade to static, never throw
     // "Report at a glance" thumbnails are static previews (pointer-events:
     // none — the whole card is already one link to the sibling doc's real,
@@ -1429,6 +1431,12 @@ document.addEventListener('DOMContentLoaded', () => {
       zoomEnabled: true, panEnabled: true, controlIconsEnabled: true,
       fit: true, center: true, zoomScaleSensitivity: 0.3, minZoom: 0.5, maxZoom: 8,
       beforePan: () => { if (isDown) moved = true; },
+    });
+    // svg-pan-zoom injects the same five hard-coded ids into every SVG.
+    // Scope them per diagram so the final live DOM keeps globally unique
+    // ids even when a page contains several wireframes/dependency trees.
+    svg.querySelectorAll('[id^="svg-pan-zoom-"]').forEach((control) => {
+      control.id = `diagram-${diagramIndex + 1}-${control.id}`;
     });
     panZoomInstances.push({ instance, sizeToAspect });
     svg.addEventListener('mousedown', () => { isDown = true; });
@@ -1645,8 +1653,10 @@ def page_shell(
         pct, missing_count, missing_fields = completeness
         o.append('<div class="completeness-bar-container" style="margin-top:10px; font-size:0.85em;">')
         o.append('<div style="display:flex; justify-content:space-between; margin-bottom:4px;">')
-        o.append(f'<span>Documentation Completeness: <strong>{pct}%</strong></span>')
-        o.append(f'<span>{missing_count} fields awaiting input</span>')
+        total_count = len(OPTIONAL_CONTEXT_FIELDS)
+        supplied_count = total_count - missing_count
+        o.append(f'<span>Optional context supplied: <strong>{supplied_count}/{total_count}</strong></span>')
+        o.append(f'<span>{missing_count} optional fields not provided</span>')
         o.append('</div>')
         o.append('<div class="progress-bar-bg" style="background:#e2e8f0; height:6px; border-radius:3px; overflow:hidden; position:relative;">')
         o.append(f'<div class="progress-bar-fill" style="background:var(--primary); width:{pct}%; height:100%;"></div>')

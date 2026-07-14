@@ -317,6 +317,17 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
         except Exception as exc:
             warn(f"Senior Reviewer: quality pass failed, continuing ({exc})")
 
+        # This is the blocking production boundary. The AI reviewer above is
+        # optional; deterministic content and navigation integrity are not.
+        from ..agents.output_gate import validate_bundle
+        try:
+            validated_html = validate_bundle(
+                docs, model, html_filenames=html_filenames or None, ai_context=ai_context,
+            )
+        except Exception as exc:
+            log.error("job %s output gate: %s", job_id, exc)
+            raise
+
         # Phase B: render everything (body unchanged from the old combined
         # loop).
         for dtype in document_types:
@@ -330,9 +341,7 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
 
             outputs[key("md")] = renderers["md"](doc).encode("utf-8")
             outputs[key("json")] = doc.to_json().encode("utf-8")
-            outputs[key("html")] = renderers["html"](
-                doc, doc_links=doc_links, sibling_hrefs=html_filenames or None,
-            ).encode("utf-8")
+            outputs[key("html")] = validated_html[dtype].encode("utf-8")
 
             docx_path = sandbox.path(f"out.{dtype}.docx")
             renderers["docx"](doc, docx_path)

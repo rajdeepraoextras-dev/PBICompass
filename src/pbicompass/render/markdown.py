@@ -33,11 +33,12 @@ def render_markdown(doc: Document) -> str:
     subtitle_str = f"{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}"
     if getattr(md, "score_trend", None):
         subtitle_str += f" · Score Trend: {md.score_trend}"
-    from ._shared import compute_completeness
+    from ._shared import OPTIONAL_CONTEXT_FIELDS, compute_completeness
     pct, missing_count, _ = compute_completeness(md)
     out.append(
         f"_{subtitle_str}_\n\n"
-        f"**Completeness:** {pct}% ({missing_count} fields awaiting input)\n\n"
+        f"**Optional context supplied:** {len(OPTIONAL_CONTEXT_FIELDS) - missing_count}/"
+        f"{len(OPTIONAL_CONTEXT_FIELDS)} ({missing_count} optional fields not provided)\n\n"
         f"**At a glance:** {s.get('tables',0)} tables · {s.get('columns',0)} columns · "
         f"{s.get('measures',0)} measures · {s.get('relationships',0)} relationships · "
         f"{s.get('pages',0)} pages · {s.get('visuals',0)} visuals\n"
@@ -67,7 +68,7 @@ def render_markdown(doc: Document) -> str:
     missing_doc_control = [f for f, v in [("Version", md.version), ("Status", md.status), ("Author", md.author),
                                           ("Reviewer", md.reviewer), ("Classification", md.classification)] if not v]
     if missing_doc_control:
-        out.append(_todo(f"Complete missing document control fields: {', '.join(missing_doc_control)}"))
+        out.append(_todo(f"Optional document-control context: {', '.join(missing_doc_control)}"))
 
     # 2. Executive Summary
     es = doc.executive_summary
@@ -304,11 +305,11 @@ def render_markdown(doc: Document) -> str:
         out.append(md.refresh_notes + "\n")
     else:
         placeholder_rows = [
-            ["Refresh Type", "✎ To complete"],
-            ["Gateway Name", "✎ To complete"],
-            ["Typical Duration", "✎ To complete"],
-            ["Dataset Size", "✎ To complete"],
-            ["Failure Alert Contact", "✎ To complete"],
+            ["Refresh Type", "Not provided during generation"],
+            ["Gateway Name", "Not provided during generation"],
+            ["Typical Duration", "Not provided during generation"],
+            ["Dataset Size", "Not provided during generation"],
+            ["Failure Alert Contact", "Not provided during generation"],
         ]
         out.append(_table(["Field", "Value / Status"], placeholder_rows))
         out.append(_todo("Detail performance considerations and gateway configurations."))

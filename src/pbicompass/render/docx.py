@@ -51,12 +51,14 @@ def render_docx(doc: Document, out_path) -> Path:
         subtitle_str += f" · Score Trend: {md.score_trend}"
     d.para([d._run(subtitle_str, italic=True)])
     
-    from ._shared import compute_completeness
+    from ._shared import OPTIONAL_CONTEXT_FIELDS, compute_completeness
     pct, missing_count, _ = compute_completeness(md)
-    d.para([d._run(f"Completeness: {pct}% ({missing_count} fields awaiting input)", italic=True)])
+    d.para([d._run(f"Optional context supplied: {len(OPTIONAL_CONTEXT_FIELDS) - missing_count}/"
+                   f"{len(OPTIONAL_CONTEXT_FIELDS)} "
+                   f"({missing_count} optional fields not provided)", italic=True)])
 
     def todo(t):
-        d.para([d._run("✎ To complete: " + t, italic=True)])
+        d.para([d._run("Not provided during generation: " + t, italic=True)])
 
     def _t(rows):
         return [[str(c) for c in r] for r in rows]
@@ -85,7 +87,7 @@ def render_docx(doc: Document, out_path) -> Path:
     missing_doc_control = [f for f, v in [("Version", md.version), ("Status", md.status), ("Author", md.author),
                                           ("Reviewer", md.reviewer), ("Classification", md.classification)] if not v]
     if missing_doc_control:
-        todo(f"Complete missing document control fields: {', '.join(missing_doc_control)}")
+        todo(f"Optional document-control context: {', '.join(missing_doc_control)}")
 
     # 2. Executive Summary
     es = doc.executive_summary
@@ -313,11 +315,11 @@ def render_docx(doc: Document, out_path) -> Path:
                 d.para(line)
     else:
         placeholder_rows = [
-            ["Refresh Type", "✎ To complete"],
-            ["Gateway Name", "✎ To complete"],
-            ["Typical Duration", "✎ To complete"],
-            ["Dataset Size", "✎ To complete"],
-            ["Failure Alert Contact", "✎ To complete"],
+            ["Refresh Type", "Not provided during generation"],
+            ["Gateway Name", "Not provided during generation"],
+            ["Typical Duration", "Not provided during generation"],
+            ["Dataset Size", "Not provided during generation"],
+            ["Failure Alert Contact", "Not provided during generation"],
         ]
         d.table(["Field", "Value / Status"], _t(placeholder_rows))
         todo("Detail performance considerations and gateway configurations.")

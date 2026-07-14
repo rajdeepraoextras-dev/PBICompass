@@ -43,7 +43,8 @@ def _deterministic_purpose(model) -> str:
     # Reuses the same deterministic narrative the technical document's
     # Executive Summary section falls back to — already concise (2-3
     # sentences) and free of table/DAX jargon.
-    return business_analyst_deterministic(model).core_purpose
+    purpose = business_analyst_deterministic(model).core_purpose
+    return f"For decision-makers, this report provides the following operational view: {purpose}"
 
 
 def _measure_visual_counts(model) -> dict[str, int]:

@@ -295,8 +295,10 @@ body {
 .content-wrapper {
   margin-left: var(--sidebar-w);
   flex-grow: 1;
+  min-width: 0;
+  width: calc(100% - var(--sidebar-w));
   padding: 48px 56px;
-  max-width: calc(100vw - var(--sidebar-w));
+  max-width: none;
 }
 .main-content {
   max-width: 900px;
@@ -588,11 +590,11 @@ details.collapsible > .code-block pre {
 }
 .pill.suppressed { background: var(--bg-code-inline); color: var(--text-faint); text-transform: none; }
 
-/* Todo items */
+/* Optional context unavailable at generation time. */
 .todo {
-  border: 1px dashed #fbbf24;
-  background-color: #fffbeb;
-  color: #b45309;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-code-inline);
+  color: var(--text-muted);
   border-radius: 8px;
   padding: 12px 16px;
   font-size: 0.86rem;
@@ -1242,7 +1244,7 @@ details.collapsible > .code-block pre {
 <div class="kpi"><div class="n">5</div><div class="l">Next Steps</div></div>
 </div>
 <h2 id="sec1">1. Purpose &amp; Value</h2>
-<p>&#x27;Corporate Spend&#x27; reports on Date, tracking Amount, Actual, LE1, LE2 across Business Area, Cost Element, Country Region, Department. It spans 2 report pages, documented individually below. This purpose statement is derived from the model contents alone — the business context requires confirmation from the report owner.</p>
+<p>For decision-makers, this report provides the following operational view: &#x27;Corporate Spend&#x27; reports on Date, tracking Amount, Actual, LE1, LE2 across Business Area, Cost Element, Country Region, Department. It spans 2 report pages, documented individually below. This purpose statement is derived from the model contents alone — the business context requires confirmation from the report owner.</p>
 <p>This report gives stakeholders direct visibility into Var Plan %, Actual, Plan, reducing reliance on manual reporting and supporting faster, data-driven decisions.</p>
 <div class="health-mini"><div><div class="score-big" style="font-size:2.2rem;">77/100</div><span class="band-chip good">Good</span></div><div class="mini-bars"><div class="mini-bar-row"><span class="mini-bar-label">Model Design</span><span class="mini-bar-track"><span class="mini-bar-fill" style="width:75%; background:#124fed;"></span></span><span class="mini-bar-value">75</span></div><div class="mini-bar-row"><span class="mini-bar-label">Calculation Quality</span><span class="mini-bar-track"><span class="mini-bar-fill" style="width:81%; background:#124fed;"></span></span><span class="mini-bar-value">81</span></div><div class="mini-bar-row"><span class="mini-bar-label">Governance &amp; Security</span><span class="mini-bar-track"><span class="mini-bar-fill" style="width:73%; background:#b45309;"></span></span><span class="mini-bar-value">73</span></div><div class="mini-bar-row"><span class="mini-bar-label">Performance</span><span class="mini-bar-track"><span class="mini-bar-fill" style="width:88%; background:#124fed;"></span></span><span class="mini-bar-value">88</span></div><div class="mini-bar-row"><span class="mini-bar-label">Maintainability</span><span class="mini-bar-track"><span class="mini-bar-fill" style="width:70%; background:#b45309;"></span></span><span class="mini-bar-value">70</span></div></div></div>
 <div class="no-print"><h3>Report at a glance <span class="muted">(2 pages)</span></h3><div class="thumb-grid"><div class="thumb-card"><div class="diagram"><svg viewBox="0 0 760 488" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="wireframe-title-reportsection2">
@@ -1540,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ``moved`` permanently stuck true (no mouseup ever follows a print) and
   // silently swallow the very next click on every diagram link.
   const panZoomInstances = [];
-  document.querySelectorAll('.diagram svg').forEach((svg) => {
+  document.querySelectorAll('.diagram svg').forEach((svg, diagramIndex) => {
     if (typeof svgPanZoom !== 'function') return; // vendor script failed to parse — degrade to static, never throw
     // "Report at a glance" thumbnails are static previews (pointer-events:
     // none — the whole card is already one link to the sibling doc's real,
@@ -1580,6 +1582,12 @@ document.addEventListener('DOMContentLoaded', () => {
       zoomEnabled: true, panEnabled: true, controlIconsEnabled: true,
       fit: true, center: true, zoomScaleSensitivity: 0.3, minZoom: 0.5, maxZoom: 8,
       beforePan: () => { if (isDown) moved = true; },
+    });
+    // svg-pan-zoom injects the same five hard-coded ids into every SVG.
+    // Scope them per diagram so the final live DOM keeps globally unique
+    // ids even when a page contains several wireframes/dependency trees.
+    svg.querySelectorAll('[id^="svg-pan-zoom-"]').forEach((control) => {
+      control.id = `diagram-${diagramIndex + 1}-${control.id}`;
     });
     panZoomInstances.push({ instance, sizeToAspect });
     svg.addEventListener('mousedown', () => { isDown = true; });

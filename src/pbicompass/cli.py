@@ -563,6 +563,25 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             _warn(f"Senior Reviewer: quality pass failed, continuing ({exc})")
 
+        # Optional intake fields are not gate criteria; missing values render
+        # as "Not provided". Generated content defects do block the export.
+        try:
+            from .agents.output_gate import validate_bundle
+            gate_filenames = None
+            requested_format = args.format or ({".html": "html", ".htm": "html"}.get(
+                args.out.suffix.lower()) if args.out else None)
+            if len(document_types) > 1 and args.out and requested_format == "html":
+                gate_filenames = {
+                    dtype: args.out.with_name(f"{args.out.stem}.{dtype}.html").name
+                    for dtype in document_types
+                }
+            validate_bundle(
+                docs, model, html_filenames=gate_filenames, ai_context=ai_context,
+            )
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+
         if args.bundle:
             return _write_bundle(model, docs, document_types, args.out, enrichment_data,
                                 enrichment_file_used=enrichment_applied, quiet=args.quiet)

@@ -171,6 +171,18 @@ class OutputQualityGuardsTest(unittest.TestCase):
         for name, text in self.rendered.items():
             self.assertGreater(len(text), 500, f"{name} rendered suspiciously small ({len(text)} chars)")
 
+    def test_optional_intake_is_neutral_not_incomplete_work(self):
+        for name, text in self.rendered.items():
+            self.assertNotIn("fields awaiting input", text.lower(), name)
+            self.assertNotIn("to complete", text.lower(), name)
+            self.assertNotIn("complete missing", text.lower(), name)
+        self.assertIn("optional context supplied", self.rendered["technical.html"].lower())
+        self.assertIn("not provided during generation", self.rendered["technical.html"].lower())
+
+    def test_live_svg_controls_are_scoped_per_diagram(self):
+        for name in ("technical.html", "user_guide.html"):
+            self.assertIn("diagram-${diagramIndex + 1}-${control.id}", self.rendered[name])
+
     # ---- V2 fix must not over-exclude a real, disconnected measure-home
     # table: SampleSales' "Key Measures" (1 calculated column, no
     # relationships) is exactly the shape field_parameter_table_names'

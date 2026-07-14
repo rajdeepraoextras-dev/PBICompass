@@ -165,7 +165,7 @@ def render_html(
     missing_doc_control = [f for f, v in [("Version", md.version), ("Status", md.status), ("Author", md.author), 
                                           ("Reviewer", md.reviewer), ("Classification", md.classification)] if not v]
     if missing_doc_control:
-        o.append(_todo(f"Complete missing document control fields: {', '.join(missing_doc_control)}"))
+        o.append(_todo(f"Optional document-control context: {', '.join(missing_doc_control)}"))
 
     # 2. Executive Summary
     es = doc.executive_summary
@@ -501,11 +501,11 @@ def render_html(
     else:
         # Render placeholder table (Fix 8)
         placeholder_rows = [
-            ["Refresh Type", '<span class="todo">✎ To complete</span>'],
-            ["Gateway Name", '<span class="todo">✎ To complete</span>'],
-            ["Typical Duration", '<span class="todo">✎ To complete</span>'],
-            ["Dataset Size", '<span class="todo">✎ To complete</span>'],
-            ["Failure Alert Contact", '<span class="todo">✎ To complete</span>'],
+            ["Refresh Type", '<span class="muted">Not provided during generation</span>'],
+            ["Gateway Name", '<span class="muted">Not provided during generation</span>'],
+            ["Typical Duration", '<span class="muted">Not provided during generation</span>'],
+            ["Dataset Size", '<span class="muted">Not provided during generation</span>'],
+            ["Failure Alert Contact", '<span class="muted">Not provided during generation</span>'],
         ]
         o.append(_table(["Field", "Value / Status"], placeholder_rows))
         o.append(_todo("Detail performance considerations and gateway configurations."))
