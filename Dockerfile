@@ -7,18 +7,20 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Pandoc enables PDF output. HTML, DOCX, MD, and JSON work without it.
+# Pandoc + WeasyPrint enable PDF output. HTML, DOCX, MD, and JSON work without them.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends pandoc \
+    && apt-get install -y --no-install-recommends pandoc weasyprint \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md requirements-prod.lock ./
 COPY src ./src
 
 # Web service, AI engines, Postgres, and Supabase Auth support. AI providers
 # stay inert until their API keys are supplied at runtime or by BYOK upload.
-RUN pip install ".[service,agents,postgres,auth]"
+RUN pip install --require-hashes -r requirements-prod.lock \
+    && pip install --no-deps . \
+    && python -m pip check
 
 # Run as a non-root user. /data is only for local/self-host SQLite fallback;
 # production uses Supabase Postgres and Supabase Storage.
@@ -29,7 +31,10 @@ ENV PBICOMPASS_DB=/data/pbicompass.db \
     PBICOMPASS_JOBS_DB=/data/pbicompass_jobs.db \
     PBICOMPASS_OUTPUT_STORE=memory \
     PBICOMPASS_SANDBOX_ROOT=/tmp/pbicompass \
-    PBICOMPASS_MAX_UPLOAD_MB=100
+    PBICOMPASS_MAX_UPLOAD_MB=100 \
+    PBICOMPASS_MAX_EXTRACTED_MB=512 \
+    PBICOMPASS_MAX_ARCHIVE_ENTRIES=20000 \
+    PBICOMPASS_MAX_AUX_UPLOAD_KB=2048
 
 EXPOSE 8000
 

@@ -1,5 +1,8 @@
 name: Tests
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -15,3 +18,41 @@ jobs:
           python-version: "3.11"
       - run: pip install -e ".[dev,service,agents,diagram]"
       - run: pytest -q
+      - run: python -m compileall -q src
+      - run: python -m pip check
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit
+      - run: pip-audit --disable-pip --no-deps -r requirements-prod.lock
+
+  production-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build -t pbicompass-ci .
+      - name: Verify production capabilities
+        run: |
+          docker run --rm pbicompass-ci python -c "import pbixray; print('pbixray ok')"
+          docker run --rm pbicompass-ci sh -c "command -v pandoc && command -v weasyprint"
+      - name: Smoke-test container health and security headers
+        run: |
+          docker run -d --name pbicompass-smoke -p 8000:8000 \
+            -e PBICOMPASS_DB=/tmp/accounts.db \
+            -e PBICOMPASS_JOBS_DB=/tmp/jobs.db \
+            pbicompass-ci
+          trap 'docker logs pbicompass-smoke; docker rm -f pbicompass-smoke' EXIT
+          for i in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:8000/healthz && break
+            sleep 1
+          done
+          curl --fail --silent --show-error http://127.0.0.1:8000/healthz
+          curl --fail --silent --show-error -D headers.txt -o /dev/null http://127.0.0.1:8000/app
+          grep -qi '^content-security-policy:' headers.txt
+          grep -qi '^x-content-type-options: nosniff' headers.txt

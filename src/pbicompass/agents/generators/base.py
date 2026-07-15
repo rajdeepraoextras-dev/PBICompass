@@ -15,6 +15,10 @@ from ..llm import LLMClient
 Warn = Callable[[str], None]
 
 
+class LLMResponseValidationError(ValueError):
+    """Provider output failed the local schema gate."""
+
+
 from ..cache import LLMResponseCache
 
 if TYPE_CHECKING:
@@ -109,7 +113,7 @@ def _validate_response(response: dict, schema: dict) -> dict:
         preview = "; ".join(errors[:5])
         if len(errors) > 5:
             preview += f"; +{len(errors) - 5} more"
-        raise ValueError(f"LLM response did not match schema: {preview}")
+        raise LLMResponseValidationError(f"LLM response did not match schema: {preview}")
     return response
 
 
@@ -135,15 +139,18 @@ def call_llm(client: LLMClient, system: str, payload: dict, schema: dict,
             try:
                 return _validate_response(cached, schema)
             except ValueError as exc:
-                warn(f"{name}: ignored invalid cached LLM response ({exc})")
+                warn(f"{name}: ignored invalid cached LLM response ({type(exc).__name__})")
         res = client.complete_json(system, json.dumps(payload, ensure_ascii=False), schema, effort=effort)
         if res is not None:
             res = _validate_response(res, schema)
             cache.set(system, payload, schema, model_id, res, effort)
             _record_usage(ai_context, client, name)
         return res
+    except LLMResponseValidationError:
+        warn(f"{name}: LLM response did not match schema; using deterministic fallback.")
+        return None
     except Exception as exc:  # any failure -> deterministic fallback
-        warn(f"{name}: LLM call failed, using deterministic fallback ({exc})")
+        warn(f"{name}: LLM call failed ({type(exc).__name__}); using deterministic fallback.")
         return None
     finally:
         cache.close()

@@ -10,6 +10,8 @@ Accepted uploads:
 
 from __future__ import annotations
 
+import os
+import stat
 import zipfile
 from pathlib import Path
 
@@ -17,13 +19,50 @@ from ..parsers import detect_and_parse
 from ..schemas.model import SemanticModel
 
 
+def _max_extracted_bytes() -> int:
+    return int(os.environ.get("PBICOMPASS_MAX_EXTRACTED_MB", "512")) * 1024 * 1024
+
+
+def _max_archive_entries() -> int:
+    return int(os.environ.get("PBICOMPASS_MAX_ARCHIVE_ENTRIES", "20000"))
+
+
 def _safe_extract(zf: zipfile.ZipFile, dest: Path) -> None:
+    """Extract a PBIP archive without path traversal or decompression bombs."""
     dest = dest.resolve()
-    for member in zf.infolist():
+    members = zf.infolist()
+    if len(members) > _max_archive_entries():
+        raise ValueError("Archive contains too many files.")
+
+    declared_total = sum(max(0, member.file_size) for member in members)
+    cap = _max_extracted_bytes()
+    if declared_total > cap:
+        raise ValueError("Archive expands beyond the extraction size limit.")
+
+    extracted = 0
+    for member in members:
         target = (dest / member.filename).resolve()
         if dest != target and dest not in target.parents:
             raise ValueError("Refusing to extract zip entry outside the sandbox (zip-slip).")
-    zf.extractall(dest)
+        if member.flag_bits & 0x1:
+            raise ValueError("Encrypted archive entries are not supported.")
+
+        mode = member.external_attr >> 16
+        file_type = stat.S_IFMT(mode)
+        if file_type not in (0, stat.S_IFREG, stat.S_IFDIR):
+            raise ValueError("Archive contains an unsupported special file.")
+
+        if member.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with zf.open(member, "r") as source, open(target, "wb") as output:
+            while chunk := source.read(1 << 20):
+                extracted += len(chunk)
+                if extracted > cap:
+                    raise ValueError("Archive expands beyond the extraction size limit.")
+                output.write(chunk)
 
 
 def _find_project(root: Path) -> Path | None:

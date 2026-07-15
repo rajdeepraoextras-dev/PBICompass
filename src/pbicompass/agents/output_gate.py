@@ -1,4 +1,4 @@
-"""Deterministic, blocking quality gate for a generated document bundle."""
+"""Deterministic quality checks for a generated document bundle."""
 
 from __future__ import annotations
 
@@ -109,7 +109,7 @@ def _narrative_duplicate_issues(docs: dict[str, Any]) -> list[GateIssue]:
 def validate_bundle(docs: dict[str, Any], model: Any, *,
                     html_filenames: dict[str, str] | None = None,
                     ai_context: Any = None) -> dict[str, str]:
-    """Validate and return the already-rendered HTML, or block the export."""
+    """Validate and return the already-rendered HTML, or raise with issues."""
     canonicalize_bundle(docs, model)
     issues: list[GateIssue] = []
     benchmark = run_benchmark(docs, model=model, ai_context=ai_context)

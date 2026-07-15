@@ -304,7 +304,7 @@
         </button>
       </div>
     </div>
-    <p class="site-foot-mini">Metadata only · zero retention · <a href="/">about PBICompass →</a></p>
+    <p class="site-foot-mini">Metadata only · source deleted after processing · <a href="/">about PBICompass →</a></p>
   </section>
 
   <!-- =============================================================
@@ -338,7 +338,7 @@
     <div class="view active" id="view-generate">
       <div class="console liquid-glass-strong panel-card" style="padding:26px 30px 32px;">
         <div class="console-head">
-          <span class="pill liquid-glass" style="align-self:center; margin-bottom:6px;">secure sandbox · shredded after render</span>
+          <span class="pill liquid-glass" style="align-self:center; margin-bottom:6px;">secure sandbox · source deleted after processing</span>
           <h3>Power BI Knowledge Studio</h3>
           <p>Metadata only — row data is never read. Pick one document or let the AI write all four.</p>
         </div>
@@ -632,7 +632,7 @@
   </section>
 
   <p class="site-foot-mini" id="signedin-foot" style="display:none;">
-    Files are processed in a secure sandbox and shredded immediately after rendering · <a href="/">about →</a>
+    Source files are processed in a secure sandbox and deleted when generation ends · <a href="/">about →</a>
   </p>
 
 </div><!-- /wrap -->
@@ -910,7 +910,7 @@ async function loadAdminProviders() {
       ? '<span class="badge ok">Available</span>'
       : '<span class="badge warn">Currently unavailable</span>';
     const keyNote = (!p.has_key && !byok_enabled)
-      ? '<div class="admin-sub">No server key configured — enabling will fall back to the offline engine.</div>'
+      ? '<div class="admin-sub">No server key configured. Jobs using this engine will fail until a key is configured.</div>'
       : '';
     row.innerHTML = `<div style="flex:1;min-width:0;"><span class="admin-name">${escHtml(p.label)}</span>${status}${keyNote}</div>`;
     const btn = document.createElement("button");
@@ -1154,8 +1154,8 @@ const EFFORT_CAPABLE_PROVIDERS = ["anthropic", "gemini", "cohere", "meshapi"];
 // Build the engine picker from server config. Each AI engine is either
 // selectable or shown as "currently unavailable" (admin-controlled); the
 // offline engine is always available and appended last. The first available
-// AI engine is preselected and tagged "recommended"; if none are available we
-// fall back to the offline engine.
+// AI engine is preselected and tagged "recommended"; if none are available,
+// the picker selects the explicit offline engine.
 function renderProviderOptions() {
   const sel = $("provider");
   const providers = (cfg && cfg.providers) || [{ id: "anthropic", label: "Claude (Opus 4.8)", enabled: true }];
@@ -1232,6 +1232,7 @@ const DL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 
 function setStatus(msg, cls) { const s = $("status"); s.textContent = msg; s.className = "status-line " + (cls || ""); }
 const FALLBACK_MARKERS = ["LLM call failed", "AI narrative unavailable", "malformed response", "provider unavailable"];
+const REVIEW_NOTE_MARKERS = ["quality gate reported issues", "best available output"];
 // The Senior Reviewer / benchmark quality pass is an internal QA layer on top
 // of an already-complete document — its warnings (including a failed reviewer
 // call) never mean degraded content, so they stay internal like the
@@ -1240,6 +1241,13 @@ const INTERNAL_QA_PREFIXES = ["Senior Reviewer", "quality:"];
 function isFallbackWarning(w) {
   if (INTERNAL_QA_PREFIXES.some(p => w.startsWith(p))) return false;
   return FALLBACK_MARKERS.some(m => w.includes(m));
+}
+function isReviewWarning(w) {
+  if (INTERNAL_QA_PREFIXES.some(p => w.startsWith(p))) return false;
+  return REVIEW_NOTE_MARKERS.some(m => w.includes(m));
+}
+function isUserVisibleWarning(w) {
+  return isFallbackWarning(w) || isReviewWarning(w);
 }
 function renderWarnings(warnings) {
   const fb = $("job-warnings");
@@ -1251,9 +1259,9 @@ function renderWarnings(warnings) {
   // customer reading "the AI needed correcting" out of context, so those are
   // dropped here rather than shown (they're still in job.warnings for anyone
   // inspecting the API response directly).
-  const fallback = warnings.filter(isFallbackWarning);
-  if (fallback.length) {
-    fb.innerHTML = `<strong>Some sections used the offline engine instead of the selected AI engine:</strong><ul>${fallback.map(w => `<li>${escHtml(w)}</li>`).join("")}</ul>`;
+  const visible = warnings.filter(isUserVisibleWarning);
+  if (visible.length) {
+    fb.innerHTML = `<strong>Review notes:</strong><ul>${visible.map(w => `<li>${escHtml(w)}</li>`).join("")}</ul>`;
     fb.classList.add("show");
   } else { fb.classList.remove("show"); fb.innerHTML = ""; }
 }
@@ -1323,9 +1331,9 @@ async function poll(jobId) {
     }
     if (job.status === "done") {
       const warnings = Array.isArray(job.warnings) ? job.warnings : [];
-      const hasFallback = warnings.some(isFallbackWarning);
-      setStatus(hasFallback ? "Documentation compiled — with fallback notes below."
-        : "Documentation compiled successfully!", hasFallback ? "warn" : "ok");
+      const hasVisibleWarnings = warnings.some(isUserVisibleWarning);
+      setStatus(hasVisibleWarnings ? "Documentation compiled - review notes below."
+        : "Documentation compiled successfully!", hasVisibleWarnings ? "warn" : "ok");
       renderWarnings(job.warnings);
       finishProgress(true);
       renderDownloads(jobId, job.formats);
@@ -1400,8 +1408,8 @@ async function downloadFile(url, fmt) {
     const r = await fetch(url, { headers: authHeaders() });
     if (!r.ok) {
       alert(r.status === 404
-        ? "These files are no longer available — outputs are held in memory for one hour only and are "
-          + "cleared when the server restarts (zero retention). Please generate the documentation again."
+        ? "These files are no longer available. Generated downloads expire within one hour. "
+          + "Please generate the documentation again."
         : "Download failed (" + r.status + ").");
       return;
     }

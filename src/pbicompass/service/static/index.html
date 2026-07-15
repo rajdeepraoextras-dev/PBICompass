@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1a15">
 <title>PBICompass (Beta) — AI Documentation & Governance for Power BI</title>
-<meta name="description" content="Turn any Power BI report (.pbix or .pbip) into enterprise-grade technical, audit, executive and business documentation — written by AI, in minutes. Metadata only. Zero retention. Create a free account to get started.">
+<meta name="description" content="Turn a Power BI report (.pbix or .pbip) into technical, audit, executive and business documentation. Metadata only, with source uploads deleted after processing.">
 <meta property="og:title" content="PBICompass (Beta) — AI Documentation & Governance for Power BI">
-<meta property="og:description" content="Upload a .pbix or .pbip. Get four AI-written, enterprise-ready documents in about a minute. Metadata only — nothing stored.">
+<meta property="og:description" content="Upload a .pbix or .pbip and generate four review-ready documents. Metadata only; source uploads are deleted after processing.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M15 42V8h10a13 13 0 0 1 0 26h-6' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M32.5 15.5 20 21l5.5 2.5L28 29z' fill='white'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1038,7 +1038,7 @@ button[type=submit] .spin {
 
       <h1 class="hero-title reveal d1">Your Power BI reports, <em>documented by AI in minutes.</em></h1>
 
-      <p class="hero-sub reveal d2">Upload a <b>.pbix</b> or <b>.pbip</b> — PBICompass reads the entire semantic model and its <b>AI writes</b> enterprise-grade technical, audit, executive and business documentation automatically. <b>Nothing stored, ever.</b></p>
+      <p class="hero-sub reveal d2">Upload a <b>.pbix</b> or <b>.pbip</b> — PBICompass reads the semantic model and its <b>AI writes</b> enterprise-grade technical, audit, executive and business documentation automatically. <b>Source files are deleted after processing.</b></p>
 
       <a class="hero-cta liquid-glass-strong scale-hover cta-press reveal d3" href="/app#signup">
         Get started — free
@@ -1049,7 +1049,7 @@ button[type=submit] .spin {
         <span class="pill liquid-glass">AI Model Reasoning</span>
         <span class="pill liquid-glass">Governance &amp; Health Scoring</span>
         <span class="pill liquid-glass">Full Data Lineage</span>
-        <span class="pill liquid-glass">Zero Retention</span>
+        <span class="pill liquid-glass">Short Retention</span>
       </div>
     </div>
 
@@ -1078,7 +1078,7 @@ button[type=submit] .spin {
 
     <a class="eco-card liquid-glass scale-hover" href="/app#signup">
       <h3>Your secure AI sandbox</h3>
-      <p>Upload a Power BI report — AI reads every table, measure and relationship and writes four documents inside a sealed sandbox. Metadata only, nothing stored.</p>
+      <p>Upload a Power BI report — AI reads the metadata for each table, measure and relationship and writes four documents inside an isolated sandbox. Source uploads are deleted after processing.</p>
       <span class="go">Generate documentation <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
     </a>
 
@@ -1123,8 +1123,8 @@ button[type=submit] .spin {
 <div class="ticker-shell liquid-glass" aria-hidden="true">
   <div class="ticker-mask">
     <div class="ticker">
-      <span>.pbix &amp; .pbip parsing</span><span>DAX → plain English</span><span>Audit &amp; health scoring</span><span>RLS &amp; security review</span><span>Executive summaries</span><span>Business user guides</span><span>md · html · docx · pdf · json</span><span>Zero retention</span><span>Built for BI teams, architects &amp; consultants</span><span>Powered by Claude, Gemini &amp; Cohere</span>
-      <span>.pbix &amp; .pbip parsing</span><span>DAX → plain English</span><span>Audit &amp; health scoring</span><span>RLS &amp; security review</span><span>Executive summaries</span><span>Business user guides</span><span>md · html · docx · pdf · json</span><span>Zero retention</span><span>Built for BI teams, architects &amp; consultants</span><span>Powered by Claude, Gemini &amp; Cohere</span>
+      <span>.pbix &amp; .pbip parsing</span><span>DAX → plain English</span><span>Audit &amp; health scoring</span><span>RLS &amp; security review</span><span>Executive summaries</span><span>Business user guides</span><span>md · html · docx · pdf · json</span><span>Short retention</span><span>Built for BI teams, architects &amp; consultants</span><span>Powered by Claude, Gemini &amp; Cohere</span>
+      <span>.pbix &amp; .pbip parsing</span><span>DAX → plain English</span><span>Audit &amp; health scoring</span><span>RLS &amp; security review</span><span>Executive summaries</span><span>Business user guides</span><span>md · html · docx · pdf · json</span><span>Short retention</span><span>Built for BI teams, architects &amp; consultants</span><span>Powered by Claude, Gemini &amp; Cohere</span>
     </div>
   </div>
 </div>
@@ -1389,15 +1389,15 @@ button[type=submit] .spin {
       <li class="pnode" style="--i:2"><div class="ptxt"><h4>Extract</h4><p>metadata only — rows are never read</p></div><span class="pdot"></span></li>
       <li class="pnode" style="--i:3"><span class="pdot"></span><div class="ptxt"><h4>Generate</h4><p>AI writes four documents from one model</p></div></li>
       <li class="pnode" style="--i:4"><div class="ptxt"><h4>Deliver</h4><p>five formats · short-lived download TTL</p></div><span class="pdot"></span></li>
-      <li class="pnode final" style="--i:5"><span class="pdot"></span><div class="ptxt"><h4>Destroy</h4><p>sandbox shredded · keys discarded · nothing retained</p></div></li>
+      <li class="pnode final" style="--i:5"><span class="pdot"></span><div class="ptxt"><h4>Clean up</h4><p>source deleted · per-job keys discarded · private downloads expire</p></div></li>
     </ol>
 
     <div class="sec-statement reveal">
-      <h3>Nothing stored.<br><em>Nothing to breach.</em></h3>
+      <h3>Source deleted.<br><em>Downloads expire automatically.</em></h3>
     </div>
 
     <div class="hero-pills reveal" style="margin-top:28px;">
-      <span class="pill liquid-glass">Zero Retention</span>
+      <span class="pill liquid-glass">Short Retention</span>
       <span class="pill liquid-glass">Metadata Only</span>
       <span class="pill liquid-glass">Enterprise Ready</span>
       <span class="pill liquid-glass">Private by Design</span>
@@ -1436,7 +1436,7 @@ button[type=submit] .spin {
     <div class="sec-head">
       <span class="sec-eyebrow liquid-glass reveal">Simple, predictable pricing</span>
       <h2 class="sec-title reveal d1">Pick a plan, <em>start documenting.</em></h2>
-      <p class="sec-sub reveal d2">Reports are counted per generation job. Change or cancel your plan anytime.</p>
+      <p class="sec-sub reveal d2">Start on Free today. Pro and Business are previews and are not yet for sale.</p>
     </div>
 
     <div class="pricing-grid">
@@ -1448,7 +1448,7 @@ button[type=submit] .spin {
           <li>Technical, Audit, Executive &amp; Business docs</li>
           <li>Markdown · HTML · DOCX · PDF · JSON</li>
           <li>AI-written prose included — no API key to manage</li>
-          <li>Metadata only · zero retention</li>
+          <li>Metadata only · source deleted after processing</li>
         </ul>
         <a class="price-cta" href="/app#signup">Get started</a>
       </div>
@@ -1497,7 +1497,7 @@ button[type=submit] .spin {
     <div class="doctype-grid" style="max-width:900px; margin:0 auto; gap:16px;">
       <div class="liquid-glass reveal" style="padding:22px 24px; border-radius:20px;">
         <h4 style="font-size:.95rem; font-weight:500; color:#fff; margin-bottom:8px; letter-spacing:-.015em;">Is my data uploaded or stored?</h4>
-        <p style="font-size:.82rem; line-height:1.6; color:hsl(0 0% 100% / .82); font-weight:300;">No. PBICompass extracts semantic-model metadata only — tables, columns, measures, relationships, DAX, RLS roles — never row-level data. Your file is processed in an isolated sandbox that's shredded the moment your documents are rendered.</p>
+        <p style="font-size:.82rem; line-height:1.6; color:hsl(0 0% 100% / .82); font-weight:300;">PBICompass extracts semantic-model metadata only — tables, columns, measures, relationships, DAX, RLS roles — never row-level data. Your source file is deleted when processing ends. Generated downloads remain private and expire within one hour.</p>
       </div>
       <div class="liquid-glass reveal d1" style="padding:22px 24px; border-radius:20px;">
         <h4 style="font-size:.95rem; font-weight:500; color:#fff; margin-bottom:8px; letter-spacing:-.015em;">Can it run fully offline?</h4>
@@ -1537,13 +1537,13 @@ button[type=submit] .spin {
     <div class="sec-head">
       <span class="sec-eyebrow liquid-glass reveal">Ready when you are</span>
       <h2 class="sec-title reveal d1">One upload. <em>Four documents.</em></h2>
-      <p class="sec-sub reveal d2">Create a free account, upload a <b>.pbix</b> or <b>.pbip</b>, and let AI write enterprise-grade documentation in about a minute. Your file is parsed in a sealed sandbox and shredded the moment your documents are rendered.</p>
+      <p class="sec-sub reveal d2">Create a free account, upload a <b>.pbix</b> or <b>.pbip</b>, and generate four review-ready documents. Your source file is parsed in an isolated sandbox and deleted when processing ends.</p>
     </div>
 
     <div class="cta-panel liquid-glass-strong reveal d2">
       <div class="cta-copy">
         <h3>Start documenting your reports</h3>
-        <p>Free to start · no credit card · pick a plan at sign-up and change it anytime. Metadata only, nothing stored.</p>
+        <p>Free to start · no credit card · metadata only. Source uploads are deleted after processing.</p>
         <div class="cta-actions">
           <a class="hero-cta liquid-glass-strong scale-hover cta-press" href="/app#signup">
             Create free account
@@ -1556,7 +1556,7 @@ button[type=submit] .spin {
         <li>Technical, Audit, Executive &amp; Business docs</li>
         <li>Markdown · HTML · DOCX · PDF · JSON</li>
         <li>Claude, Gemini, Cohere — or the offline engine</li>
-        <li>Zero retention · metadata only</li>
+        <li>Private downloads expire within one hour</li>
       </ul>
     </div>
   </div>
@@ -1593,7 +1593,7 @@ button[type=submit] .spin {
       <a href="/refund">Refund Policy</a>
     </nav>
   </div>
-  <div class="foot-copy">AI Documentation &amp; Governance for Power BI · metadata only · zero retention · © 2026 PBICompass</div>
+  <div class="foot-copy">AI Documentation &amp; Governance for Power BI · metadata only · short-lived private downloads · © 2026 PBICompass</div>
 </footer>
 
 </div><!-- /page -->

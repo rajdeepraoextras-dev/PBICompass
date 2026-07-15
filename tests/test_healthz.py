@@ -37,6 +37,25 @@ class HealthzHappyPathTest(unittest.TestCase):
         body = resp.json()
         self.assertEqual(body, {"ok": True, "checks": {"jobs_db": True, "queue": True}})
 
+    def test_production_security_headers_are_present(self):
+        client = TestClient(create_app(JobStore()))
+        resp = client.get("/app", headers={"x-forwarded-proto": "https"})
+        self.assertEqual(resp.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(resp.headers["x-frame-options"], "DENY")
+        self.assertIn("frame-ancestors 'none'", resp.headers["content-security-policy"])
+        self.assertIn("max-age=31536000", resp.headers["strict-transport-security"])
+        self.assertEqual(resp.headers["cache-control"], "no-store")
+
+    def test_maintenance_sweep_requires_token_and_returns_counts(self):
+        client = TestClient(create_app(JobStore(), maintenance_token="maintenance-secret"))
+        self.assertEqual(client.post("/internal/maintenance/sweep").status_code, 401)
+        resp = client.post(
+            "/internal/maintenance/sweep",
+            headers={"x-maintenance-token": "maintenance-secret"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"ok": True, "timed_out": 0, "outputs_deleted": 0})
+
     def test_accounts_db_check_included_when_configured(self):
         accounts = AccountStore(":memory:")
         self.addCleanup(accounts.close)

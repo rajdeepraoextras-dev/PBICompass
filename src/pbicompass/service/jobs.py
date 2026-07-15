@@ -178,24 +178,29 @@ class JobStore:
             self._conn.commit()
 
     def mark_done(self, job_id: str, formats: list[str], warnings: list[str] | None = None,
-                  usage: dict | None = None) -> None:
+                  usage: dict | None = None) -> bool:
+        """Complete an active job without resurrecting a terminal failure."""
+        transitioned = False
         with self._lock:
             row = self._conn.execute(
-                "SELECT warnings, usage FROM jobs WHERE id = ?", (job_id,)
+                "SELECT status, warnings, usage FROM jobs WHERE id = ?", (job_id,)
             ).fetchone()
-            if row is None:
-                return
+            if row is None or row["status"] not in (
+                    JobStatus.QUEUED.value, JobStatus.PROCESSING.value):
+                return False
             warnings_json = json.dumps(warnings) if warnings else row["warnings"]
             usage_json = json.dumps(usage) if usage else row["usage"]
-            self._conn.execute(
+            cur = self._conn.execute(
                 "UPDATE jobs SET status = ?, finished_at = ?, formats = ?, warnings = ?, usage = ? "
-                "WHERE id = ?",
+                "WHERE id = ? AND status IN (?, ?)",
                 (JobStatus.DONE.value, time.time(), json.dumps(formats), warnings_json,
-                 usage_json, job_id),
+                 usage_json, job_id, JobStatus.QUEUED.value, JobStatus.PROCESSING.value),
             )
             self._conn.commit()
-        if self.metrics:
+            transitioned = cur.rowcount > 0
+        if transitioned and self.metrics:
             self.metrics.record_job_done(usage)
+        return transitioned
 
     def mark_failed(self, job_id: str, message: str) -> None:
         with self._lock:
@@ -207,16 +212,45 @@ class JobStore:
         if self.metrics:
             self.metrics.record_job_failed()
 
-    def store_outputs(self, job_id: str, data: dict[str, bytes]) -> None:
-        """Store rendered bytes until ``ttl`` elapses."""
+    def store_outputs(self, job_id: str, data: dict[str, bytes]) -> bool:
+        """Store outputs only while the job is non-terminal.
+
+        The status is checked again after the external write. If the watchdog
+        timed the job out during that write, the just-written objects are
+        removed and the worker cannot publish a late result.
+        """
+        with self._lock:
+            row = self._conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None or row["status"] not in (
+                    JobStatus.QUEUED.value, JobStatus.PROCESSING.value, JobStatus.DONE.value):
+                return False
         expires = time.time() + self.ttl
         self._output_store.put_many(job_id, data, expires)
         with self._lock:
-            self._conn.execute(
-                "UPDATE jobs SET output_expires_at = ? WHERE id = ?",
-                (expires, job_id),
+            cur = self._conn.execute(
+                "UPDATE jobs SET output_expires_at = ? WHERE id = ? "
+                "AND status IN (?, ?, ?)",
+                (expires, job_id, JobStatus.QUEUED.value, JobStatus.PROCESSING.value,
+                 JobStatus.DONE.value),
             )
             self._conn.commit()
+        if cur.rowcount <= 0:
+            self._output_store.delete_job(job_id, list(data))
+            return False
+        return True
+
+    def discard_outputs(self, job_id: str, formats: list[str]) -> None:
+        self._output_store.delete_job(job_id, formats)
+        with self._lock:
+            self._conn.execute(
+                "UPDATE jobs SET output_expires_at = NULL WHERE id = ?", (job_id,)
+            )
+            self._conn.commit()
+
+    def is_active(self, job_id: str) -> bool:
+        with self._lock:
+            row = self._conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return bool(row and row["status"] in (JobStatus.QUEUED.value, JobStatus.PROCESSING.value))
 
     def healthcheck(self, timeout: float = 3.0) -> bool:
         """Bounded health probe: try the store lock with a timeout, then one
@@ -309,7 +343,7 @@ class JobStore:
             "message": fb.message, "created_at": fb.created_at,
         }
 
-    def sweep(self) -> None:
+    def sweep(self) -> dict[str, int]:
         """Force-fail stuck jobs and drop expired output bytes.
 
         Job metadata is kept as durable history; only the downloadable bytes
@@ -345,6 +379,7 @@ class JobStore:
         if self.metrics and timed_out > 0:
             for _ in range(timed_out):
                 self.metrics.record_job_failed()
+        return {"timed_out": timed_out, "outputs_deleted": len(expired_outputs)}
 
     def public(self, job: Job) -> dict:
         """JSON-safe status payload (no document content)."""

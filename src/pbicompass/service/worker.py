@@ -29,7 +29,6 @@ time into the same folder still ends up with working cross-document links.
 from __future__ import annotations
 
 import io
-import json
 import logging
 import zipfile
 from pathlib import Path
@@ -54,6 +53,8 @@ log = logging.getLogger("pbicompass.service")
 _FRIENDLY = {
     "ingest": "Could not read the uploaded file. Ensure it is a valid .pbix or a "
               ".zip of a .pbip project.",
+    "provider": "Could not start the selected AI engine. Choose another engine, "
+                "check the configured API key, or select the offline engine.",
     "generate": "Documentation generation failed for the uploaded model.",
 }
 
@@ -66,10 +67,7 @@ _FRIENDLY = {
 
 
 def _make_client(options: dict) -> tuple[object | None, str | None]:
-    """Resolve the requested provider to a client. Returns ``(client, warning)``
-    — ``warning`` is a content-free, user-facing message set whenever the
-    requested LLM engine could not be used and the job fell back to the
-    offline engine (missing/invalid key, missing SDK, network error, ...)."""
+    """Resolve the requested provider without silently changing engines."""
     provider = options.get("provider")
     if provider in (None, "", "none", "offline", "deterministic"):
         return None, None
@@ -79,12 +77,9 @@ def _make_client(options: dict) -> tuple[object | None, str | None]:
         kwargs["api_key"] = api_key
     try:
         return get_client(provider, **kwargs), None
-    except Exception as exc:  # missing SDK/key -> deterministic, don't fail the job
-        log.warning("LLM provider unavailable (%s); using offline engine", type(exc).__name__)
-        return None, (
-            f"Could not use the {provider} engine ({type(exc).__name__}); "
-            "generated with the offline engine instead."
-        )
+    except Exception as exc:
+        log.warning("LLM provider unavailable (%s)", type(exc).__name__)
+        raise
 
 
 def _resolve_document_types(raw: str | None) -> list[str]:
@@ -173,7 +168,20 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
             log.info("job %s: %s", job_id, m)
             warnings.append(m)
 
-        client, client_warning = _make_client(options)
+        def active(stage: str) -> bool:
+            if store.is_active(job_id):
+                return True
+            log.warning("job %s stopped before %s because it is already terminal", job_id, stage)
+            return False
+
+        if not active("AI provider setup"):
+            return
+
+        try:
+            client, client_warning = _make_client(options)
+        except Exception:
+            store.mark_failed(job_id, _FRIENDLY["provider"])
+            return
         if client_warning:
             warn(client_warning)
 
@@ -209,7 +217,10 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
             try:
                 enrichment_data = enrichment_mod.load_enrichment(Path(enrichment_file_path))
             except ValueError as exc:
-                warn(f"{exc} — continuing without enrichment.")
+                warn(
+                    f"Enrichment file could not be read ({type(exc).__name__}); "
+                    "continuing without enrichment."
+                )
                 enrichment_data = {}
             else:
                 overridden = enrichment_mod.apply_enrichment(model, enrichment_data)
@@ -243,6 +254,8 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
             )
             if client is not None else None
         )
+        if not active("document planning"):
+            return
 
         document_types = _resolve_document_types(options.get("document_types"))
         multi = len(document_types) > 1
@@ -276,11 +289,15 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
             refresh_notes=meta.get("refresh_notes"), deployment_notes=meta.get("deployment_notes"),
             access_notes=meta.get("access_notes"), support_notes=meta.get("support_notes"),
         )
+        if not active("document generation"):
+            return
 
         pre_audit_doc = None
         if "audit" in document_types and len(document_types) > 1:
             pre_audit_doc = _generate_one("audit", model, client, meta, warn, ai_context, plan=plan,
                                           requirements_matrix=requirements_matrix)
+            if not active("remaining document generation"):
+                return
         top_cluster = _audit_top_cluster(pre_audit_doc) if pre_audit_doc is not None else None
         audit_verdicts = None
         if pre_audit_doc is not None:
@@ -293,6 +310,8 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
         # so the whole-bundle Senior Reviewer pass below sees the complete
         # bundle — its highest-value checks are cross-document.
         for dtype in document_types:
+            if not active(f"{dtype} generation"):
+                return
             if dtype == "audit" and pre_audit_doc is not None:
                 doc = pre_audit_doc
             else:
@@ -305,6 +324,9 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
                 doc.changelog = changelog_text
             docs[dtype] = doc
 
+        if not active("quality review"):
+            return
+
         # Benchmark-gated Senior Reviewer loop between generation and
         # rendering. Internal-only: the quality report goes to the job log
         # and the warnings list (both already hidden from the end-user
@@ -312,25 +334,43 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
         try:
             from ..agents.reviewer import run_review_loop
             quality = run_review_loop(docs, model, client, warn, ai_context)
-            log.info("job %s quality: %s", job_id, json.dumps(quality.to_dict()))
+            log.info(
+                "job %s quality score=%s/%s iterations=%s unresolved=%s",
+                job_id, quality.score, quality.max_evaluated_points, quality.iterations,
+                ",".join(quality.unresolved),
+            )
             warn(quality.summary_line())
         except Exception as exc:
-            warn(f"Senior Reviewer: quality pass failed, continuing ({exc})")
+            warn(f"Senior Reviewer: quality pass failed ({type(exc).__name__}); continuing.")
 
-        # This is the blocking production boundary. The AI reviewer above is
-        # optional; deterministic content and navigation integrity are not.
-        from ..agents.output_gate import validate_bundle
+        if not active("output validation"):
+            return
+
+        # The production quality gate is advisory for delivery: keep the
+        # user's selected engine, and render the best available bundle with a
+        # warning rather than leaving the user with no output after a long run.
+        from ..agents.output_gate import _render_html_bundle, validate_bundle
         try:
             validated_html = validate_bundle(
                 docs, model, html_filenames=html_filenames or None, ai_context=ai_context,
             )
         except Exception as exc:
-            log.error("job %s output gate: %s", job_id, exc)
-            raise
+            engine = "AI" if client is not None else "offline"
+            log.warning(
+                "job %s %s output gate failed; rendering best available output (%s)",
+                job_id, engine, type(exc).__name__,
+            )
+            warn(
+                f"The final quality gate reported issues with the {engine} output; "
+                "the best available output was generated for review."
+            )
+            validated_html = _render_html_bundle(docs, html_filenames or None)
 
         # Phase B: render everything (body unchanged from the old combined
         # loop).
         for dtype in document_types:
+            if not active(f"{dtype} rendering"):
+                return
             doc = docs[dtype]
             renderers = registry.RENDERERS[dtype]
 
@@ -371,7 +411,7 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
                         model, previous=enrichment_data
                     ).encode("utf-8")
                 except Exception as exc:
-                    warn(f"Could not regenerate the enrichment file: {exc}")
+                    warn(f"Could not regenerate the enrichment file ({type(exc).__name__}).")
 
             entries = [
                 {"type": dtype, "href": html_filenames[dtype], "stats": hub_stats(dtype, doc)}
@@ -397,9 +437,17 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
                     zf.writestr(name, data)
             outputs["zip"] = zip_buf.getvalue()
 
-        store.store_outputs(job_id, outputs)
+        if not store.is_active(job_id):
+            log.warning("job %s reached a terminal state before output storage", job_id)
+            return
+        if not store.store_outputs(job_id, outputs):
+            log.warning("job %s reached a terminal state while outputs were being stored", job_id)
+            return
         usage = ai_context.usage if ai_context is not None else {}
-        store.mark_done(job_id, list(outputs.keys()), warnings, usage=usage)
+        if not store.mark_done(job_id, list(outputs.keys()), warnings, usage=usage):
+            store.discard_outputs(job_id, list(outputs.keys()))
+            log.warning("job %s reached a terminal state before completion", job_id)
+            return
         if usage:
             # Content-free: agent names and integer call/token counts only.
             log.info("job %s AI usage: %s", job_id, usage)

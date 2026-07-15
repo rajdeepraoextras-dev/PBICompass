@@ -533,27 +533,24 @@ class AccountStore:
         """
         limit = self.limit_for(plan, override)
         period = _current_period()
+        if limit <= 0:
+            return False, 0, limit
         with self._lock:
             row = self._conn.execute(
-                "SELECT count FROM usage WHERE tenant = ? AND day = ?", (tenant, period)
-            ).fetchone()
-            current = row["count"] if row else 0
-            if current >= limit:
-                return False, current, limit
-            self._conn.execute(
                 "INSERT INTO usage (tenant, day, count) VALUES (?,?,1) "
-                # Qualified as usage.count -- a bare "count = count + 1" is
-                # genuinely ambiguous to Postgres inside ON CONFLICT DO
-                # UPDATE (ex: production incident, psycopg.errors.
-                # AmbiguousColumn) between the target row's existing value
-                # and the row that would have been inserted. sqlite3 is
-                # lenient about the same bare form, which is why the
-                # sqlite-backed test fake never caught this.
-                "ON CONFLICT(tenant, day) DO UPDATE SET count = usage.count + 1",
-                (tenant, period),
-            )
+                "ON CONFLICT(tenant, day) DO UPDATE SET count = usage.count + 1 "
+                "WHERE usage.count < ? RETURNING count",
+                (tenant, period, limit),
+            ).fetchone()
+            if row is None:
+                current_row = self._conn.execute(
+                    "SELECT count FROM usage WHERE tenant = ? AND day = ?", (tenant, period)
+                ).fetchone()
+                self._conn.commit()
+                current = current_row["count"] if current_row else 0
+                return False, current, limit
             self._conn.commit()
-            return True, current + 1, limit
+            return True, row["count"], limit
 
     # -- backup / restore drill (Day 20, §9/§12) -----------------------------
     def dump(self) -> dict:

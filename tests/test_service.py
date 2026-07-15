@@ -97,6 +97,45 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(docx.status_code, 200)
         self.assertTrue(docx.content.startswith(b"PK"))  # a real zip/OOXML package
 
+    def test_ai_gate_failure_still_returns_best_ai_output(self):
+        class FailingClient:
+            def complete_json(self, system, user, schema, *, effort=None):
+                raise RuntimeError("simulated provider failure")
+
+        with mock.patch("pbicompass.service.worker.get_client", return_value=FailingClient()) as get_client, \
+                mock.patch(
+                    "pbicompass.agents.output_gate.validate_bundle",
+                    side_effect=RuntimeError("AI gate failed"),
+                ):
+            res = self.client.post(
+                "/jobs",
+                files={"file": ("SampleSales.zip", _zip_fixture(), "application/zip")},
+                data={"provider": "anthropic", "provider_api_key": "test-key"},
+            )
+        self.assertEqual(res.status_code, 200)
+        job_id = res.json()["job_id"]
+        job = self._wait(job_id)
+        self.assertEqual(job["status"], "done", job)
+        self.assertIn("html", job["formats"])
+        self.assertTrue(any("best available output" in w for w in job["warnings"]))
+        get_client.assert_called_once()
+
+        html = self.client.get(f"/jobs/{job_id}/download", params={"format": "html"})
+        self.assertEqual(html.status_code, 200)
+        self.assertIn("SampleSales", html.text)
+
+    def test_ai_provider_start_failure_does_not_fall_back_to_offline(self):
+        with mock.patch("pbicompass.service.worker.get_client", side_effect=RuntimeError("provider down")):
+            res = self.client.post(
+                "/jobs",
+                files={"file": ("SampleSales.zip", _zip_fixture(), "application/zip")},
+                data={"provider": "anthropic", "provider_api_key": "test-key"},
+            )
+        self.assertEqual(res.status_code, 200)
+        job = self._wait(res.json()["job_id"])
+        self.assertEqual(job["status"], "failed")
+        self.assertIn("Could not start the selected AI engine", job["error"])
+
     def test_sandbox_is_shredded(self):
         job_id = self._run_job().json()["job_id"]
         self.assertEqual(self._wait(job_id)["status"], "done")
@@ -159,6 +198,30 @@ class ServiceTest(unittest.TestCase):
         job = self._wait(res.json()["job_id"])
         self.assertEqual(job["status"], "done", job)
         self.assertTrue(any("Invalid TOML" in w for w in job.get("warnings", [])), job)
+
+    def test_auxiliary_uploads_are_size_limited(self):
+        oversized_rules = b"x" * 2048
+        with mock.patch.dict(os.environ, {"PBICOMPASS_MAX_AUX_UPLOAD_KB": "1"}):
+            res = self.client.post(
+                "/jobs",
+                files={
+                    "file": ("SampleSales.zip", _zip_fixture(), "application/zip"),
+                    "rules_file": ("pbicompass.rules.toml", oversized_rules, "application/octet-stream"),
+                },
+                data={"provider": "none"},
+            )
+        self.assertEqual(res.status_code, 413)
+        self.assertEqual(list(Path(self._root).glob("pbicompass_*")), [])
+
+    def test_celery_queue_rejects_per_job_api_keys(self):
+        with mock.patch.dict(os.environ, {"PBICOMPASS_QUEUE": "celery"}):
+            res = self.client.post(
+                "/jobs",
+                files={"file": ("SampleSales.zip", _zip_fixture(), "application/zip")},
+                data={"provider": "anthropic", "provider_api_key": "must-not-enter-broker"},
+            )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Per-job AI keys are unavailable", res.json()["detail"])
 
     def test_enrichment_file_upload_applies_descriptions_and_round_trips(self):
         # 5.1: an optional enrichment YAML upload overrides measure/column
@@ -482,6 +545,29 @@ class ZipSlipTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             with zipfile.ZipFile(buf) as zf:
                 with self.assertRaises(ValueError):
+                    _safe_extract(zf, Path(td))
+
+    def test_safe_extract_rejects_decompression_bomb(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("Model.SemanticModel/definition/model.tmdl", b"x" * (2 * 1024 * 1024))
+        buf.seek(0)
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.dict(os.environ, {"PBICOMPASS_MAX_EXTRACTED_MB": "1"}):
+            with zipfile.ZipFile(buf) as zf:
+                with self.assertRaisesRegex(ValueError, "extraction size limit"):
+                    _safe_extract(zf, Path(td))
+
+    def test_safe_extract_rejects_excessive_entry_count(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("one.txt", "1")
+            zf.writestr("two.txt", "2")
+        buf.seek(0)
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.dict(os.environ, {"PBICOMPASS_MAX_ARCHIVE_ENTRIES": "1"}):
+            with zipfile.ZipFile(buf) as zf:
+                with self.assertRaisesRegex(ValueError, "too many files"):
                     _safe_extract(zf, Path(td))
 
 

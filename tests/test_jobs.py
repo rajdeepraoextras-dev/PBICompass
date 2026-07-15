@@ -190,6 +190,18 @@ class SweepBehaviorTest(unittest.TestCase):
         self.assertIs(stuck.status, JobStatus.FAILED)
         self.assertIn("timed out", stuck.error)
 
+    def test_timed_out_job_cannot_be_resurrected_or_publish_outputs(self):
+        store = JobStore(processing_timeout_seconds=0.01)
+        job = store.create("x.zip")
+        store.mark_processing(job.id)
+        time.sleep(0.05)
+        result = store.sweep()
+        self.assertEqual(result["timed_out"], 1)
+        self.assertFalse(store.store_outputs(job.id, {"md": b"late"}))
+        self.assertFalse(store.mark_done(job.id, ["md"]))
+        self.assertIs(store.get(job.id).status, JobStatus.FAILED)
+        self.assertIsNone(store.get_output(job.id, "md"))
+
     def test_expired_output_is_dropped(self):
         store = JobStore(ttl_seconds=0.01)
         job = store.create("x.zip")

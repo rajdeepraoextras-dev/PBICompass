@@ -150,7 +150,7 @@ def apply_critic_pass(
                 ai_context=ai_context,
             )
         except Exception as exc:  # pragma: no cover - defensive, mirrors call_llm's own contract
-            warn(f"Critic: LLM call failed, skipping style pass ({exc})")
+            warn(f"Critic: LLM call failed ({type(exc).__name__}); skipping style pass.")
             response = None
 
         if response:

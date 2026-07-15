@@ -6,7 +6,7 @@
 <p align="center"><b>Enterprise Power BI Documentation Generator — powered by Claude</b></p>
 
 <p align="center">
-  <a href="https://pbicompass.duckdns.org"><img alt="Live demo" src="https://img.shields.io/badge/live%20demo-pbicompass.duckdns.org-blue"></a>
+  <a href="https://pbicompass-797249441522.us-central1.run.app"><img alt="Live demo" src="https://img.shields.io/badge/live%20demo-Cloud%20Run-blue"></a>
   <img alt="Built with Claude" src="https://img.shields.io/badge/built%20with-Claude%20Opus%204.8-D97757">
   <a href="https://github.com/rajdeepraoextras-dev/pbicompass/actions/workflows/ci.yml"><img alt="Tests" src="https://github.com/rajdeepraoextras-dev/pbicompass/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="License" src="https://img.shields.io/badge/license-proprietary-lightgrey">
@@ -18,7 +18,7 @@ AI-powered pipeline that ingests Power BI files (`.pbip` / `.pbix`), extracts
 technical BI developers and business stakeholders — in seconds, not the days
 a manual write-up takes.
 
-**[Try it live →](https://pbicompass.duckdns.org)** — create a free account
+**[Try it live →](https://pbicompass-797249441522.us-central1.run.app)** — create a free account
 (no credit card), upload a `.pbix`/`.pbip`, and download the generated docs.
 
 **[Wiki →](https://github.com/rajdeepraoextras-dev/PBICompass/wiki)** — a
@@ -96,7 +96,7 @@ client (`claude-opus-4-8`, structured outputs, adaptive thinking).
 
 ## Status — Phases 0–5 complete
 
-The foundation is in place and tested (881 tests passing):
+The foundation is in place and tested (951 tests passing):
 
 - **Canonical schemas** — the `model.json` and `document.json` contracts that
   every parser and AI agent keys off ([src/pbicompass/schemas](src/pbicompass/schemas)).
@@ -119,11 +119,11 @@ The foundation is in place and tested (881 tests passing):
   hand-written OOXML — no `python-docx`/`lxml`), plus **PDF** via an optional
   Pandoc adapter that degrades gracefully when Pandoc is absent
   ([src/pbicompass/render](src/pbicompass/render)).
-- **Zero-retention web service** — a FastAPI app: upload a `.pbix` or a zipped
+- **Short-retention web service** — a FastAPI app: upload a `.pbix` or a zipped
   `.pbip`, it processes inside a per-job sandbox (shredded in a `finally` block)
-  and serves the rendered docs for a short TTL. Single-page upload UI at `/`,
-  async jobs via a queue-agnostic worker (Celery-ready), zip-slip guard, no
-  customer metadata persisted ([src/pbicompass/service](src/pbicompass/service)).
+  and serves rendered docs from private storage for up to one hour. Single-page upload UI at `/`,
+  async jobs via a queue-agnostic worker (Celery-ready), zip-slip guard, and
+  no uploaded source files retained ([src/pbicompass/service](src/pbicompass/service)).
 - **Auth & multi-tenancy** — two ways in, same account store
   ([src/pbicompass/service/accounts.py](src/pbicompass/service/accounts.py)):
   self-serve **Supabase** sign-in with a plan picker at `/app` for the hosted
@@ -243,12 +243,12 @@ API: `POST /jobs` (multipart upload) → `GET /jobs/{id}` (status) →
 
 ### Hosted mode — self-serve SaaS or self-host API keys
 
-**Hosted SaaS** ([pbicompass.duckdns.org](https://pbicompass.duckdns.org) runs
+**Hosted SaaS** ([the Cloud Run service](https://pbicompass-797249441522.us-central1.run.app) runs
 this): set `SUPABASE_URL`/`SUPABASE_ANON_KEY`/`SUPABASE_JWT_SECRET` and
 `PBICOMPASS_REQUIRE_AUTH=1`. Visitors create a free account and pick a plan at
-`/app#signup` — no operator step. Plans are `free` (1 doc/mo), `pro` ($20,
-10/mo), `business` ($50, 30/mo); any signed-in user can self-serve switch plans
-today (trust-based — payment collection isn't wired up yet). An account with
+`/app#signup` — no operator step. The available plan is `free` (2 jobs/month).
+`pro` and `business` are previews and stay disabled until billing and
+subscription entitlement handling are implemented. An account with
 `is_admin` gets the `/app` admin dashboard (stats, MRR estimate, suspend/
 delete, quota overrides). Each user can mint their own API keys from `/app`
 for programmatic use.
@@ -285,7 +285,7 @@ wrong attempts from a client are locked out for 15 minutes after 8 failures.
 
 ```bash
 pip install -e ".[dev,service,agents]"
-pytest   # 881 passing, 2 skipped, 0 failing
+pytest   # 951 passing, 2 skipped, 0 failing
 ```
 
 ---
@@ -351,7 +351,7 @@ src/pbicompass/
     static/index.html  static/app.html   # marketing site + the sign-in/upload/dashboard app
     static/admin.html   # SaaS admin dashboard (stats, users, suspend/delete) and self-host fallback
   cli.py
-tests/                  # 881 tests across parser, adapter, agents, renderers, service
+tests/                  # 951 tests across parser, adapter, agents, renderers, service
   fixtures/SampleSales/  # synthetic .pbip exercising every code path
 ```
 
@@ -380,8 +380,8 @@ report layout and records a clear warning.
 The product runs end-to-end: **parse → agents → render → web service → API-key
 multi-tenancy with freemium quotas**. Remaining for scale/commercial:
 
-- **Payment collection** — plan switching is self-serve and trust-based today
-  (pricing/legal pages are Paddle-ready); wiring an actual checkout is next.
+- **Payment collection** — Pro and Business remain disabled until checkout,
+  webhook verification, subscription state, cancellation, and refunds are implemented.
 - Swap the in-process worker for **Celery + Redis** (the worker signature is
   already queue-agnostic) for horizontal scale — job metadata already lives in
   Postgres.

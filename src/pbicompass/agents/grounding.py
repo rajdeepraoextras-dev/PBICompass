@@ -179,7 +179,7 @@ def apply_grounding_pass(
             warn, "Grounding", ai_context=ai_context,
         )
     except Exception as exc:  # pragma: no cover - defensive, mirrors call_llm's own contract
-        warn(f"Grounding: LLM call failed, skipping verification pass ({exc})")
+        warn(f"Grounding: LLM call failed ({type(exc).__name__}); skipping verification pass.")
         return {}
     if not response:
         return {}

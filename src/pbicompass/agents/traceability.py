@@ -370,7 +370,10 @@ def build_requirements_matrix(
             io.TRACEABILITY_SCHEMA, warn, "Requirements Traceability", ai_context=ai_context,
         )
     except Exception as exc:  # pragma: no cover - defensive, mirrors call_llm's own contract
-        warn(f"Requirements Traceability: LLM call failed, using deterministic verdicts only ({exc})")
+        warn(
+            f"Requirements Traceability: LLM call failed ({type(exc).__name__}); "
+            "using deterministic verdicts only."
+        )
         return results
     if not data:
         return results

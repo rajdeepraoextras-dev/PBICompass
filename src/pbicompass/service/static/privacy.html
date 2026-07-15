@@ -45,24 +45,24 @@
   <div class="legal-wrap">
     <div class="legal-card liquid-glass-strong">
       <h1>Privacy Policy</h1>
-      <div class="legal-updated">Effective 11 July 2026</div>
+      <div class="legal-updated">Effective 15 July 2026</div>
 
       <p>This Privacy Policy explains what PBICompass ("PBICompass", "we", "us") collects when you use pbicompass.com and the PBICompass application (the "Service"), and how that information is used. If anything here is unclear, email <a href="mailto:pbicompass@gmail.com">pbicompass@gmail.com</a>.</p>
 
-      <h2>1. The core commitment: metadata only, zero retention</h2>
-      <p>When you upload a .pbix or .pbip file, PBICompass extracts <b>semantic-model metadata only</b> — table and column names, measures, relationships, DAX expressions, RLS role definitions, and similar structural information. Row-level data inside your file is never read, extracted, or transmitted. Your uploaded file is processed inside an isolated per-job sandbox and is shredded immediately once your documents are rendered — it is never written to persistent storage and never retained after your job completes.</p>
+      <h2>1. The core commitment: metadata only, short retention</h2>
+      <p>When you upload a .pbix or .pbip file, PBICompass extracts <b>semantic-model metadata only</b> — table and column names, measures, relationships, DAX expressions, RLS role definitions, and similar structural information. Row-level data inside your file is never read, extracted, or transmitted. Your source upload is processed in an isolated, temporary per-job sandbox and deleted when generation ends, whether the job succeeds or fails.</p>
 
       <h2>2. Information we collect</h2>
       <ul>
         <li><b>Account information</b> — the email address, and any optional profile fields (name, company, role) you provide when you create an account via Supabase Auth.</li>
         <li><b>API keys</b> — if you generate a PBICompass API key, we store a salted hash of it, never the raw key after it's first shown to you.</li>
         <li><b>Job metadata</b> — for each documentation job: timestamps, status, document types requested, output format, and tenant/account association. This is stored in our database so your job history and dashboard work. It does not include your file's contents.</li>
-        <li><b>Billing information</b> — if you subscribe to a paid plan, billing is handled entirely by our payment processor, Paddle.com Market Limited ("Paddle"). We do not receive or store your card number or full billing details; Paddle acts as merchant of record for your purchase. See Paddle's own privacy policy for how it handles payment data.</li>
+        <li><b>Billing information</b> — the Service does not currently sell paid subscriptions or collect billing information. We will update this policy before enabling a payment processor.</li>
         <li><b>Usage &amp; log data</b> — standard operational logs (request IDs, timestamps, error traces) used for reliability and abuse prevention, which do not contain file contents.</li>
       </ul>
 
       <h2>3. Optional third-party AI providers</h2>
-      <p>PBICompass can generate documentation using a fully offline, deterministic engine that requires no external calls. If you choose to enable AI-assisted narrative generation, you supply your own API key for a provider of your choice (e.g. Claude, Gemini, Cohere, or others via MeshAPI). In that case, the extracted metadata (never row-level data) for that job is sent to your chosen provider to generate prose. Your key is used only for that job and is not stored by us. Use of a third-party AI provider is subject to that provider's own terms and privacy policy.</p>
+      <p>PBICompass can generate documentation using a fully offline, deterministic engine that makes no AI-provider calls. If you select an AI engine, the extracted metadata needed for prose generation (never row-level data) is sent to the selected provider, such as Anthropic, Google, Cohere, or a model routed through MeshAPI. The hosted Service uses a server-managed provider key; a self-hosted deployment may optionally allow a per-job key. Per-job keys are not stored after processing. Provider processing is subject to that provider's terms and privacy policy.</p>
 
       <h2>4. How we use information</h2>
       <ul>
@@ -73,7 +73,7 @@
       <p>We do not sell your personal information, and we do not use your uploaded model's structure or content for advertising.</p>
 
       <h2>5. Data retention</h2>
-      <p>Job metadata is retained for as long as your account is active so your dashboard and job history remain usable. Rendered documentation output and uploaded source files are held in memory only for the duration of processing and are discarded immediately after — they are not written to disk and are not retained. You can request deletion of your account and associated job metadata at any time (see Section 7).</p>
+      <p>Job metadata is retained for as long as your account is active so your dashboard and job history remain usable. Uploaded source files are deleted when processing ends. In the hosted Service, rendered downloads are placed in a private Supabase Storage bucket; authenticated download access expires within one hour, and expired objects are scheduled for automatic deletion. Transient storage-provider failures may delay physical deletion and are retried. Self-hosted deployments may use in-memory or private filesystem storage. You can request deletion of your account and associated job metadata at any time (see Section 7).</p>
 
       <h2>6. Cookies &amp; sign-in</h2>
       <p>We use the minimum cookies/local storage needed to keep you signed in via Supabase Auth. We do not use third-party advertising or tracking cookies.</p>

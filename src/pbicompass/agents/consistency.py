@@ -454,7 +454,7 @@ def apply_consistency_pass(
             CONSISTENCY_SCHEMA, warn, "Consistency Checker", ai_context=ai_context,
         )
     except Exception as exc:  # pragma: no cover - defensive, mirrors call_llm's own contract
-        warn(f"Consistency: LLM call failed, skipping cross-artifact check ({exc})")
+        warn(f"Consistency: LLM call failed ({type(exc).__name__}); skipping cross-artifact check.")
         return {}
     if not response:
         return {}

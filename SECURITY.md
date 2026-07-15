@@ -16,15 +16,18 @@ report a problem.
 - **Connection strings are redacted.** Data-source detection keeps the
   connector type and server/database name; credentials embedded in M queries
   are stripped before they reach `model.json`.
-- **Zero-retention web service.** Each upload is processed inside a per-job
+- **Short-retention web service.** Each upload is processed inside a per-job
   sandbox (`service/sandbox.py`) that is deleted in a `finally` block —
-  success or failure — the moment rendering finishes. Only the rendered
-  output survives, in memory, for a short TTL (`service/jobs.py`).
+  success or failure — the moment rendering finishes. Hosted rendered output
+  has a 55-minute access TTL in a private Supabase Storage bucket; an
+  authenticated maintenance schedule deletes expired objects through the
+  Storage API and retries after transient deletion failures
+  (`service/jobs.py`, `service/output_store.py`).
 - **No metadata in logs.** Errors and log lines are content-free (job IDs and
   exception types, never model content) — see the `_FRIENDLY` messages in
   `service/worker.py`.
-- **Accounts store the minimum.** When auth is enabled, the SQLite accounts
-  database holds a hashed API key, tenant, plan, and per-day usage *counts*
+- **Accounts store the minimum.** When auth is enabled, the accounts
+  database holds hashed API keys, tenant/profile fields, plan, and monthly usage *counts*
   only (`service/accounts.py`) — never anything about a customer's report.
 - **Admin access is scoped, not a shared superuser.** The hosted SaaS gates
   its `/app` admin dashboard (stats, plan/quota overrides, suspend/delete) by
@@ -41,11 +44,12 @@ report a problem.
 
 ## Deploying safely
 
-- Set `PBICOMPASS_SANDBOX_ROOT` to a tmpfs (RAM) mount in production so uploads
-  never touch a physical disk (see `DEPLOYMENT.md`).
+- Set `PBICOMPASS_SANDBOX_ROOT` to ephemeral storage in production; the worker
+  removes the entire sandbox in a `finally` block (see `DEPLOYMENT.md`).
 - Enable `PBICOMPASS_REQUIRE_AUTH=1` before exposing an instance beyond a private
-  smoke test — the open `public` tenant has no rate limit.
-- Treat `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `COHERE_API_KEY` / `PBICOMPASS_ADMIN_TOKEN` like
+  smoke test. The upload rate limiter is defense in depth, not a replacement for auth.
+- Treat `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `COHERE_API_KEY` / `PBICOMPASS_ADMIN_TOKEN` /
+  `PBICOMPASS_MAINTENANCE_TOKEN` like
   any other secret: set them as platform environment variables, never commit
   them (see `.env.example` and `.gitignore`), and use a long random value for
   the admin token specifically (it has no username/rate-limit-per-identity to

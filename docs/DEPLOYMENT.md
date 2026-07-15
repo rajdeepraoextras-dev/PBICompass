@@ -33,8 +33,10 @@ Supabase Storage: pbicompass-outputs
 ```
 
 Uploads are processed in a per-job sandbox and then deleted. The app stores
-job/account metadata in Postgres and stores only the generated download bytes
-in Supabase Storage until the job TTL sweep removes them.
+job/account metadata in Postgres and stores only generated download bytes in
+private Supabase Storage. A five-minute Cloud Scheduler job invokes the
+authenticated Storage-API sweep. Access expires after the 55-minute TTL;
+physical deletion is retried if Supabase Storage is temporarily unavailable.
 
 ---
 
@@ -73,7 +75,7 @@ breaking `gcloud`.
 Enable required APIs:
 
 ```powershell
-& $gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com --project gold-atlas-501305-t1
+& $gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com cloudscheduler.googleapis.com --project gold-atlas-501305-t1
 ```
 
 Give the Cloud Run runtime service account access to Secret Manager:
@@ -96,6 +98,7 @@ These live in Google Secret Manager:
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase key for privileged auth/storage operations. |
 | `SUPABASE_ANON_KEY` | Public browser key, still stored as a secret for deploy hygiene. |
 | `PBICOMPASS_ADMIN_TOKEN` | Break-glass admin token for `/admin`, `/metrics`, and admin APIs. |
+| `PBICOMPASS_MAINTENANCE_TOKEN` | Narrow token used only by the scheduled output-expiry sweep. |
 | `MESHAPI_API_KEY` | Optional. Enables MeshAPI provider. |
 | `ANTHROPIC_API_KEY` | Optional. Enables Claude provider. |
 | `GEMINI_API_KEY` | Optional. Enables Gemini provider. |
@@ -204,7 +207,11 @@ $envVars = @(
   "PBICOMPASS_OUTPUT_STORE=supabase",
   "PBICOMPASS_OUTPUT_BUCKET=pbicompass-outputs",
   "PBICOMPASS_OUTPUT_PREFIX=outputs",
+  "PBICOMPASS_OUTPUT_TTL_SECONDS=3300",
   "PBICOMPASS_MAX_UPLOAD_MB=100",
+  "PBICOMPASS_MAX_EXTRACTED_MB=512",
+  "PBICOMPASS_MAX_ARCHIVE_ENTRIES=20000",
+  "PBICOMPASS_MAX_AUX_UPLOAD_KB=2048",
   "PBICOMPASS_JOB_TIMEOUT_SECONDS=900",
   "PBICOMPASS_UPLOAD_RATE_LIMIT=20",
   "PBICOMPASS_UPLOAD_RATE_WINDOW_SECONDS=60",
@@ -220,12 +227,13 @@ $envVars = @(
   --cpu 2 `
   --concurrency 1 `
   --timeout 1800 `
-  --max-instances 1 `
-  --min-instances 0 `
+  --max-instances 3 `
+  --min-instances 1 `
+  --no-cpu-throttling `
   --cpu-boost `
   --use-http2 `
   --set-env-vars $envVars `
-  --set-secrets PBICOMPASS_DB=PBICOMPASS_DB:latest,PBICOMPASS_JOBS_DB=PBICOMPASS_DB:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,PBICOMPASS_ADMIN_TOKEN=PBICOMPASS_ADMIN_TOKEN:latest
+  --set-secrets PBICOMPASS_DB=PBICOMPASS_DB:latest,PBICOMPASS_JOBS_DB=PBICOMPASS_DB:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,PBICOMPASS_ADMIN_TOKEN=PBICOMPASS_ADMIN_TOKEN:latest,PBICOMPASS_MAINTENANCE_TOKEN=PBICOMPASS_MAINTENANCE_TOKEN:latest
 ```
 
 Add provider secrets to `--set-secrets` only after those secrets exist, for
@@ -241,7 +249,8 @@ example:
 |---|---|
 | `--use-http2` | Required for large uploads. Cloud Run HTTP/1 requests are limited to 32 MiB; HTTP/2 lets 70+ MiB PBIP ZIPs reach the app. |
 | `--concurrency 1` | One heavy document job per container. Prevents memory/CPU contention. |
-| `--max-instances 1` | Current inline worker is safest as a single web container. Raise only after moving heavy jobs to a real queue/worker. |
+| `--min-instances 1 --max-instances 3` | Keeps one warm instance and allows three concurrent single-request instances. Hosted production uses shared Postgres job state and private Supabase Storage, so polling and downloads remain visible across instances. |
+| `--min-instances 1 --no-cpu-throttling` | Keeps CPU available while inline background tasks finish and always keeps one worker warm. |
 | `--timeout 1800` | Allows long report generation requests/status flows without premature platform timeout. |
 | `--memory 4Gi --cpu 2` | Gives the parser/renderers enough room for large Power BI projects. |
 | `--cpu-boost` | Faster cold starts and startup schema checks. |
@@ -249,6 +258,28 @@ example:
 The image uses Hypercorn and listens on `$PORT`. Docker `HEALTHCHECK` is
 disabled because Cloud Run manages startup probes, and periodic container
 health probes should not touch Supabase Postgres.
+
+### Output Retention Schedule
+
+The GitHub deployment workflow creates or updates `pbicompass-output-sweep`
+in Cloud Scheduler. For a manual deployment, create the same job after loading
+`PBICOMPASS_MAINTENANCE_TOKEN` into the current process:
+
+```powershell
+& $gcloud scheduler jobs create http pbicompass-output-sweep `
+  --project gold-atlas-501305-t1 `
+  --location us-central1 `
+  --schedule "*/5 * * * *" `
+  --time-zone UTC `
+  --uri "$serviceUrl/internal/maintenance/sweep" `
+  --http-method POST `
+  --headers "X-Maintenance-Token=$env:PBICOMPASS_MAINTENANCE_TOKEN" `
+  --attempt-deadline 300s
+```
+
+Use `gcloud scheduler jobs update http` instead when the job already exists.
+Supabase Storage objects must be deleted through the Storage API; do not delete
+rows directly from `storage.objects`, which would orphan the underlying files.
 
 ---
 

@@ -23,6 +23,7 @@ import re
 import sys
 import threading
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import (BackgroundTasks, FastAPI, File, Form, HTTPException, Query,
@@ -67,6 +68,25 @@ def _max_upload_bytes() -> int:
 
 def _job_timeout_seconds() -> int:
     return int(os.environ.get("PBICOMPASS_JOB_TIMEOUT_SECONDS", "600"))
+
+
+def _output_ttl_seconds() -> int:
+    return int(os.environ.get("PBICOMPASS_OUTPUT_TTL_SECONDS", "3600"))
+
+
+def _max_aux_upload_bytes() -> int:
+    return int(os.environ.get("PBICOMPASS_MAX_AUX_UPLOAD_KB", "2048")) * 1024
+
+
+async def _write_upload_limited(upload: UploadFile, destination: Path, cap: int) -> int:
+    size = 0
+    with open(destination, "wb") as output:
+        while chunk := await upload.read(1 << 20):
+            size += len(chunk)
+            if size > cap:
+                raise HTTPException(status_code=413, detail="Upload exceeds the size limit.")
+            output.write(chunk)
+    return size
 
 
 def _queue_mode() -> str:
@@ -206,6 +226,7 @@ def create_app(
     account_store: AccountStore | None = None,
     require_auth: bool | None = None,
     admin_token: str | None = None,
+    maintenance_token: str | None = None,
     admin_guard: AdminGuard | None = None,
     supabase_config: SupabaseAuthConfig | None = None,
 ) -> FastAPI:
@@ -213,11 +234,27 @@ def create_app(
     if init_sentry():
         log.info("sentry error tracking enabled")
 
-    app = FastAPI(title="PBICompass — Power BI Documentation Generator", version="0.1.0")
+    shutdown_callbacks = []
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        try:
+            yield
+        finally:
+            for close in reversed(shutdown_callbacks):
+                close()
+
+    app = FastAPI(
+        title="PBICompass — Power BI Documentation Generator",
+        version="0.1.0",
+        lifespan=lifespan,
+    )
     if require_auth is None:
         require_auth = os.environ.get("PBICOMPASS_REQUIRE_AUTH", "").lower() in ("1", "true", "yes")
     if admin_token is None:
         admin_token = os.environ.get("PBICOMPASS_ADMIN_TOKEN") or None
+    if maintenance_token is None:
+        maintenance_token = os.environ.get("PBICOMPASS_MAINTENANCE_TOKEN") or admin_token
     admin_guard = admin_guard or AdminGuard()
     # Bootstrap admin (Day 34): the email auto-granted admin on its first
     # signed-in request, so the very first admin exists without a manual DB
@@ -263,9 +300,7 @@ def create_app(
     visit_store = VisitStore(visits_db_path)
     app.state.visits = visit_store
 
-    @app.on_event("shutdown")
-    def _close_visit_store() -> None:
-        visit_store.close()
+    shutdown_callbacks.append(visit_store.close)
 
     # Persistent by default (A2-1): a file path (ideally on a mounted volume,
     # per DEPLOYMENT.md) so an in-flight/finished job survives a worker
@@ -275,6 +310,7 @@ def create_app(
     if owns_job_store:
         store = JobStore(
             os.environ.get("PBICOMPASS_JOBS_DB", "pbicompass_jobs.db"),
+            ttl_seconds=_output_ttl_seconds(),
             processing_timeout_seconds=_job_timeout_seconds(),
             output_store=output_store_from_env(),
         )
@@ -306,14 +342,10 @@ def create_app(
     vendor_supabase_js = (_STATIC / "vendor" / "supabase.js").read_text(encoding="utf-8")
 
     if owns_account_store:
-        @app.on_event("shutdown")
-        def _close_account_store() -> None:
-            account_store.close()
+        shutdown_callbacks.append(account_store.close)
 
     if owns_job_store:
-        @app.on_event("shutdown")
-        def _close_job_store() -> None:
-            store.close()
+        shutdown_callbacks.append(store.close)
 
     @app.middleware("http")
     async def _security_headers(request: Request, call_next):
@@ -321,6 +353,17 @@ def create_app(
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+            "form-action 'self'; img-src 'self' data:; font-src 'self' data:; "
+            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+            "connect-src 'self' https://*.supabase.co wss://*.supabase.co"
+        )
+        if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        if request.url.path.startswith(("/app", "/jobs", "/admin", "/me", "/metrics")):
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     @app.middleware("http")
@@ -620,6 +663,16 @@ def create_app(
         if format == "prometheus":
             return PlainTextResponse(app.state.metrics.to_prometheus_text())
         return JSONResponse(app.state.metrics.snapshot())
+
+    @app.post("/internal/maintenance/sweep")
+    def maintenance_sweep(request: Request) -> dict:
+        """Delete expired outputs and fail stale jobs; called by Cloud Scheduler."""
+        if not maintenance_token:
+            raise HTTPException(status_code=503, detail="Maintenance is not configured.")
+        supplied = request.headers.get("x-maintenance-token", "")
+        if not verify_admin_token(maintenance_token, supplied):
+            raise HTTPException(status_code=401, detail="Invalid maintenance token.")
+        return {"ok": True, **app.state.store.sweep()}
 
     @app.get("/me")
     def me(request: Request) -> dict:
@@ -999,13 +1052,7 @@ def create_app(
         try:
             upload_path = sandbox.path(f"upload{suffix}")
             cap = _max_upload_bytes()
-            size = 0
-            with open(upload_path, "wb") as out:
-                while chunk := await file.read(1 << 20):
-                    size += len(chunk)
-                    if size > cap:
-                        raise HTTPException(status_code=413, detail="Upload exceeds the size limit.")
-                    out.write(chunk)
+            size = await _write_upload_limited(file, upload_path, cap)
 
             try:
                 model = ingest_to_model(upload_path, sandbox.dir)
@@ -1128,6 +1175,12 @@ def create_app(
                 status_code=400,
                 detail="That AI engine is currently unavailable. Choose another engine or the offline engine.",
             )
+        if (provider_api_key or "").strip() and _queue_mode() == "celery":
+            raise HTTPException(
+                status_code=400,
+                detail="Per-job AI keys are unavailable with the external queue. "
+                       "Use a server-configured provider key or the inline queue.",
+            )
 
         # Freemium quota — enforced for authenticated tenants only.
         if account_store and tenant != "public":
@@ -1143,14 +1196,8 @@ def create_app(
         sandbox = JobSandbox(job.id, root=sandbox_root)
         upload_path = sandbox.path(f"upload{suffix}")
         cap = _max_upload_bytes()
-        size = 0
         try:
-            with open(upload_path, "wb") as out:
-                while chunk := await file.read(1 << 20):
-                    size += len(chunk)
-                    if size > cap:
-                        raise HTTPException(status_code=413, detail="Upload exceeds the size limit.")
-                    out.write(chunk)
+            size = await _write_upload_limited(file, upload_path, cap)
         except HTTPException:
             sandbox.cleanup()
             app.state.store.mark_failed(job.id, "Upload exceeded the size limit.")
@@ -1161,9 +1208,17 @@ def create_app(
         # everything else in JobSandbox.cleanup(), never persisted.
         rules_file_path: str | None = None
         if rules_file is not None and rules_file.filename:
+            if Path(rules_file.filename).suffix.lower() != ".toml":
+                sandbox.cleanup()
+                app.state.store.mark_failed(job.id, "Rules file must be TOML.")
+                raise HTTPException(status_code=400, detail="Rules file must use the .toml extension.")
             rules_path = sandbox.path("rules.toml")
-            with open(rules_path, "wb") as out:
-                out.write(await rules_file.read())
+            try:
+                await _write_upload_limited(rules_file, rules_path, _max_aux_upload_bytes())
+            except HTTPException:
+                sandbox.cleanup()
+                app.state.store.mark_failed(job.id, "Rules file exceeded the size limit.")
+                raise
             rules_file_path = str(rules_path)
 
         # Optional enrichment file (5.1) — same sandbox-scoped, shredded-on-
@@ -1173,9 +1228,17 @@ def create_app(
         # write one back to between jobs.
         enrichment_file_path: str | None = None
         if enrichment_file is not None and enrichment_file.filename:
+            if Path(enrichment_file.filename).suffix.lower() not in (".yaml", ".yml"):
+                sandbox.cleanup()
+                app.state.store.mark_failed(job.id, "Enrichment file must be YAML.")
+                raise HTTPException(status_code=400, detail="Enrichment file must use .yaml or .yml.")
             enrichment_path = sandbox.path("enrichment.yaml")
-            with open(enrichment_path, "wb") as out:
-                out.write(await enrichment_file.read())
+            try:
+                await _write_upload_limited(enrichment_file, enrichment_path, _max_aux_upload_bytes())
+            except HTTPException:
+                sandbox.cleanup()
+                app.state.store.mark_failed(job.id, "Enrichment file exceeded the size limit.")
+                raise
             enrichment_file_path = str(enrichment_path)
 
         options = {
