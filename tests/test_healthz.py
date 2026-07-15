@@ -42,7 +42,10 @@ class HealthzHappyPathTest(unittest.TestCase):
         resp = client.get("/app", headers={"x-forwarded-proto": "https"})
         self.assertEqual(resp.headers["x-content-type-options"], "nosniff")
         self.assertEqual(resp.headers["x-frame-options"], "DENY")
-        self.assertIn("frame-ancestors 'none'", resp.headers["content-security-policy"])
+        csp = resp.headers["content-security-policy"]
+        self.assertIn("frame-ancestors 'none'", csp)
+        self.assertIn("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", csp)
+        self.assertIn("font-src 'self' data: https://fonts.gstatic.com", csp)
         self.assertIn("max-age=31536000", resp.headers["strict-transport-security"])
         self.assertEqual(resp.headers["cache-control"], "no-store")
 
