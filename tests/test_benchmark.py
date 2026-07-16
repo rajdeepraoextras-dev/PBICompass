@@ -108,12 +108,27 @@ class BenchmarkScorerTest(unittest.TestCase):
             if CHECKS_BY_ID[r.check_id].method in ("render", "manual"):
                 self.assertIsNone(r.passed, f"{r.check_id} must not be scored pre-render")
 
-    def test_judge_checks_not_scored_by_scorer_when_floor_met(self):
-        # C8's deterministic floor is met (refresh schedule supplied) so it
-        # stays unevaluated for the reviewer; C13 is judge-only.
+    def test_judge_checks_not_scored_by_scorer(self):
+        # C13 is judge-only, so the scorer leaves it for the reviewer.
         by_id = {r.check_id: r for r in self.report.results}
-        self.assertIsNone(by_id["C8"].passed)
         self.assertIsNone(by_id["C13"].passed)
+
+    def test_c8_is_answered_deterministically_not_by_the_judge(self):
+        """C8 used to defer to the Senior Reviewer once a schedule string
+        existed. Two live runs then had the judge report "no refresh schedule is
+        present in any document" about bundles whose technical section 11 plainly
+        read "Refresh schedule: Daily 06:00 UTC via on-premises gateway". Every
+        part of C8 is a checkable fact, so it is now scored from the artifacts —
+        a judge must not be asked a question the scorer can answer."""
+        by_id = {r.check_id: r for r in self.report.results}
+        self.assertTrue(by_id["C8"].passed)
+        self.assertIn("documented", by_id["C8"].detail)
+
+    def test_c8_still_fails_honestly_when_refresh_is_undocumented(self):
+        docs = {dtype: gen.generate(self.model, None, owner="BI Team")   # no refresh intake
+                for dtype, gen in DOCUMENT_TYPES.items()}
+        c8 = next(r for r in run_benchmark(docs, model=self.model).results if r.check_id == "C8")
+        self.assertFalse(c8.passed)
 
     def test_clean_offline_bundle_triggers_no_gates(self):
         self.assertEqual(self.report.gates_triggered, [])

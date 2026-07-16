@@ -385,6 +385,24 @@ def _parse_table(header: Line, body: list[Line], warnings: list[str]) -> Table:
                 table.hierarchies.append(_parse_hierarchy(child, sub))
             elif kw.rstrip(":") == "refreshPolicy":
                 table.refresh_policy = _parse_refresh_policy(child, sub)
+                # No real export on hand contains a refresh policy, and neither
+                # Microsoft's TMDL spec nor its object reference pins down this
+                # declaration's shape — so both plausible forms are parsed, but
+                # the possibility of a third remains. If a policy block yields
+                # nothing at all, that is exactly the silent data loss the
+                # cultureInfo bug taught us to distrust: say so loudly rather
+                # than emit an empty policy and let a document imply there is
+                # no incremental refresh configured.
+                rp = table.refresh_policy
+                if not any((rp.policy_type, rp.rolling_window_periods, rp.incremental_periods,
+                            rp.rolling_window_granularity, rp.incremental_granularity,
+                            rp.source_expression, rp.mode)):
+                    warnings.append(
+                        f"table '{table.name}': a refreshPolicy block was found but no policy "
+                        "detail could be read from it — its TMDL shape may differ from the two "
+                        "this parser knows. The incremental-refresh section may be incomplete; "
+                        "please report this model's refreshPolicy syntax."
+                    )
         except Exception as exc:  # defensive: never abort a whole table
             warnings.append(f"table '{table.name}': failed to parse {kw}: {exc}")
     return table
