@@ -466,7 +466,40 @@ intake**. That sits uneasily beside the project's own rule that optional intake
 reports precisely when intake is thin. Worth a decision: either the benchmark
 shouldn't penalise absent optional context, or the rule should be restated.
 
-**Still true:** `refreshPolicy`/`perspective` remain unseen in any real file (both
-declaration shapes now parse; the spec confirms perspective's); C8's judge
-false-negatives on a cheap judge (twice, verifiably wrong); live *scoring* of a
-clean full bundle remains one report + one model.
+### 2026-07-16 — Closing the last three gaps
+
+**C8's judge false-negative — fixed at the root.** C8 was `method="judge"`, so once
+a bare schedule string existed it deferred to the Senior Reviewer, which then
+twice reported "no refresh schedule is present in any document" about bundles
+whose technical §11 plainly read *"Refresh schedule: Daily 06:00 UTC via
+on-premises gateway"*. Every part of C8 is a checkable fact, so it is now `auto`
+and scored from the artifacts: passes when a schedule (or notes) is recorded AND
+the data sources feeding it are documented; still fails honestly when a sparse
+intake documents no refresh. **A judge must not be asked a question the scorer can
+answer.** Final live run: **60/61** (was 59/61), bundle produced.
+
+**The intake question — settled by measurement, not a product decision.** The rule
+is "blank optional fields must never lower the *audit score* or make a document
+look unfinished". Measured on Corporate Spend: audit health is **78/100 with the
+full 17-field intake and 78/100 with owner-only** — the rule is honored. (Nothing
+at all scores 77, a deliberate −1 from the ownership governance finding.) The
+59→48 drop seen earlier was the **benchmark**, which is a different instrument:
+a bundle that documents no refresh genuinely *is* less complete documentation, so
+C5/C8/D6 failing there is honest. **No bug, nothing to decide.**
+
+**`refreshPolicy` — honestly irreducible, and now loud instead of silent.** It is
+the one parser that cannot be validated against a real file: none of the four real
+reports contain a refresh policy, and neither Microsoft's TMDL spec nor its object
+reference documents the declaration's shape (property names *are* confirmed via
+the TMSL form; `perspective` and `formatStringDefinition` the spec confirms
+outright). Writing a fixture by hand would re-encode our own assumptions — exactly
+what hid the `cultureInfo` bug. Both plausible shapes parse, and a block yielding
+no detail now **emits a warning** naming the possibility, so a third shape surfaces
+loudly rather than quietly implying the model has no incremental refresh. Closing
+this needs one artifact: a real `.pbip` whose table has an incremental-refresh
+policy.
+
+**Standing:** 1079 tests; 4/4 real reports ship (was 0/4); live 60/61 with a
+bundle produced; deterministic fallback ships again. C13 remains judge-method by
+design and can still be wrong — that is the nature of a judgment check, not a
+defect.
