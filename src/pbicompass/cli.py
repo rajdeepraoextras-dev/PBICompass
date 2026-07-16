@@ -127,14 +127,10 @@ def _write_bundle(model: SemanticModel, docs: dict, document_types: list[str],
             renderers["docx"](doc, docx_path)
             outputs[f"{dtype}.docx"] = docx_path.read_bytes()
 
-            if pandoc.pandoc_available() and pandoc.find_pdf_engine():
+            if pandoc.weasyprint_available():
                 try:
                     pdf_path = tmp / f"out.{dtype}.pdf"
-                    pandoc.to_pdf(
-                        renderers["md"](doc), pdf_path,
-                        title=doc.metadata.report_name, author=doc.metadata.owner,
-                        date=format_timestamp(doc.metadata.generated_at),
-                    )
+                    pandoc.html_to_pdf(outputs[f"{dtype}.html"].decode("utf-8"), pdf_path)
                     outputs[f"{dtype}.pdf"] = pdf_path.read_bytes()
                 except pandoc.PandocError:
                     pass
@@ -454,7 +450,28 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 client = get_client(args.provider, **client_kwargs)
             except Exception as exc:
-                _warn(f"{args.provider} provider unavailable ({exc}); using offline engine")
+                print(f"error: {args.provider} provider unavailable ({exc})", file=sys.stderr)
+                return 1
+
+        from .service.worker import _complete_metadata
+        completed_meta = _complete_metadata(model, client, {
+            "owner": owner, "audience": audience, "refresh": refresh,
+            "version": doc_version, "status": status, "author": author,
+            "reviewer": reviewer, "classification": classification,
+            "business_decision": business_decision, "requirements": requirements,
+            "security_notes": security_notes, "refresh_notes": refresh_notes,
+            "deployment_notes": deployment_notes, "access_notes": access_notes,
+            "glossary": glossary, "assumptions": assumptions, "support_notes": support_notes,
+        }, _warn)
+        owner, audience, refresh = (completed_meta[k] for k in ("owner", "audience", "refresh"))
+        doc_version, status, author = (completed_meta[k] for k in ("version", "status", "author"))
+        reviewer, classification = (completed_meta[k] for k in ("reviewer", "classification"))
+        business_decision, requirements = (completed_meta[k] for k in ("business_decision", "requirements"))
+        security_notes, refresh_notes = (completed_meta[k] for k in ("security_notes", "refresh_notes"))
+        deployment_notes, access_notes = (completed_meta[k] for k in ("deployment_notes", "access_notes"))
+        glossary, assumptions, support_notes = (
+            completed_meta[k] for k in ("glossary", "assumptions", "support_notes")
+        )
 
         document_types = list(DOCUMENT_TYPES) if args.document == "all" else [args.document]
 
@@ -547,6 +564,8 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         docs = {dtype: _generate_one(dtype) for dtype in document_types}
+        from .service.worker import _synchronize_glossary
+        _synchronize_glossary(docs)
         for dtype in ("technical", "audit"):
             if changelog_text and dtype in docs:
                 docs[dtype].changelog = changelog_text
@@ -560,6 +579,15 @@ def main(argv: list[str] | None = None) -> int:
             quality = run_review_loop(docs, model, client, _warn, ai_context)
             if not args.quiet:
                 print(quality.summary_line(), file=sys.stderr)
+                for result in quality.results:
+                    if result.get("passed") is False:
+                        locations = ", ".join(result.get("locations") or [])
+                        suffix = f" Locations: {locations}." if locations else ""
+                        print(f"quality issue {result['check_id']}: {result.get('detail', '')}{suffix}",
+                              file=sys.stderr)
+                for gap in quality.gaps:
+                    print(f"quality gap {gap.get('check_id')}: {gap.get('description', '')}",
+                          file=sys.stderr)
         except Exception as exc:
             _warn(f"Senior Reviewer: quality pass failed, continuing ({exc})")
 
@@ -632,12 +660,7 @@ def main(argv: list[str] | None = None) -> int:
                 elif fmt == "docx":
                     renderers["docx"](doc, out_path)
                 elif fmt == "pdf":
-                    from .render._shared import format_timestamp
-                    pandoc.to_pdf(
-                        renderers["md"](doc), out_path,
-                        title=doc.metadata.report_name, author=doc.metadata.owner,
-                        date=format_timestamp(doc.metadata.generated_at),
-                    )
+                    pandoc.html_to_pdf(renderers["html"](doc), out_path)
             except pandoc.PandocError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 1

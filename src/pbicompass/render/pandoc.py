@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +24,10 @@ class PandocError(RuntimeError):
 
 def pandoc_available() -> bool:
     return shutil.which("pandoc") is not None
+
+
+def weasyprint_available() -> bool:
+    return shutil.which("weasyprint") is not None
 
 
 def find_pdf_engine() -> Optional[str]:
@@ -106,4 +111,30 @@ def to_pdf(
     out_path = Path(out_path)
     content = _title_block(title, author, date) + markdown_text
     _run(["pandoc", "-f", "gfm", f"--pdf-engine={engine}", "-o", str(out_path)], content)
+    return out_path
+
+
+def html_to_pdf(html_text: str, out_path) -> Path:
+    """Render the already-validated HTML artifact directly with WeasyPrint.
+
+    This preserves the product's embedded fonts and print CSS and avoids the
+    lossy Markdown -> Pandoc HTML -> PDF path used previously.
+    """
+    executable = shutil.which("weasyprint")
+    if not executable:
+        raise PandocError("WeasyPrint executable not found on PATH.")
+    out_path = Path(out_path)
+    with tempfile.TemporaryDirectory(prefix="pbicompass-pdf-") as tmp:
+        source = Path(tmp) / "document.html"
+        source.write_text(html_text, encoding="utf-8")
+        try:
+            proc = subprocess.run(
+                [executable, str(source), str(out_path)],
+                capture_output=True, check=False,
+            )
+        except FileNotFoundError as exc:  # pragma: no cover
+            raise PandocError("WeasyPrint executable not found on PATH.") from exc
+        if proc.returncode != 0 or not out_path.exists():
+            detail = proc.stderr.decode("utf-8", "replace").strip()
+            raise PandocError(detail or "WeasyPrint failed.")
     return out_path

@@ -472,6 +472,7 @@ class TechnicalTopClusterTest(unittest.TestCase):
 class PandocAdapterTest(unittest.TestCase):
     def test_detection_returns_sane_types(self):
         self.assertIsInstance(pandoc.pandoc_available(), bool)
+        self.assertIsInstance(pandoc.weasyprint_available(), bool)
         engine = pandoc.find_pdf_engine()
         self.assertTrue(engine is None or isinstance(engine, str))
 
@@ -507,6 +508,21 @@ class PandocAdapterTest(unittest.TestCase):
 
     def test_title_block_empty_without_title(self):
         self.assertEqual(pandoc._title_block(None, "Jane", "today"), "")
+
+
+class EditableHtmlTest(unittest.TestCase):
+    def test_all_document_types_include_editor_and_save_support(self):
+        documents = (
+            render_html(_doc()),
+            render_audit_html(_audit_doc()),
+            render_executive_html(_executive_doc()),
+            render_user_guide_html(_user_guide_doc()),
+        )
+        for html in documents:
+            self.assertIn('id="document-content" contenteditable="false"', html)
+            self.assertIn('id="edit-document"', html)
+            self.assertIn('id="save-document"', html)
+            self.assertIn("document.documentElement.outerHTML", html)
 
 
 _AUDIT_SECTION_TITLES = [

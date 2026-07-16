@@ -140,6 +140,14 @@ _PUNT_PHRASE_RE = re.compile(
     r"unknown\s*[—–-]\s*requires\s+business\s+confirmation\.?",
     re.IGNORECASE,
 )
+_DOUBLED_PUNCT_RE = re.compile(r"(?<!\.)\.\.(?!\.)|——|\.\s+,|\.,")
+_DOUBLED_PHRASE_RE = re.compile(
+    r"\b(\w+(?:\s+\w+){2,5})\s*[—–-]+\s*(?:a\s+)?\1\b", re.IGNORECASE,
+)
+_SAFE_NARRATIVE_FALLBACK = (
+    "The uploaded model provides structural evidence for this area; the report owner "
+    "should validate the corresponding business detail."
+)
 # Same sentence-preserving split ``grounding.py`` uses — duplicated (not
 # imported) to keep this module free of a dependency on the grounding pass;
 # both need to agree on where a sentence ends, not share an object.
@@ -275,7 +283,9 @@ def sanitize_narratives(
             continue
         cleaned = text
         if _PUNT_PHRASE_RE.search(cleaned):
-            cleaned = strip_punt_leak(cleaned, fallbacks.get(location, cleaned))
+            cleaned = strip_punt_leak(
+                cleaned, fallbacks.get(location, _SAFE_NARRATIVE_FALLBACK),
+            )
         # Unconditional, not gated on is_meta_commentary(cleaned): that
         # check is anchored to the *start* of whatever string it's given,
         # so a directive-sentence sitting mid-paragraph (as here) would
@@ -284,6 +294,10 @@ def sanitize_narratives(
         # nothing matches, so gating the call here would only reintroduce
         # the same false-negative it exists to fix.
         cleaned = strip_meta_commentary_leak(cleaned, fallbacks.get(location, cleaned))
+        cleaned = _DOUBLED_PUNCT_RE.sub(".", cleaned)
+        cleaned = _DOUBLED_PHRASE_RE.sub(r"\1", cleaned)
+        if is_low_content_fragment(cleaned):
+            cleaned = fallbacks.get(location, _SAFE_NARRATIVE_FALLBACK)
         if cleaned != text:
             setter(cleaned)
 

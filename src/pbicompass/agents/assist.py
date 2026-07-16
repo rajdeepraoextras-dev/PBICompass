@@ -74,6 +74,13 @@ ASSIST_TEXT_SCHEMA = {
     "properties": {"text": {"type": "string"}},
 }
 
+ASSIST_METADATA_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": list(ASSIST_FIELDS),
+    "properties": {name: {"type": "string"} for name in ASSIST_FIELDS},
+}
+
 ASSIST_FILL_SYSTEM = """You are a senior BI consultant helping a colleague fill in one field of a Power BI report intake form. This form's answers feed directly into an AI-generated handover document, so accuracy matters more than completeness.
 
 You are given:
@@ -92,6 +99,10 @@ Write the content for field_label only. Rules:
 Return only the field's text."""
 
 ASSIST_FORMAT_SYSTEM = """Fix the grammar, spelling, capitalization, and punctuation of the given text. Preserve its exact meaning and every fact -- do not add, remove, or reinterpret information, and do not add new sentences. Do not change technical terms, product names, or proper nouns. Preserve existing line breaks: each input line stays its own output line. Return only the corrected text, nothing else."""
+
+ASSIST_METADATA_SYSTEM = """You are a senior BI consultant completing missing metadata for an enterprise Power BI handover package.
+
+Use only report_facts and form_context as factual evidence. Never invent people, URLs, gateways, schedules, SLAs, deployment environments, or security tests. For operational details absent from the evidence, write a concise, explicit limitation followed by what the owner must verify. Infer business purpose, requirements, glossary terms, and model-visible security behavior from the supplied metadata. Keep all fields mutually consistent, concrete, and useful. Do not use markdown headings or marketing language. Return every schema field; use an empty string for fields that were not requested."""
 
 
 def build_report_summary(model: SemanticModel) -> dict:
@@ -145,6 +156,29 @@ def fill_field(
         ASSIST_TEXT_SCHEMA, effort="medium",
     )
     return (result or {}).get("text", "").strip()
+
+
+def complete_metadata_fields(client: LLMClient, report_facts: dict,
+                             form_context: dict) -> dict[str, str]:
+    """Complete all missing narrative intake fields in one grounded AI call."""
+    missing = [name for name in ASSIST_FIELDS if not form_context.get(name)]
+    if not missing:
+        return {}
+    requested = {
+        name: {"label": ASSIST_FIELDS[name]["label"],
+               "guidance": ASSIST_FIELDS[name]["guidance"]}
+        for name in missing
+    }
+    result = client.complete_json(
+        ASSIST_METADATA_SYSTEM,
+        json.dumps({"requested_fields": requested, "report_facts": report_facts,
+                    "form_context": {k: v for k, v in form_context.items() if v}},
+                   ensure_ascii=False),
+        ASSIST_METADATA_SCHEMA,
+        effort="high",
+    )
+    return {name: str((result or {}).get(name, "")).strip() for name in missing
+            if str((result or {}).get(name, "")).strip()}
 
 
 def format_text(client: LLMClient, text: str) -> str:

@@ -100,6 +100,18 @@ def _narrative_duplicate_issues(docs: dict[str, Any]) -> list[GateIssue]:
                 continue
             prior = seen.get(normalized)
             if prior and prior[0] != dtype:
+                pair = {(prior[0], prior[1]), (dtype, location)}
+                intentional_glossary_reuse = any(
+                    d == "user-guide" and loc.startswith("glossary[") for d, loc in pair
+                ) and any(
+                    d == "technical" and (
+                        loc.startswith("glossary_entries[")
+                        or loc.startswith("measure_catalog.measures[")
+                    )
+                    for d, loc in pair
+                )
+                if intentional_glossary_reuse:
+                    continue
                 issues.append(GateIssue("DEDUP", f"{dtype}:{location} duplicates {prior[0]}:{prior[1]}"))
             else:
                 seen[normalized] = (dtype, location)
@@ -115,7 +127,8 @@ def validate_bundle(docs: dict[str, Any], model: Any, *,
     benchmark = run_benchmark(docs, model=model, ai_context=ai_context)
     for result in benchmark.failing():
         if result.check_id in _BLOCKING_BENCHMARK_IDS:
-            issues.append(GateIssue(result.check_id, result.detail))
+            location_text = f" Locations: {', '.join(result.locations)}." if result.locations else ""
+            issues.append(GateIssue(result.check_id, result.detail + location_text))
     issues.extend(_narrative_duplicate_issues(docs))
 
     rendered = _render_html_bundle(docs, html_filenames)

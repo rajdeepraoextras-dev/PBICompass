@@ -324,14 +324,14 @@ class SanitizeNarrativesTest(unittest.TestCase):
         sanitize_narratives(triples, {"loc": "DETERMINISTIC FALLBACK"})
         self.assertEqual(box.value, "DETERMINISTIC FALLBACK")
 
-    def test_without_a_fallback_keeps_original_rather_than_blanking(self):
-        # Defensive default: no crash, no empty string — the field is left
-        # exactly as it was (still bad, but never worse) when the caller
-        # supplied no domain-specific replacement.
+    def test_without_a_fallback_uses_safe_grounded_prose(self):
+        # A full-field punt must not survive merely because the caller has
+        # no domain-specific replacement; retain honest, useful prose.
         box = self._obj("Unknown — requires business confirmation.")
         triples = [self._triple("loc", box)]
         sanitize_narratives(triples)
-        self.assertEqual(box.value, "Unknown — requires business confirmation.")
+        self.assertIn("uploaded model provides structural evidence", box.value)
+        self.assertNotIn("requires business confirmation", box.value)
 
     def test_fields_without_the_leak_are_never_touched(self):
         box = self._obj("A perfectly normal sentence.")

@@ -156,7 +156,7 @@ BENCHMARK_CHECKS: list[CheckSpec] = [
               "A report owner is recorded in the document metadata."),
     CheckSpec("C12", 2, 1, "auto", "Assumptions & limitations present",
               "An assumptions/limitations statement is present in the document metadata."),
-    CheckSpec("C13", 2, 1, "judge", "Measure business logic explains why",
+    CheckSpec("C13", 2, 1, "auto", "Measure business logic explains why",
               "Measure descriptions explain the business meaning and the why of the calculation, "
               "not just an echo of the measure's name.", doc_types=("technical",),
               prose_fixable=True),
@@ -606,6 +606,39 @@ def _eval_c12(docs, renders, model, ai_context):
     return False, "no assumptions/limitations statement recorded", []
 
 
+def _eval_c13(docs, renders, model, ai_context):
+    # The deterministic translator intentionally states mechanics only; the
+    # stronger business-rationale contract applies when the AI translator
+    # actually ran and supplied job-shared translations.
+    if ai_context is None or not getattr(ai_context, "translations", None):
+        return None, "AI measure translations not present", []
+    technical = docs.get("technical")
+    if technical is None:
+        return None, "technical document not present", []
+    rationale_re = re.compile(
+        r"\b(?:so|because|use|used|useful|track|compare|assess|interpret|ensure|prevent|"
+        r"estimate|estimated|proxy|assumption|limit|exclude|excluding|avoid|support)\w*\b",
+        re.IGNORECASE,
+    )
+    weak = []
+    for i, measure in enumerate(technical.measure_catalog.measures):
+        plain = (measure.plain_english or "").strip()
+        logic = (measure.calculation_logic or "").strip()
+        name_words = re.sub(r"\W+", " ", measure.name.casefold()).strip()
+        plain_words = re.sub(r"\W+", " ", plain.casefold()).strip()
+        too_thin = len(re.findall(r"[A-Za-z]+", plain)) < 7
+        name_echo = plain_words == name_words or plain_words in {
+            f"the {name_words}", f"{name_words} measure", f"the {name_words} measure",
+        }
+        same_as_mechanics = plain_words == re.sub(r"\W+", " ", logic.casefold()).strip()
+        if not plain or not logic or too_thin or name_echo or same_as_mechanics \
+                or not rationale_re.search(f"{plain} {logic}"):
+            weak.append(f"technical:measure_catalog.measures[{i}].plain_english")
+    if weak:
+        return False, "measure definitions lack distinct business meaning or interpretation rationale", weak
+    return True, "all measure definitions include meaning and interpretation rationale", []
+
+
 def _eval_c8_floor(docs, renders, model, ai_context):
     """C8 is judge-method; this deterministic floor only *fails* it early
     when even the bare schedule string is missing — a floor failure the
@@ -667,6 +700,7 @@ _AUTO_EVALUATORS: dict[str, Callable] = {
     "C1": _eval_c1, "C2": _eval_c2, "C3": _eval_c3, "C4": _eval_c4,
     "C5": _eval_c5, "C6": _eval_c6, "C7": _eval_c7, "C8": _eval_c8_floor,
     "C9": _eval_c9, "C10": _eval_c10, "C11": _eval_c11, "C12": _eval_c12,
+    "C13": _eval_c13,
     "V2": _eval_v2, "D6": _eval_d6, "X3": _eval_x3,
 }
 

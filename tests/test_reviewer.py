@@ -92,7 +92,7 @@ class ReviewerLoopTest(unittest.TestCase):
         self.assertTrue(report.reviewer_ran)
         self.assertNotIn("T6", report.unresolved)
 
-    def test_iteration_cap_stops_at_two_cycles(self):
+    def test_deterministic_sanitizer_can_finish_a_reviewer_fix(self):
         docs = _make_docs(self.model)
         docs["executive"].purpose = "This dashboard has issues.. It tracks spend."
         # Every "fix" changes the text but never removes the defect.
@@ -104,9 +104,10 @@ class ReviewerLoopTest(unittest.TestCase):
                     "gaps": []}
         client = FakeReviewerClient([bad_fix(1), bad_fix(2), bad_fix(3)])
         report = run_review_loop(docs, self.model, client, None, _ai_context())
-        self.assertEqual(report.iterations, 2)
-        self.assertEqual(client.reviewer_calls, 2)
-        self.assertIn("T6", report.unresolved)
+        self.assertEqual(report.iterations, 1)
+        self.assertEqual(client.reviewer_calls, 1)
+        self.assertNotIn("T6", report.unresolved)
+        self.assertNotIn("..", docs["executive"].purpose)
 
     def test_graceful_degradation_on_llm_failure(self):
         docs = _make_docs(self.model)

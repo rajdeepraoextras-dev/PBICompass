@@ -469,6 +469,15 @@ def apply_consistency_pass(
         current = results.get(location, working[location])
         if quote not in current:
             continue
+        definition_field = (
+            ".plain_english" in location
+            or location.startswith("glossary[")
+            or location.startswith("glossary_entries[")
+        )
+        # Correct a contradicted clause inside a definition, but never
+        # replace the whole definition with audit-status prose.
+        if definition_field and quote.strip() == current.strip():
+            continue
         results[location] = current.replace(quote, correction)
         warn(f"{location}: consistency pass corrected a claim that contradicted the "
              f"Audit & Health Report.")

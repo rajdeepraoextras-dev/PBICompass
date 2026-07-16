@@ -1053,25 +1053,7 @@ document.querySelectorAll("[data-goto-tab]").forEach(pill => {
   });
 });
 
-/* ---------- Notes tab: per-field "AI Fill" / "Format" (MeshAPI-backed) ---------- */
-// Field ids whose backend Form param name matches the element id exactly
-// (everything on tabs 2 & 3 except "status", handled separately since its
-// element id is "status-field").
-const ASSIST_CONTEXT_IDS = ["owner", "audience", "refresh", "version", "author", "reviewer",
-  "classification", "business_decision", "requirements", "security_notes", "refresh_notes",
-  "deployment_notes", "access_notes", "glossary", "assumptions", "support_notes"];
-
-function collectFormContext(excludeId) {
-  const ctx = {};
-  const statusVal = $("status-field").value.trim();
-  if (statusVal && excludeId !== "status") ctx.status = statusVal;
-  ASSIST_CONTEXT_IDS.forEach(k => {
-    if (k === excludeId) return;
-    const el = $(k);
-    if (el) { const v = el.value.trim(); if (v) ctx[k] = v; }
-  });
-  return ctx;
-}
+/* ---------- Notes tab: per-field formatting ---------- */
 
 function fieldAiMsg(btn, text, cls, sticky) {
   const row = btn.closest(".field-actions");
@@ -1089,27 +1071,6 @@ function setFieldBusy(row, btn, busyLabel, busy) {
   else { btn.innerHTML = btn.dataset.label || btn.innerHTML; }
 }
 
-async function assistFill(ta, btn) {
-  const f = $("file").files[0];
-  if (!f) { fieldAiMsg(btn, "Upload a report on tab 1 first.", "err"); return; }
-  const row = btn.closest(".field-actions");
-  setFieldBusy(row, btn, "Working…", true);
-  fieldAiMsg(btn, "This may take a minute or two…", "", true);
-  try {
-    const fd = new FormData();
-    fd.append("file", f);
-    fd.append("field", ta.id);
-    if (ta.value.trim()) fd.append("current_text", ta.value.trim());
-    Object.entries(collectFormContext(ta.id)).forEach(([k, v]) => fd.append(k, v));
-    const r = await fetch("/app/api/assist/fill", { method: "POST", body: fd, headers: authHeaders() });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { fieldAiMsg(btn, j.detail || "AI fill failed.", "err"); return; }
-    ta.value = j.text || "";
-    fieldAiMsg(btn, "Filled.", "ok");
-  } catch { fieldAiMsg(btn, "Connection failed.", "err"); }
-  finally { setFieldBusy(row, btn, "", false); }
-}
-
 async function assistFormat(ta, btn) {
   const text = ta.value.trim();
   if (!text) { fieldAiMsg(btn, "Nothing to format.", "err"); return; }
@@ -1125,23 +1086,16 @@ async function assistFormat(ta, btn) {
   finally { setFieldBusy(row, btn, "", false); }
 }
 
-const AI_FILL_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>';
-
 document.querySelectorAll("#tab-details .form-group").forEach(group => {
   const ta = group.querySelector("textarea");
   if (!ta) return;
   const row = document.createElement("div");
   row.className = "field-actions";
-  const fillBtn = document.createElement("button");
-  fillBtn.type = "button"; fillBtn.className = "field-ai-btn";
-  fillBtn.innerHTML = AI_FILL_ICON + "<span>AI Fill</span>";
-  fillBtn.title = "Draft this field from the uploaded report";
   const formatBtn = document.createElement("button");
   formatBtn.type = "button"; formatBtn.className = "field-ai-btn"; formatBtn.innerHTML = "<span>Format text</span>";
   formatBtn.title = "Fix grammar & punctuation of what's typed here";
-  fillBtn.addEventListener("click", () => assistFill(ta, fillBtn));
   formatBtn.addEventListener("click", () => assistFormat(ta, formatBtn));
-  row.appendChild(fillBtn); row.appendChild(formatBtn);
+  row.appendChild(formatBtn);
   group.insertBefore(row, ta);
 });
 

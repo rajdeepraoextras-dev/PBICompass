@@ -110,7 +110,7 @@ def _assist_rate_window_seconds() -> float:
 
 
 def _assist_client():
-    """The intake form's "AI Fill"/"Format" buttons always run on MeshAPI,
+    """The intake form's formatting tools always run on MeshAPI,
     independent of whatever engine the eventual job uses -- a deliberate
     product decision to keep this free-form drafting aid on one fixed, cheap
     engine rather than tying it to the caller's job-engine choice. ``None``

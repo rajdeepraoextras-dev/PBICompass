@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from .generators.base import call_llm
 from .llm import LLMClient
-from .sanitize import is_meta_commentary
+from .sanitize import is_meta_commentary, is_punt_phrase
 
 if TYPE_CHECKING:
     from .context import JobAIContext
@@ -179,9 +179,14 @@ def apply_results(triples: list[tuple[str, str, Callable[[str], None]]], results
     is rejected here rather than written into the document — this is the
     single choke point every critic/grounding result from every generator
     passes through, so one guard covers all of them."""
-    for location, _original, setter in triples:
+    for location, original, setter in triples:
         if location in results:
             replacement = results[location]
             if is_meta_commentary(replacement):
+                continue
+            # A verifier may be unable to prove a valid, grounded field and
+            # return the canned punt. Preserve the existing substantive text
+            # instead of replacing useful documentation with a non-answer.
+            if is_punt_phrase(replacement) and not is_punt_phrase(original):
                 continue
             setter(replacement)

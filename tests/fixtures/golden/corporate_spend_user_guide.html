@@ -1119,6 +1119,37 @@ details.collapsible > .code-block pre {
   margin: 2cm;
 }
 
+.document-editor {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 0 12px;
+  pointer-events: none;
+}
+.document-editor button {
+  pointer-events: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+}
+.document-editor button:hover { border-color: var(--primary); }
+.document-editor button[aria-pressed="true"] { background: var(--primary); color: #fff; }
+#document-content[contenteditable="true"] {
+  outline: 2px solid var(--primary);
+  outline-offset: 8px;
+  border-radius: 4px;
+}
+#document-content[contenteditable="true"]:focus { outline-color: var(--accent); }
+
 @media print {
   /* Force light regardless of on-screen theme (system preference or the
      sidebar toggle) — a printed/PDF page is always read on paper. */
@@ -1137,7 +1168,7 @@ details.collapsible > .code-block pre {
     background-color: #ffffff;
     display: block;
   }
-  .sidebar, .theme-toggle, .mobile-toc-toggle, .skip-link, .copy-btn {
+  .sidebar, .theme-toggle, .mobile-toc-toggle, .skip-link, .copy-btn, .document-editor {
     display: none;
   }
   .content-wrapper {
@@ -1230,6 +1261,10 @@ details.collapsible > .code-block pre {
 <li class="toc-item"><a href="#sec5" class="toc-link">FAQ</a></li>
 </ul></nav>
 <div class="content-wrapper">
+<div class="document-editor" aria-label="Document editing controls">
+<button type="button" id="edit-document" aria-pressed="false">Edit document</button>
+<button type="button" id="save-document">Save HTML</button>
+</div>
 <main class="main-content" id="main-content">
 <div class="header-card">
 <h1>Corporate Spend — Business User Guide</h1>
@@ -1239,6 +1274,7 @@ details.collapsible > .code-block pre {
 <div class="kpi"><div class="n">2</div><div class="l">Pages</div></div>
 <div class="kpi"><div class="n">22</div><div class="l">Glossary Terms</div></div>
 </div>
+<div id="document-content" contenteditable="false">
 <h2 id="sec1">1. Introduction</h2>
 <p>Welcome! This guide explains how to use the &#x27;Corporate Spend&#x27; report — no technical background needed. &#x27;Corporate Spend&#x27; reports on Date, tracking Amount, Actual, LE1, LE2 across Business Area, Cost Element, Country Region, Department. It spans 2 report pages, documented individually below. This purpose statement is derived from the model contents alone — the business context requires confirmation from the report owner.</p>
 <h2 id="sec2">2. Getting Started</h2>
@@ -1313,6 +1349,7 @@ details.collapsible > .code-block pre {
 <div id="faq-the-numbers-don-t-match-what-i-expected-why"><p><strong>The numbers don&#x27;t match what I expected — why?</strong></p><p>Confirm you&#x27;re looking at the intended time period or filter selection; different pages can have different filters applied by default.</p></div>
 <div id="faq-i-don-t-understand-what-a-term-or-field-means"><p><strong>I don&#x27;t understand what a term or field means.</strong></p><p>Check the Glossary of Business Terms at the end of this guide — most fields used in the report are listed there.</p></div>
 <div id="faq-who-do-i-contact-with-questions-about-this-report"><p><strong>Who do I contact with questions about this report?</strong></p><p>Contact your Power BI administrator.</p></div>
+</div>
 </main></div>
 <script>
 // svg-pan-zoom v3.6.2
@@ -1324,6 +1361,33 @@ delete window.__spz_require;
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+  const editable = document.getElementById('document-content');
+  const editButton = document.getElementById('edit-document');
+  const saveButton = document.getElementById('save-document');
+  if (editable && editButton) {
+    editButton.addEventListener('click', () => {
+      const active = editable.getAttribute('contenteditable') !== 'true';
+      editable.setAttribute('contenteditable', active ? 'true' : 'false');
+      editButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+      editButton.textContent = active ? 'Finish editing' : 'Edit document';
+      if (active) editable.focus();
+    });
+  }
+  if (saveButton) {
+    saveButton.addEventListener('click', () => {
+      const wasEditing = editable && editable.getAttribute('contenteditable') === 'true';
+      if (editable) editable.setAttribute('contenteditable', 'false');
+      const source = '<!doctype html>
+' + document.documentElement.outerHTML;
+      if (editable && wasEditing) editable.setAttribute('contenteditable', 'true');
+      const blob = new Blob([source], { type: 'text/html;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = (document.title || 'pbicompass-document').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-edited.html';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    });
+  }
   // D3 (mobile 390px): tables use the browser's automatic column-sizing
   // algorithm, so a wide cell (a long file path, an unwrapped DAX
   // expression) can force a table past its 100% width instead of

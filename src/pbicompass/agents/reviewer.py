@@ -43,7 +43,7 @@ from .benchmark import (
     run_benchmark,
 )
 from .critic import apply_results
-from .generators.base import call_llm
+from .generators.base import call_llm_with_retry
 from .grounding import apply_grounding_pass
 from .io import STYLE_RULES
 from .llm import LLMClient
@@ -67,6 +67,11 @@ provide the fix. Each fix names the doc_type, the field's exact location label (
 input), the check it addresses, and revised_text — the complete replacement prose for that field.
 3. gaps: Anything failing that cannot be fixed by rewriting a listed field (a missing section, a \
 structural or rendering defect, missing human input) goes here, never in fixes.
+
+Every false verdict whose checklist item has prose_fixable=true must include at least one concrete \
+location-level fix in the same response. Do not report a prose problem as a gap or omit its fix. \
+For measure-business-logic failures, revise each weak plain_english field to state both what the \
+metric means and why its calculation, filter, or assumption matters to interpretation.
 
 Hard rules for revised_text:
 - The model digest and check counts are ground truth. Never change a number, name, count, or \
@@ -145,7 +150,8 @@ def reviewer_input(
     failing = report.failing()
     check_ids = list(dict.fromkeys(judge_ids + [r.check_id for r in failing]))
     checks = [{"id": cid, "title": CHECKS_BY_ID[cid].title,
-               "pass_criterion": CHECKS_BY_ID[cid].pass_criterion}
+               "pass_criterion": CHECKS_BY_ID[cid].pass_criterion,
+               "prose_fixable": CHECKS_BY_ID[cid].prose_fixable}
               for cid in check_ids if cid in CHECKS_BY_ID]
     documents = {
         dtype: {loc: text for loc, text, _ in narrative_triples_for(dtype, doc)
@@ -298,12 +304,22 @@ def run_review_loop(
             if cycle > 0 and not fixable_failures and not failed_judges:
                 break
 
-            response = call_llm(
+            payload = reviewer_input(docs, report, judge_ids, ai_context)
+            payload["repair_attempt"] = cycle + 1
+            if cycle:
+                payload["repair_instruction"] = (
+                    "The previous attempt made no accepted change or left failures unresolved. "
+                    "Return complete revised_text for the exact failing locations listed in "
+                    "deterministic_failures; do not return advice in place of a fix."
+                )
+            response = call_llm_with_retry(
                 client, SENIOR_REVIEWER_SYSTEM,
-                reviewer_input(docs, report, judge_ids, ai_context),
-                REVIEWER_SCHEMA, warn, "Senior Reviewer", ai_context=ai_context,
+                payload,
+                REVIEWER_SCHEMA, retries=1, backoff_range=(0.0, 0.0),
+                name="Senior Reviewer", ai_context=ai_context,
             )
             if response is None:
+                warn("Senior Reviewer: two invalid or failed responses; deterministic gates remain authoritative.")
                 break
             reviewer_ran = True
 
@@ -320,6 +336,9 @@ def run_review_loop(
 
             changed = _apply_fixes(docs, response.get("fixes", []), warn)
             if not changed:
+                if cycle + 1 < max_fix_cycles and (fixable_failures or failed_judges):
+                    warn("Senior Reviewer: retrying unresolved checks with explicit repair locations.")
+                    continue
                 break
             iterations = cycle + 1
             _reground_and_sanitize(docs, changed, client, warn, ai_context)

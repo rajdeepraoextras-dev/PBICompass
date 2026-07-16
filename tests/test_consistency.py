@@ -257,6 +257,19 @@ class ApplyConsistencyPassTest(unittest.TestCase):
         results = apply_consistency_pass([("a", "Some other text.")], client, verdicts=_verdicts())
         self.assertEqual(results, {})
 
+    def test_whole_measure_definition_cannot_be_replaced_by_audit_status(self):
+        original = "Net sales after canceled orders are excluded."
+        client = FakeConsistencyClient([{
+            "location": "measure_catalog.measures[0].plain_english",
+            "quote": original,
+            "correction": "Description coverage: 100% of measures have a description.",
+        }])
+        results = apply_consistency_pass(
+            [("measure_catalog.measures[0].plain_english", original)],
+            client, verdicts=_verdicts(),
+        )
+        self.assertEqual(results, {})
+
 
 class CheckConsistencyMergeTest(unittest.TestCase):
     def test_deterministic_and_llm_results_merge(self):

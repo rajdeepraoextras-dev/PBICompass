@@ -1085,6 +1085,37 @@ details.collapsible > .code-block pre {
   margin: 2cm;
 }
 
+.document-editor {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 0 12px;
+  pointer-events: none;
+}
+.document-editor button {
+  pointer-events: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+}
+.document-editor button:hover { border-color: var(--primary); }
+.document-editor button[aria-pressed="true"] { background: var(--primary); color: #fff; }
+#document-content[contenteditable="true"] {
+  outline: 2px solid var(--primary);
+  outline-offset: 8px;
+  border-radius: 4px;
+}
+#document-content[contenteditable="true"]:focus { outline-color: var(--accent); }
+
 @media print {
   /* Force light regardless of on-screen theme (system preference or the
      sidebar toggle) — a printed/PDF page is always read on paper. */
@@ -1103,7 +1134,7 @@ details.collapsible > .code-block pre {
     background-color: #ffffff;
     display: block;
   }
-  .sidebar, .theme-toggle, .mobile-toc-toggle, .skip-link, .copy-btn {
+  .sidebar, .theme-toggle, .mobile-toc-toggle, .skip-link, .copy-btn, .document-editor {
     display: none;
   }
   .content-wrapper {
@@ -1178,6 +1209,32 @@ _THEME_INIT_SCRIPT = """
 _SCRIPT = """
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+  const editable = document.getElementById('document-content');
+  const editButton = document.getElementById('edit-document');
+  const saveButton = document.getElementById('save-document');
+  if (editable && editButton) {
+    editButton.addEventListener('click', () => {
+      const active = editable.getAttribute('contenteditable') !== 'true';
+      editable.setAttribute('contenteditable', active ? 'true' : 'false');
+      editButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+      editButton.textContent = active ? 'Finish editing' : 'Edit document';
+      if (active) editable.focus();
+    });
+  }
+  if (saveButton) {
+    saveButton.addEventListener('click', () => {
+      const wasEditing = editable && editable.getAttribute('contenteditable') === 'true';
+      if (editable) editable.setAttribute('contenteditable', 'false');
+      const source = '<!doctype html>\n' + document.documentElement.outerHTML;
+      if (editable && wasEditing) editable.setAttribute('contenteditable', 'true');
+      const blob = new Blob([source], { type: 'text/html;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = (document.title || 'pbicompass-document').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-edited.html';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    });
+  }
   // D3 (mobile 390px): tables use the browser's automatic column-sizing
   // algorithm, so a wide cell (a long file path, an unwrapped DAX
   // expression) can force a table past its 100% width instead of
@@ -1644,6 +1701,10 @@ def page_shell(
     o.append('</ul></nav>')
 
     o.append('<div class="content-wrapper">')
+    o.append('<div class="document-editor" aria-label="Document editing controls">')
+    o.append('<button type="button" id="edit-document" aria-pressed="false">Edit document</button>')
+    o.append('<button type="button" id="save-document">Save HTML</button>')
+    o.append('</div>')
     o.append('<main class="main-content" id="main-content">')
 
     o.append('<div class="header-card">')
@@ -1675,7 +1736,9 @@ def page_shell(
             o.append(f'<div class="kpi"><div class="n">{_e(value)}</div><div class="l">{_e(label)}</div></div>')
         o.append("</div>")
 
+    o.append('<div id="document-content" contenteditable="false">')
     o.append(body_html)
+    o.append('</div>')
 
     o.append("</main></div>")
     # Day 6: vendored svg-pan-zoom, inlined (not a <script src>, and no

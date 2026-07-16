@@ -29,6 +29,7 @@ time into the same folder still ends up with working cross-document links.
 from __future__ import annotations
 
 import io
+import json
 import logging
 import zipfile
 from pathlib import Path
@@ -36,6 +37,7 @@ from typing import Callable
 
 from .. import enrichment as enrichment_mod
 from ..agents import audit_rules, generate_document, get_client
+from ..agents.assist import build_report_summary, complete_metadata_fields
 from ..agents.context import JobAIContext, build_job_context
 from ..agents.generators import DOCUMENT_TYPES
 from ..render import pandoc, registry
@@ -114,6 +116,70 @@ def _effective_metadata(options: dict, enrichment_meta: dict) -> dict:
         else (enrichment_meta.get(enrichment_key.get(k, k)) or None)
         for k in keys
     }
+
+
+def _complete_metadata(model, client, meta: dict, warn: Callable[[str], None]) -> dict:
+    """Fill missing context once per job without fabricating unavailable facts."""
+    completed = dict(meta)
+    if client is not None:
+        try:
+            completed.update(complete_metadata_fields(
+                client, build_report_summary(model), completed,
+            ))
+        except Exception as exc:
+            warn(f"Automatic metadata completion failed ({type(exc).__name__}); using grounded defaults.")
+
+    modes = sorted({p.mode for t in model.tables for p in t.partitions if p.mode})
+    mode_text = ", ".join(modes) if modes else "not exposed"
+    defaults = {
+        "owner": "Owner not identified in report metadata; assign a named report owner.",
+        "audience": "Report consumers, business owners, and BI support staff.",
+        "refresh": ("Schedule not stored in the uploaded model metadata; verify the Power BI "
+                    f"Service schedule and gateway configuration. Model partition mode: {mode_text}."),
+        "version": "Generated baseline",
+        "status": "Draft for owner review",
+        "author": "PBICompass",
+        "reviewer": "Reviewer not assigned; nominate the report owner or BI lead.",
+        "classification": "Classification not provided; confirm before distribution.",
+        "business_decision": "Use the documented pages and measures to support the report's model-visible analysis workflows.",
+        "requirements": "Validate the documented measures, filters, security behavior, and refresh operation against business acceptance criteria.",
+        "security_notes": "Security documentation is limited to roles and filters present in the uploaded model; validate workspace and app permissions separately.",
+        "refresh_notes": "Confirm the Power BI Service schedule, credentials, gateway mapping, failure alerts, and typical duration; these operational settings are not stored in the model metadata.",
+        "deployment_notes": "Deployment environments and workspace links are not stored in the model metadata; record the approved Dev, Test, and Production path.",
+        "access_notes": "Workspace and app membership are not stored in the model metadata; verify least-privilege access with the report owner.",
+        "glossary": "Model-derived business terms are listed in the generated glossary; the report owner should confirm organization-specific wording.",
+        "assumptions": "This documentation is derived from uploaded model metadata and does not inspect source data values or Power BI Service tenant settings.",
+        "support_notes": "Support contacts and service levels are not stored in the model metadata; assign an owner, escalation route, and review cadence.",
+    }
+    for key, value in defaults.items():
+        if not completed.get(key):
+            completed[key] = value
+    return completed
+
+
+def _synchronize_glossary(docs: dict[str, object]) -> None:
+    """Use one canonical term/definition set in technical and user-guide docs."""
+    technical = docs.get("technical")
+    guide = docs.get("user-guide")
+    if technical is None or guide is None:
+        return
+    guide_definitions = {g.term.casefold(): g.plain_definition for g in guide.glossary}
+    canonical = []
+    seen: set[str] = set()
+    for entry in technical.glossary_entries:
+        term = entry.get("term", "").strip()
+        key = term.casefold()
+        if not term or key in seen:
+            continue
+        item = dict(entry)
+        if guide_definitions.get(key):
+            item["definition"] = guide_definitions[key]
+        canonical.append(item)
+        seen.add(key)
+    from ..schemas.user_guide_document import GlossaryTerm
+    technical.glossary_entries = canonical
+    guide.glossary = [GlossaryTerm(term=e["term"], plain_definition=e["definition"])
+                      for e in canonical]
 
 
 def _generate_one(document_type: str, model, client, meta: dict, warn: Callable[[str], None],
@@ -233,7 +299,7 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
                     changelog_text = history["previous_summary"]
                 history["previous_fingerprint"] = current_fp
 
-        meta = _effective_metadata(options, enrichment_meta)
+        meta = _complete_metadata(model, client, _effective_metadata(options, enrichment_meta), warn)
 
         # Phase 0/2: one DAX Translator pass and one Report Intelligence pass
         # shared by every requested document type. Build this only after
@@ -324,6 +390,8 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
                 doc.changelog = changelog_text
             docs[dtype] = doc
 
+        _synchronize_glossary(docs)
+
         if not active("quality review"):
             return
 
@@ -331,9 +399,11 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
         # rendering. Internal-only: the quality report goes to the job log
         # and the warnings list (both already hidden from the end-user
         # completed-job screen), never into the rendered outputs.
+        quality_report = None
         try:
             from ..agents.reviewer import run_review_loop
             quality = run_review_loop(docs, model, client, warn, ai_context)
+            quality_report = quality.to_dict()
             log.info(
                 "job %s quality score=%s/%s iterations=%s unresolved=%s",
                 job_id, quality.score, quality.max_evaluated_points, quality.iterations,
@@ -349,7 +419,7 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
         # The production quality gate is advisory for delivery: keep the
         # user's selected engine, and render the best available bundle with a
         # warning rather than leaving the user with no output after a long run.
-        from ..agents.output_gate import _render_html_bundle, validate_bundle
+        from ..agents.output_gate import OutputQualityError, _render_html_bundle, validate_bundle
         try:
             validated_html = validate_bundle(
                 docs, model, html_filenames=html_filenames or None, ai_context=ai_context,
@@ -364,6 +434,14 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
                 f"The final quality gate reported issues with the {engine} output; "
                 "the best available output was generated for review."
             )
+            if isinstance(exc, OutputQualityError):
+                for issue in exc.issues[:8]:
+                    warn(f"Quality gate {issue.check_id}: {issue.detail}")
+                if quality_report is not None:
+                    quality_report["output_gate_issues"] = [
+                        {"check_id": issue.check_id, "detail": issue.detail}
+                        for issue in exc.issues
+                    ]
             validated_html = _render_html_bundle(docs, html_filenames or None)
 
         # Phase B: render everything (body unchanged from the old combined
@@ -387,17 +465,13 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
             renderers["docx"](doc, docx_path)
             outputs[key("docx")] = docx_path.read_bytes()
 
-            if pandoc.pandoc_available() and pandoc.find_pdf_engine():
+            if pandoc.weasyprint_available():
                 try:
                     pdf_path = sandbox.path(f"out.{dtype}.pdf")
-                    pandoc.to_pdf(
-                        renderers["md"](doc), pdf_path,
-                        title=doc.metadata.report_name, author=doc.metadata.owner,
-                        date=format_timestamp(doc.metadata.generated_at),
-                    )
+                    pandoc.html_to_pdf(validated_html[dtype], pdf_path)
                     outputs[key("pdf")] = pdf_path.read_bytes()
                 except pandoc.PandocError as exc:
-                    log.info("job %s pdf skipped for %s: %s", job_id, dtype, type(exc).__name__)
+                    log.info("job %s pdf skipped for %s: %s", job_id, dtype, str(exc)[:240])
 
         if multi:
             # 5.7: the parsed model and (when enrichment was used) its
@@ -435,6 +509,11 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
             with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
                 for name, data in outputs.items():
                     zf.writestr(name, data)
+                if quality_report is not None:
+                    zf.writestr(
+                        "quality-report.json",
+                        json.dumps(quality_report, indent=2, ensure_ascii=False).encode("utf-8"),
+                    )
             outputs["zip"] = zip_buf.getvalue()
 
         if not store.is_active(job_id):
