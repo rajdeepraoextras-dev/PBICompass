@@ -304,6 +304,43 @@ Decisions worth keeping:
   test that document *body text* is never in the payload.
 - New env vars documented in `.env.example`.
 
+### 2026-07-16 — A3 (partial): validated against REAL TMDL — found a real bug
+
+The audit's own warning ("synthetic fixtures encode our own assumptions") proved
+correct. Validated the Track-B parsers against **4 real Power BI exports** on the
+owner's machine (HR Sample, Corporate Spend, Zomato, RCL demo — parsed locally,
+counts only, no content read into any transcript).
+
+**Bug found and fixed — `cultureInfo`.** Real TMDL declares a culture as
+`cultureInfo <name>` in `definition/cultures/*.tmdl`; the parser dispatched on
+`culture`, so **cultures parsed as 0 on every real model** while the synthetic
+tests stayed green (they encoded the same wrong keyword). Fixed, plus a guard:
+the model-level `culture: en-US` *property* must not be parsed as a culture
+declaration (it would invent a phantom culture on every model).
+
+**Quality call:** Power BI writes a default `en-US` cultureInfo with zero
+translations into *every* model. Documenting "Translations / languages: en-US
+(0 translated)" on a single-language report is noise, so the generator only
+surfaces cultures when there is >1 culture or ≥1 real translated caption. The
+parsed model still keeps them all — presentation decision, not a parse one.
+
+**False alarm worth recording:** a raw grep of a whole `.SemanticModel` folder
+over-counts, because scratch folders like `TMDLScripts/` contain `.tmdl` files
+that are *not* part of the model definition. Ground truth must scan
+`definition/` only — which is exactly what the parser does.
+
+**Result after the fix — strict source-vs-parsed comparison, 0 mismatches,
+0 parse warnings:** calculationItem 5→5, hierarchy 7→7 / 8→8 / 2→2,
+cultureInfo 1→1 (×4), kpi 1→1.
+
+New `scripts/validate_real_models.py` makes this repeatable against any model
+(exit code = mismatch count, so it can gate CI once a real corpus exists).
+
+**Still unvalidated against real files:** `refreshPolicy`, `perspective`, and
+measure-level `formatStringDefinition` — **none of the 4 real models contain
+them**, so those three parsers remain synthetic-only and should be treated as
+unproven until a model that uses them is available.
+
 **Next up:** C1 "Ask about this report" (Phase-5 Q&A, the big net-new surface);
 C4 live cross-provider verification; plus the still-owed Track A clean
 fully-live scored bundle (blocked on MeshAPI credits).

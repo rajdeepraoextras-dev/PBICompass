@@ -449,6 +449,21 @@ class FieldParamPerspectiveCultureRenderTest(unittest.TestCase):
         self.assertIn("fr-FR", md)
         self.assertIn("Dynamic format strings", md)
 
+    def test_default_single_culture_is_not_documented(self):
+        """Power BI writes a default en-US cultureInfo (0 translations) into
+        every model; documenting it on a single-language report is noise. Only
+        a genuinely multi-language or translated model earns the section."""
+        from pbicompass.schemas.model import SemanticModel, Table, Culture
+        model = SemanticModel(report_name="R", tables=[Table(name="Sales")],
+                              cultures=[Culture(name="en-US", translated_object_count=0)])
+        self.assertNotIn("Translations / languages", render_markdown(generate_document(model)))
+
+    def test_translated_culture_is_documented(self):
+        from pbicompass.schemas.model import SemanticModel, Table, Culture
+        model = SemanticModel(report_name="R", tables=[Table(name="Sales")],
+                              cultures=[Culture(name="fr-FR", translated_object_count=12)])
+        self.assertIn("fr-FR", render_markdown(generate_document(model)))
+
     def test_html(self):
         html = render_html(self._doc())
         self.assertIn("<h3>Field parameters</h3>", html)

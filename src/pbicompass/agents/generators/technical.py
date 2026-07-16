@@ -461,10 +461,19 @@ def _semantic_model(model: SemanticModel, client, warn, col_descs: dict,
         {"name": pv.name, "tables": pv.tables, "measures": pv.measures}
         for pv in model.perspectives
     ]
-    cultures = [
-        {"name": cu.name, "translated_object_count": cu.translated_object_count}
-        for cu in model.cultures
-    ]
+    # Power BI writes a default culture (usually en-US) carrying only
+    # linguisticMetadata into *every* model, translated or not. Documenting
+    # "Translations / languages: en-US (0 translated)" on a single-language
+    # report is noise, so only surface cultures once they mean something: more
+    # than one culture, or at least one actual translated caption. (Same rule as
+    # the Ownership section's "render a row only when it's set".) The parsed
+    # model keeps every culture regardless — this is a presentation decision.
+    cultures = []
+    if len(model.cultures) > 1 or any(c.translated_object_count for c in model.cultures):
+        cultures = [
+            {"name": cu.name, "translated_object_count": cu.translated_object_count}
+            for cu in model.cultures
+        ]
     return SemanticModelDoc(summary=summary, data_dictionary=data_dictionary, relationships=rels,
                             risks=risks, tables=tables, relationship_edges=edges,
                             hierarchies=hierarchies, calculation_groups=calculation_groups,

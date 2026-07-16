@@ -426,8 +426,18 @@ def _parse_perspective(header: Line, body: list[Line]) -> Perspective:
 
 
 def _parse_culture(header: Line, body: list[Line]) -> Culture:
-    name, _ = parse_decl(header.text, "culture")
-    # Best-effort: a culture's value is a count of translated captions in it.
+    """Parse a ``cultureInfo <name>`` block (TMDL's ``definition/cultures/*.tmdl``).
+
+    The keyword is ``cultureInfo``, **not** ``culture`` — verified against real
+    Power BI TMDL exports. (A bare ``culture:`` line does exist in TMDL, but at
+    model level, as the model's *default culture* property; it is not a culture
+    declaration and must not be parsed as one — hence the top-level-only
+    dispatch.) The block carries ``linguisticMetadata`` plus, on a genuinely
+    translated model, ``translatedCaption`` entries, which is what makes a
+    culture worth documenting.
+    """
+    keyword = "cultureInfo" if _first_token(header.text) == "cultureInfo" else "culture"
+    name, _ = parse_decl(header.text, keyword)
     count = sum(1 for ln in body if _first_token(ln.text).rstrip(":") == "translatedCaption")
     return Culture(name=unquote(name), translated_object_count=count)
 
@@ -469,7 +479,7 @@ def parse_tmdl_text(text: str, agg: dict, warnings: list[str]) -> None:
                 agg["expressions"].append(_parse_expression(ln, body))
             elif kw == "perspective":
                 agg.setdefault("perspectives", []).append(_parse_perspective(ln, body))
-            elif kw == "culture":
+            elif kw in ("cultureInfo", "culture"):
                 agg.setdefault("cultures", []).append(_parse_culture(ln, body))
             elif kw in ("database", "model"):
                 rest = ln.text[len(kw):].strip()

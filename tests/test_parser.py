@@ -338,7 +338,9 @@ class FieldParamPerspectiveCultureTest(unittest.TestCase):
             "\tperspectiveTable Sales",
             "\t\tperspectiveMeasure 'Total Sales'",
             "\tperspectiveTable Date",
-            "culture fr-FR",
+            # Real TMDL declares a culture as `cultureInfo <name>` (verified
+            # against Power BI exports), not `culture <name>`.
+            "cultureInfo fr-FR",
             "\ttranslations",
             "\t\ttranslatedCaption: Ventes",
             "\t\ttranslatedCaption: Date",
@@ -373,6 +375,40 @@ class FieldParamPerspectiveCultureTest(unittest.TestCase):
         self.assertEqual(agg["tables"][0].measures[0].format_string_expression, '"#,0"')
         self.assertEqual(agg["perspectives"][0].tables, ["Sales", "Date"])
         self.assertEqual(agg["cultures"][0].translated_object_count, 2)
+
+    def test_real_tmdl_culture_keyword_is_cultureInfo(self):
+        """Regression for a real bug found by validating against actual Power BI
+        TMDL exports: the parser dispatched on `culture`, but real exports write
+        `cultureInfo <name>` in definition/cultures/*.tmdl — so cultures parsed
+        as 0 on every real model. Synthetic fixtures encoded the same wrong
+        assumption and so could never catch it."""
+        from pbicompass.parsers.tmdl import parse_tmdl_text
+        # Shape taken from a real export: linguisticMetadata, no translations.
+        text = "\n".join([
+            "cultureInfo en-US",
+            "\tlinguisticMetadata = ",
+            "\t\t{",
+            '\t\t  "Version": "1.0.0"',
+            "\t\t}",
+            "\t\tcontentType: json",
+        ])
+        agg = {"tables": [], "relationships": [], "roles": [], "expressions": [],
+               "perspectives": [], "cultures": [], "model_name": None}
+        parse_tmdl_text(text, agg, [])
+        self.assertEqual(len(agg["cultures"]), 1)
+        self.assertEqual(agg["cultures"][0].name, "en-US")
+        self.assertEqual(agg["cultures"][0].translated_object_count, 0)
+
+    def test_model_level_culture_property_is_not_a_culture_declaration(self):
+        """`culture: en-US` inside the model block is the *default culture*
+        property, not a culture object — parsing it as one would invent a
+        phantom culture on every model."""
+        from pbicompass.parsers.tmdl import parse_tmdl_text
+        text = "model Model\n\tculture: en-US\n\tdefaultPowerBIDataSourceVersion: powerBI_V3\n"
+        agg = {"tables": [], "relationships": [], "roles": [], "expressions": [],
+               "perspectives": [], "cultures": [], "model_name": None}
+        parse_tmdl_text(text, agg, [])
+        self.assertEqual(agg["cultures"], [])
 
     def test_field_parameter_extraction(self):
         from pbicompass.schemas.model import Table, Column, Partition, Relationship
