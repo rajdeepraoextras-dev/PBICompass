@@ -272,7 +272,10 @@ class DiffCommandTest(unittest.TestCase):
             with contextlib.redirect_stdout(stdout):
                 code = cli.main(["diff", str(old_path), str(new_path)])
             self.assertEqual(code, 0)
-            self.assertIn("Modified Measures", stdout.getvalue())
+            out = stdout.getvalue()
+            # C2: richer severity-grouped change log names the object + kind.
+            self.assertIn("modified", out)
+            self.assertIn("DAX logic changed", out)
 
     def test_diff_with_no_changes(self):
         with tempfile.TemporaryDirectory() as td:

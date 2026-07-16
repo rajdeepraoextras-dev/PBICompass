@@ -239,116 +239,14 @@ def get_model_fingerprint(model: SemanticModel) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-def compute_model_diff(old: dict, new: dict) -> dict:
-    """Compare two semantic model dict schemas and return structural delta."""
-    diff = {
-        "added_tables": [],
-        "removed_tables": [],
-        "changed_tables": {},
-        "added_measures": [],
-        "removed_measures": [],
-        "changed_measures": {},
-        "added_relationships": [],
-        "removed_relationships": []
-    }
-    
-    old_tables = {t["name"]: t for t in old.get("tables", [])}
-    new_tables = {t["name"]: t for t in new.get("tables", [])}
-    
-    for name, new_t in new_tables.items():
-        if name not in old_tables:
-            diff["added_tables"].append(name)
-        else:
-            old_t = old_tables[name]
-            old_cols = {c["name"]: c for c in old_t.get("columns", [])}
-            new_cols = {c["name"]: c for c in new_t.get("columns", [])}
-            
-            added_c = [c for c in new_cols if c not in old_cols]
-            removed_c = [c for c in old_cols if c not in new_cols]
-            changed_c = []
-            
-            for col_name, n_col in new_cols.items():
-                if col_name in old_cols:
-                    o_col = old_cols[col_name]
-                    if o_col.get("expression") != n_col.get("expression") or o_col.get("is_calculated") != n_col.get("is_calculated"):
-                        changed_c.append(col_name)
-            
-            if added_c or removed_c or changed_c:
-                diff["changed_tables"][name] = {
-                    "added_columns": added_c,
-                    "removed_columns": removed_c,
-                    "changed_columns": changed_c
-                }
-                
-    for name in old_tables:
-        if name not in new_tables:
-            diff["removed_tables"].append(name)
-            
-    old_meas = {}
-    for t in old.get("tables", []):
-        for m in t.get("measures", []):
-            old_meas[m["name"]] = m
-            
-    new_meas = {}
-    for t in new.get("tables", []):
-        for m in t.get("measures", []):
-            new_meas[m["name"]] = m
-            
-    for name, n_m in new_meas.items():
-        if name not in old_meas:
-            diff["added_measures"].append(name)
-        else:
-            o_m = old_meas[name]
-            if o_m.get("expression") != n_m.get("expression"):
-                diff["changed_measures"][name] = {
-                    "old_expression": o_m.get("expression"),
-                    "new_expression": n_m.get("expression")
-                }
-                
-    for name in old_meas:
-        if name not in new_meas:
-            diff["removed_measures"].append(name)
-            
-    old_rels = {f"{r.get('from_table')}[{r.get('from_column')}] -> {r.get('to_table')}[{r.get('to_column')}]" for r in old.get("relationships", [])}
-    new_rels = {f"{r.get('from_table')}[{r.get('from_column')}] -> {r.get('to_table')}[{r.get('to_column')}]" for r in new.get("relationships", [])}
-    
-    diff["added_relationships"] = sorted(list(new_rels - old_rels))
-    diff["removed_relationships"] = sorted(list(old_rels - new_rels))
-    
-    return diff
+# Version-diff (C2) now lives in agents/model_diff.py — a comprehensive
+# engine with impact analysis and severity. Re-exported here so every existing
+# importer (cli, service/worker, the enrichment round-trip, tests) keeps
+# working against enrichment.compute_model_diff / generate_change_log_markdown
+# unchanged, just with far richer output.
+from .agents.model_diff import (  # noqa: E402  (intentional late import)
+    compute_model_diff,
+    generate_change_log_markdown,
+)
 
-
-def generate_change_log_markdown(diff: dict) -> str:
-    """Produce a formatted markdown change log from the diff."""
-    parts = []
-    if diff.get("added_tables"):
-        parts.append(f"- **Added Tables:** {', '.join(diff['added_tables'])}")
-    if diff.get("removed_tables"):
-        parts.append(f"- **Removed Tables:** {', '.join(diff['removed_tables'])}")
-        
-    for t_name, t_diff in sorted(diff.get("changed_tables", {}).items()):
-        sub = []
-        if t_diff.get("added_columns"):
-            sub.append(f"added columns: {', '.join(t_diff['added_columns'])}")
-        if t_diff.get("removed_columns"):
-            sub.append(f"removed columns: {', '.join(t_diff['removed_columns'])}")
-        if t_diff.get("changed_columns"):
-            sub.append(f"modified columns: {', '.join(t_diff['changed_columns'])}")
-        if sub:
-            parts.append(f"- **Table '{t_name}':** {'; '.join(sub)}")
-            
-    if diff.get("added_measures"):
-        parts.append(f"- **Added Measures:** {', '.join(diff['added_measures'])}")
-    if diff.get("removed_measures"):
-        parts.append(f"- **Removed Measures:** {', '.join(diff['removed_measures'])}")
-    if diff.get("changed_measures"):
-        parts.append(f"- **Modified Measures (Logic changed):** {', '.join(sorted(diff['changed_measures'].keys()))}")
-        
-    if diff.get("added_relationships"):
-        parts.append(f"- **Added Relationships:** {', '.join(diff['added_relationships'])}")
-    if diff.get("removed_relationships"):
-        parts.append(f"- **Removed Relationships:** {', '.join(diff['removed_relationships'])}")
-        
-    if not parts:
-        return "No structural or logic changes detected since the last documentation run."
-    return "\n".join(parts)
+__all__ = [n for n in dir() if not n.startswith('_')]

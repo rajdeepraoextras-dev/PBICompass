@@ -248,6 +248,33 @@ Final completeness features, same end-to-end pattern.
 closed: calc groups, hierarchies, KPIs, refresh policy, field parameters,
 perspectives, translations, dynamic format strings.
 
-**Next up (Track C differentiators):** C1 "Ask about this report" (Phase-5 Q&A),
-C2 version-diff docs (note `pbicompass diff` already exists — extend it), plus the
-still-owed Track A clean fully-live scored bundle (blocked on MeshAPI credits).
+### 2026-07-16 — Track C2 shipped (version-diff with impact analysis)
+
+Turned the thin `pbicompass diff` into a real change-management surface.
+
+- **New `agents/model_diff.py`** — comprehensive diff over tables/columns
+  (incl. type changes), measures (logic + format), relationships (**modified
+  properties**, not just add/remove), **RLS roles + filter changes**
+  (security-flagged), pages, and every Track-B feature (calc items, KPIs,
+  refresh policy, hierarchies, perspectives, cultures). Every change is
+  classified with a **severity** (Critical→Info) and a plain-language **impact
+  note** driven by a page/visual **usage index**: a removed measure a visual
+  still binds to is Critical ("Referenced by visuals on N pages…"); a changed
+  cross-filter is High ("can silently alter every number that crosses this
+  join"); an RLS filter change is High + security-flagged.
+- **`enrichment.py`** now delegates `compute_model_diff`/
+  `generate_change_log_markdown` to the new engine (back-compat keys preserved),
+  so the changelog already embedded in the technical & audit docs is
+  automatically far richer.
+- **`render/html.py::_render_md`** upgraded to render bullet lists + inline
+  `code` (was paragraphs only) so the embedded change log looks right; plain
+  prose (executive core purpose) renders identically.
+- **CLI**: `pbicompass diff old.json new.json` now emits a severity-grouped,
+  impact-annotated change log; `--format html` writes a self-contained styled
+  "What Changed" page (no external assets).
+- Tests: new `tests/test_model_diff.py` (coverage + impact + severity + both
+  renderers); existing enrichment/CLI diff tests updated for the richer output.
+
+**Next up:** C1 "Ask about this report" (Phase-5 Q&A, the big net-new surface);
+C3 publish targets; C4 live cross-provider verification; plus the still-owed
+Track A clean fully-live scored bundle (blocked on MeshAPI credits).

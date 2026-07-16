@@ -262,6 +262,9 @@ def main(argv: list[str] | None = None) -> int:
     p_diff.add_argument("old", type=Path, help="Previous model.json")
     p_diff.add_argument("new", type=Path, help="Current model.json")
     p_diff.add_argument("-o", "--out", type=Path, help="Write the change log here instead of stdout")
+    p_diff.add_argument("--format", choices=["md", "html"], default="md",
+                        help="Output format: 'md' (default, reviewer-ready markdown) or 'html' "
+                             "(a self-contained styled 'What Changed' page)")
 
     p_serve = sub.add_parser("serve", help="Run the web service (upload UI + API)")
     p_serve.add_argument("--host", default="127.0.0.1")
@@ -313,7 +316,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "diff":
         import json
 
-        from .enrichment import compute_model_diff, generate_change_log_markdown
+        from .agents.model_diff import (
+            compute_model_diff,
+            generate_change_log_markdown,
+            render_change_summary_html,
+        )
 
         try:
             old = json.loads(args.old.read_text(encoding="utf-8"))
@@ -321,11 +328,18 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        changelog = generate_change_log_markdown(compute_model_diff(old, new))
-        if args.out:
-            args.out.write_text(changelog + "\n", encoding="utf-8")
+        diff = compute_model_diff(old, new)
+        if args.format == "html":
+            title = f"What Changed — {_safe_stem(new.get('report_name') or args.new.stem)}"
+            output = render_change_summary_html(diff, title=title)
         else:
-            print(changelog)
+            output = generate_change_log_markdown(diff)
+        if args.out:
+            args.out.write_text(output + "\n", encoding="utf-8")
+            total = sum(diff.get("summary", {}).values())
+            print(f"Wrote {args.out} ({total} change(s))", file=sys.stderr)
+        else:
+            print(output)
         return 0
 
     if args.command == "generate":

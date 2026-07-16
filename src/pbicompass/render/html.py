@@ -39,22 +39,48 @@ from ._shared import section_provenance
 from ._shared import slicer_field_label as _slicer_label
 
 
+def _md_inline(text: str) -> str:
+    """Escape + apply inline markdown (bold, italic, `code`) for the mini
+    renderer. Order matters: escape first, then wrap spans."""
+    s = _e(text)
+    s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
+    s = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", s)
+    s = re.sub(r"\*(.*?)\*", r"<em>\1</em>", s)
+    return s
+
+
 def _render_md(text: str | None) -> str:
+    """Minimal markdown → HTML for embedded prose (executive core purpose) and
+    the version-diff change log. Handles paragraphs, bold/italic/`code`, and —
+    added for the C2 change log — bullet lists (consecutive ``- `` lines become
+    a real ``<ul>``). A block with no bullets renders as a single ``<p>``,
+    preserving the original behavior for plain prose."""
     if not text:
         return ""
-    paras = text.split("\n\n")
     out = []
-    for p in paras:
-        p_strip = p.strip()
-        if not p_strip:
+    for block in text.split("\n\n"):
+        lines = [ln for ln in block.split("\n") if ln.strip()]
+        if not lines:
             continue
-        p_esc = _e(p_strip)
-        p_esc = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", p_esc)
-        p_esc = re.sub(r"\*(.*?)\*", r"<em>\1</em>", p_esc)
-        if "Warning:" in p_esc:
-            out.append(f'<div class="risk">{p_esc}</div>')
+        if any(ln.lstrip().startswith("- ") for ln in lines):
+            # Interleave bullet runs (<ul>) with any non-bullet label lines (<p>).
+            buf: list[str] = []
+            for ln in lines:
+                if ln.lstrip().startswith("- "):
+                    buf.append(f"<li>{_md_inline(ln.lstrip()[2:].strip())}</li>")
+                else:
+                    if buf:
+                        out.append("<ul>" + "".join(buf) + "</ul>")
+                        buf = []
+                    out.append(f"<p>{_md_inline(ln.strip())}</p>")
+            if buf:
+                out.append("<ul>" + "".join(buf) + "</ul>")
+            continue
+        para = _md_inline(block.strip())
+        if "Warning:" in para:
+            out.append(f'<div class="risk">{para}</div>')
         else:
-            out.append(f"<p>{p_esc}</p>")
+            out.append(f"<p>{para}</p>")
     return "\n".join(out)
 
 
