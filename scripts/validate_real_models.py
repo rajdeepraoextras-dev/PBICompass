@@ -48,6 +48,64 @@ FEATURE_RX = {
 }
 
 
+def validate_pbit(path: Path) -> int:
+    """Validate the TMSL parser against a real ``.pbit``.
+
+    A .pbit carries its model as ``DataModelSchema`` — real, Power-BI-emitted
+    TMSL, readable with nothing but zipfile+json. That makes it the only way to
+    check the TMSL path against genuine output rather than dicts we wrote
+    ourselves from our own reading of the format, which is exactly the
+    circularity that let the ``cultureInfo`` bug survive.
+
+    Compares the parse against the raw JSON's own counts. Prints counts only.
+    """
+    import json
+    import zipfile
+
+    from pbicompass.parsers.tmsl import parse_semantic_model_tmsl
+
+    print(f"\n=== {path.name} (.pbit / TMSL) ===")
+    try:
+        zf = zipfile.ZipFile(path)
+        entry = next((n for n in zf.namelist() if "DataModelSchema" in n), None)
+        if entry is None:
+            print("  SKIP — no DataModelSchema in this .pbit")
+            return 0
+        raw = zf.read(entry)
+        # Power BI writes DataModelSchema as UTF-16LE.
+        text = (raw.decode("utf-16-le", errors="replace") if raw[:2] == b"{\x00"
+                else raw.decode("utf-8-sig", errors="replace"))
+        bim = json.loads(text)
+    except Exception as exc:
+        print(f"  READ FAILED: {type(exc).__name__}: {str(exc)[:120]}")
+        return 1
+
+    warnings: list[str] = []
+    agg = parse_semantic_model_tmsl(bim, warnings)
+    model = bim.get("model", bim)
+    expected = {
+        "tables": len(model.get("tables", [])),
+        "measures": sum(len(t.get("measures", [])) for t in model.get("tables", [])),
+        "relationships": len(model.get("relationships", [])),
+        "roles": len(model.get("roles", [])),
+    }
+    got = {
+        "tables": len(agg["tables"]),
+        "measures": sum(len(t.measures) for t in agg["tables"]),
+        "relationships": len(agg["relationships"]),
+        "roles": len(agg["roles"]),
+    }
+    mismatches = 0
+    for key, want in expected.items():
+        if want == got[key]:
+            print(f"  PASS  {key}: source {want} -> parsed {got[key]}")
+        else:
+            print(f"  FAIL  {key}: source {want} -> parsed {got[key]}   <-- LOSS")
+            mismatches += 1
+    print(f"  parse warnings: {len(warnings)}")
+    return mismatches
+
+
 def _semantic_model_dir(path: Path) -> Path | None:
     if path.is_dir() and path.name.endswith(".SemanticModel"):
         return path
@@ -126,7 +184,10 @@ def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__)
         return 2
-    total = sum(validate(Path(a)) for a in argv)
+    total = sum(
+        (validate_pbit(Path(a)) if Path(a).suffix.lower() == ".pbit" else validate(Path(a)))
+        for a in argv
+    )
     print(f"\n{'=' * 60}\nTOTAL MISMATCHES: {total}")
     return total
 
