@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from pbicompass.agents.benchmark import (
     BENCHMARK_CHECKS,
     CHECKS_BY_ID,
+    _eval_c13,
     run_benchmark,
 )
 from pbicompass.agents.generators import DOCUMENT_TYPES
@@ -28,6 +30,49 @@ _INTAKE = dict(
 def _make_docs(model: SemanticModel) -> dict:
     return {dtype: gen.generate(model, None, **_INTAKE)
             for dtype, gen in DOCUMENT_TYPES.items()}
+
+
+def _c13_docs(*measures):
+    tech = SimpleNamespace(measure_catalog=SimpleNamespace(measures=[
+        SimpleNamespace(name=n, plain_english=pe, calculation_logic=cl)
+        for (n, pe, cl) in measures
+    ]))
+    return {"technical": tech}
+
+
+class C13RationaleStemTest(unittest.TestCase):
+    """C13 flags measures whose plain-English lacks business rationale. A real
+    2026 finding: a genuinely well-explained live measure was false-flagged
+    because the rationale stems ``compare``/``use`` don't match the common
+    inflections "comparing"/"using". The stems are now morphological."""
+
+    ai = SimpleNamespace(translations={"x": {}})  # C13 only applies when AI ran
+
+    def test_var_plan_pct_prose_passes(self):
+        # Verbatim from the live openai/gpt-5.5 run's measures[13].
+        docs = _c13_docs((
+            "Var Plan %",
+            "Percentage variance of actual year-to-date spend versus planned spend. "
+            "This is the main relative over-plan or under-plan indicator for comparing "
+            "cost centers, vendors, or business areas when selecting next-quarter spend controls.",
+            "Divides Var Plan by Plan. Using Plan as the denominator shows the "
+            "actual-versus-plan variance relative to the planned spend baseline.",
+        ))
+        passed, detail, weak = _eval_c13(docs, {}, None, self.ai)
+        self.assertTrue(passed, f"expected pass, got {detail} {weak}")
+
+    def test_comparing_and_using_inflections_match(self):
+        for verb in ("comparing", "comparison", "compares", "using", "used", "identifies", "monitors"):
+            docs = _c13_docs(("M", f"A rich enough measure {verb} things across the model set.", "sums things"))
+            passed, _, _ = _eval_c13(docs, {}, None, self.ai)
+            self.assertTrue(passed, f"{verb!r} should count as rationale")
+
+    def test_bare_name_echo_still_fails(self):
+        # Guard the check still bites: mechanics-only, no rationale.
+        docs = _c13_docs(("Total Spend", "The total spend.", "Sums the amount column."))
+        passed, _, weak = _eval_c13(docs, {}, None, self.ai)
+        self.assertFalse(passed)
+        self.assertTrue(weak)
 
 
 class BenchmarkSpecTest(unittest.TestCase):

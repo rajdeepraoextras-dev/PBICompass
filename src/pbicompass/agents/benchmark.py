@@ -615,9 +615,20 @@ def _eval_c13(docs, renders, model, ai_context):
     technical = docs.get("technical")
     if technical is None:
         return None, "technical document not present", []
+    # Rationale-signalling stems. These must be true morphological *stems*,
+    # not full words with a trailing ``\w*`` — the two originally spelled
+    # ``compare``/``use`` silently failed to match their most common
+    # inflections ("comparing"/"comparison" don't start with "compare"; "using"
+    # doesn't start with "use"), producing false C13 failures on measure prose
+    # that plainly explained its business purpose (real 2026 finding: the live
+    # "Var Plan %" measure — "…indicator for comparing cost centers … when
+    # selecting … Using Plan as the denominator…"). Every entry here is a stem;
+    # the change is strictly a superset of the old set, so no measure that
+    # previously passed can regress.
     rationale_re = re.compile(
-        r"\b(?:so|because|use|used|useful|track|compare|assess|interpret|ensure|prevent|"
-        r"estimate|estimated|proxy|assumption|limit|exclude|excluding|avoid|support)\w*\b",
+        r"\b(?:so|because|us(?:e|ing)|track|compar|assess|interpret|ensure|prevent|"
+        r"estimat|proxy|assumption|limit|exclud|avoid|support|identif|monitor|"
+        r"indicat|decid|decision|highlight|signal|flag|help)\w*\b",
         re.IGNORECASE,
     )
     weak = []

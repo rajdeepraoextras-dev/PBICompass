@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
+import time
 from typing import Any, Optional, Protocol
 
 
@@ -64,6 +66,68 @@ def _resolve_error_class(module: Any, *dotted_paths: str, default: type = Except
         if isinstance(obj, type) and issubclass(obj, BaseException):
             return obj
     return default
+
+
+# --- Transient-error retry (§4.0 robustness) ------------------------------
+#
+# HTTP statuses worth retrying: transient rate-limit / server / network
+# conditions that a short wait plausibly clears. Explicitly NOT retried:
+# 400 (bad request), 401 (auth), 402 (spend limit / insufficient balance),
+# 403, 404 — these never fix themselves on a retry and would only add latency
+# in front of the deterministic fallback ``call_llm`` already provides. A real
+# 2026 finding drove this: a live MeshAPI bundle hit repeated 402s mid-run and
+# silently half-degraded to deterministic; the same code path meant a routine
+# 429 rate-limit on any provider would do the same. 402 stays non-retryable
+# (correct — it won't clear); 429/5xx/network now get a bounded retry first.
+_RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+# Matched by class name (not isinstance) so it survives SDK version/layout
+# shifts and works uniformly across the anthropic/openai/cohere/genai SDKs,
+# which all expose these same names for connection/timeout/5xx conditions.
+_RETRYABLE_EXC_NAMES = frozenset({
+    "APIConnectionError", "APITimeoutError", "APIConnectionTimeoutError",
+    "InternalServerError", "RateLimitError", "ServiceUnavailableError",
+    "ServerError",
+})
+
+
+def _llm_retry_attempts() -> int:
+    """Total attempts per SDK call (>=1). Override with ``PBICOMPASS_LLM_MAX_RETRIES``
+    (the number of *retries*; total attempts = retries + 1). ``0`` disables
+    retrying entirely, preserving the old fail-fast-to-deterministic behavior."""
+    try:
+        retries = int(os.environ.get("PBICOMPASS_LLM_MAX_RETRIES", "2"))
+    except ValueError:
+        retries = 2
+    return max(1, retries + 1)
+
+
+def _is_retryable_llm_error(exc: BaseException) -> bool:
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(status, int):
+        return status in _RETRYABLE_STATUS
+    # No HTTP status attached (connection reset, read timeout, DNS failure) —
+    # fall back to matching the exception class name.
+    return type(exc).__name__ in _RETRYABLE_EXC_NAMES
+
+
+def _call_with_retries(fn, *, base_delay: float = 1.0, max_delay: float = 8.0):
+    """Call ``fn`` and retry on transient LLM API errors (429 / 5xx / network)
+    with bounded exponential backoff plus jitter. Non-retryable errors
+    (400/401/402/403/404 and anything not recognised as transient) propagate
+    immediately so the caller's deterministic fallback kicks in without wasted
+    latency. After the final attempt the last exception is re-raised unchanged,
+    so the existing per-provider BadRequest degradation ladders still see it."""
+    attempts = _llm_retry_attempts()
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001 - re-raised below
+            if attempt == attempts - 1 or not _is_retryable_llm_error(exc):
+                raise
+            delay = min(max_delay, base_delay * (2 ** attempt))
+            time.sleep(delay * (0.5 + random.random()))  # 50–150% jitter
 
 
 def _loose_json_parse(text: str) -> dict:
@@ -123,14 +187,14 @@ class AnthropicClient:
             output_config: dict = {"format": {"type": "json_schema", "schema": schema}}
             if include_effort:
                 output_config["effort"] = resolved_effort
-            return self._client.messages.create(
+            return _call_with_retries(lambda: self._client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 system=system,
                 thinking={"type": "adaptive"},
                 output_config=output_config,
                 messages=[{"role": "user", "content": user}],
-            )
+            ))
 
         # Graceful degradation (§4.0): if this model/account rejects the
         # effort tier, retry once without it rather than failing the whole
@@ -240,15 +304,15 @@ class GeminiClient:
         from google.genai import errors as genai_errors  # noqa: PLC0415
         client_error = _resolve_error_class(genai_errors, "ClientError")
         try:
-            response = self._client.models.generate_content(
+            response = _call_with_retries(lambda: self._client.models.generate_content(
                 model=self.model, contents=user, config=_config(True),
-            )
+            ))
         except client_error:
             if budget is None:
                 raise
-            response = self._client.models.generate_content(
+            response = _call_with_retries(lambda: self._client.models.generate_content(
                 model=self.model, contents=user, config=_config(False),
-            )
+            ))
         text = getattr(response, "text", None)
         if not text:
             raise RuntimeError("Gemini returned no text content.")
@@ -333,7 +397,7 @@ class CohereClient:
             )
             if include_thinking and budget is not None:
                 kwargs["thinking"] = {"type": "enabled", "token_budget": budget}
-            return self._client.chat(**kwargs)
+            return _call_with_retries(lambda: self._client.chat(**kwargs))
 
         # Graceful degradation (§4.0): retry once without the thinking param
         # if this model/account rejects it, rather than failing the call.
@@ -508,7 +572,7 @@ class MeshAPIClient:
                 }
             if include_reasoning and reasoning_effort is not None:
                 kwargs["reasoning_effort"] = reasoning_effort
-            return self._client.chat.completions.create(**kwargs)
+            return _call_with_retries(lambda: self._client.chat.completions.create(**kwargs))
 
         # Graceful degradation (§4.0), in order of what's cheapest to give
         # up: reasoning_effort first (a reasoning-capable-looking model that
