@@ -60,6 +60,30 @@ class ParseRequirementsTest(unittest.TestCase):
         parsed = parse_requirements("[Must] A requirement\n\n\n[Should] Another one\n")
         self.assertEqual(len(parsed), 2)
 
+    def test_semicolon_separated_requirements_on_one_line_are_split(self):
+        """Found in live testing: seven semicolon-separated requirements on a
+        single line collapsed into ONE row and rendered as "Requirements
+        coverage: 1/1" — a silent failure that looks like a perfect score."""
+        live = ("Track total corporate spend over time; break spend down by vendor, "
+                "department and cost center; surface month-over-month spend trend; "
+                "identify the top vendors by spend; monitor budget vs actual; "
+                "flag anomalous spikes in spend; support drill-through to invoice detail.")
+        parsed = parse_requirements(live)
+        self.assertEqual(len(parsed), 7)
+        self.assertEqual(parsed[0][1], "Track total corporate spend over time")
+        self.assertEqual(parsed[-1][1], "support drill-through to invoice detail.")
+
+    def test_a_semicolon_inside_one_requirement_does_not_shatter_it(self):
+        """Only split when the line looks like a genuine list (2+ substantial
+        parts), so ordinary prose containing a semicolon stays intact."""
+        self.assertEqual(len(parse_requirements("Track spend; it matters")), 1)
+        self.assertEqual(len(parse_requirements("a; b; c")), 1)
+
+    def test_priority_tags_survive_semicolon_splitting(self):
+        parsed = parse_requirements("[Must] Show revenue by region; [Should] Support drill-through")
+        self.assertEqual(parsed, [("Must", "Show revenue by region"),
+                                  ("Should", "Support drill-through")])
+
     def test_empty_text_returns_empty_list(self):
         self.assertEqual(parse_requirements(""), [])
         self.assertEqual(parse_requirements(None), [])

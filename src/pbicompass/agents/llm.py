@@ -432,8 +432,14 @@ class CohereClient:
 # V3/V3.1/V3.2/V3.2-Exp models — which MeshAPI toggles via a separate
 # ``reasoning.enabled`` boolean this client doesn't send — third-party
 # models, ...) is treated as non-reasoning.
+# ``gpt-5`` is followed by ``.`` as well as ``-`` or end-of-id: MeshAPI's catalog
+# carries dot-separated point releases (gpt-5.2/5.4/5.5/5.6-luna, ...) alongside
+# the bare ``gpt-5``. The original ``gpt-5(-|$)`` matched none of the dotted ones,
+# so an expensive gpt-5.5 run silently never received ``reasoning_effort`` — paying
+# premium rates for no reasoning at all. Sending it to a model that rejects it is
+# safe: ``complete_json``'s ladder retries without the param on a 400.
 _MESHAPI_REASONING_MODEL_RE = re.compile(
-    r"^(o[1-9](-mini|-preview|-pro)?|gpt-5)(-|$)"
+    r"^(o[1-9](-mini|-preview|-pro)?|gpt-5)([-.]|$)"
     r"|^deepseek-(v3\.2-speciale|v4-(flash|pro)|r1(-\d+)?|r1-distill-.+)$",
     re.IGNORECASE,
 )

@@ -59,12 +59,37 @@ class RequirementCoverage:
 _PRIORITY_RE = re.compile(r"^\s*\[(Must|Should)\]\s*", re.IGNORECASE)
 
 
+def _split_requirement_lines(text: str) -> list[str]:
+    """Split intake text into one requirement per entry.
+
+    Newline is the primary separator (a form textarea gives one per line). A
+    single line holding several semicolon-separated requirements is also split,
+    because that phrasing is natural and the old newline-only rule failed
+    *silently and flatteringly*: seven requirements typed on one line collapsed
+    into one row and rendered as "Requirements coverage: 1/1", which looks
+    perfect. Only split on ';' when the line looks like a genuine list (2+
+    substantial parts), so a lone semicolon inside one requirement's prose
+    doesn't shatter it.
+    """
+    out: list[str] = []
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split(";") if p.strip()]
+        if len(parts) > 1 and all(len(p) >= 12 for p in parts):
+            out.extend(parts)
+        else:
+            out.append(line)
+    return out
+
+
 def parse_requirements(text: Optional[str]) -> list[tuple[str, str]]:
-    """One requirement per line, with an optional leading ``[Must]``/
-    ``[Should]`` priority tag. Returns ``(priority, requirement_text)``
-    pairs in input order; blank lines are skipped."""
+    """One requirement per line (or per semicolon-separated item on a line),
+    with an optional leading ``[Must]``/``[Should]`` priority tag. Returns
+    ``(priority, requirement_text)`` pairs in input order; blanks are skipped."""
     out: list[tuple[str, str]] = []
-    for line in (text or "").split("\n"):
+    for line in _split_requirement_lines(text or ""):
         line = line.strip()
         if not line:
             continue

@@ -13,6 +13,7 @@ from pbicompass.agents.consistency import (
     build_audit_verdicts,
     check_consistency,
     check_deterministic_consistency,
+    find_human_claim_discrepancies,
 )
 from pbicompass.agents.critic import apply_results
 from pbicompass.agents.generators import (
@@ -47,6 +48,50 @@ def _verdicts(**overrides) -> AuditVerdicts:
     )
     base.update(overrides)
     return AuditVerdicts(**base)
+
+
+class HumanClaimRlsDiscrepancyTest(unittest.TestCase):
+    """A live run surfaced the gap: the intake note "RLS restricts each
+    department head to their own cost centers" (model defines 0 roles) raised no
+    discrepancy, because the detector only knew validated/tested/configured/...
+    The note was then appended to the finding as if true and the AI blended the
+    contradiction into incoherent prose ("RLS is not configured ... Ask: review
+    RLS role memberships quarterly")."""
+
+    def test_the_live_note_that_slipped_through_now_fires(self):
+        d = find_human_claim_discrepancies(
+            "RLS restricts each department head to their own cost centers.", 0)
+        self.assertEqual(len(d), 1)
+        self.assertIn("0 row-level security roles", d[0].model_finding)
+
+    def test_operative_phrasings_fire(self):
+        for note in ("Row-level security limits each manager to their region.",
+                     "RLS validated in UAT.",
+                     "RLS is enforced for all viewers.",
+                     "Row-level security filters data by country.",
+                     "RLS was set up for the finance team.",
+                     "Row-level security segments data by business unit."):
+            self.assertTrue(find_human_claim_discrepancies(note, 0), note)
+
+    def test_negations_do_not_false_positive(self):
+        """Pre-existing bug: "RLS is not configured" matched RLS...configured
+        with nothing accounting for the "not", so a note that AGREES with the
+        model (0 roles) raised a contradiction."""
+        for note in ("RLS is not configured for this report.",
+                     "No row-level security is applied.",
+                     "No RLS needed - all viewers see everything.",
+                     "RLS isn't enforced here.",
+                     "This model has no roles."):
+            self.assertEqual(find_human_claim_discrepancies(note, 0), [], note)
+
+    def test_reverse_claim_still_fires(self):
+        d = find_human_claim_discrepancies("No RLS is needed for this report.", 2)
+        self.assertEqual(len(d), 1)
+        self.assertIn("2 row-level security roles", d[0].model_finding)
+
+    def test_no_notes_no_discrepancy(self):
+        self.assertEqual(find_human_claim_discrepancies(None, 0), [])
+        self.assertEqual(find_human_claim_discrepancies("", 5), [])
 
 
 class BuildAuditVerdictsTest(unittest.TestCase):

@@ -118,7 +118,14 @@ FINDING_RULES = {
     "wide_text_dominates_size": "PBIC-PERF-011",
 
     # GovernanceFinding area
+    # Two opposite RLS findings used to share PBIC-GOV-001, whose canonical text
+    # is specifically "roles defined but have no members". A model with *no roles
+    # at all* was therefore handed a fix about assigning members to roles that
+    # don't exist — which is exactly what the Executive Writer then reframed into
+    # the self-contradicting "RLS is not configured ... Ask: review RLS role
+    # memberships quarterly" seen in a live run. They are now distinct checks.
     "rls": "PBIC-GOV-001",
+    "rls_absent": "PBIC-GOV-011",
     "descriptions": "PBIC-GOV-002",
     "ownership": "PBIC-GOV-003",
     "sensitive_columns": "PBIC-GOV-004",
@@ -268,6 +275,10 @@ RULE_METADATA = {
     "PBIC-GOV-001": ("governance", "Medium", "RLS roles defined but have no members",
                      "RLS roles are defined in the model but have no members assigned in the model file.",
                      "Assign members to the roles or manage membership in the cloud service."),
+    "PBIC-GOV-011": ("governance", "Medium", "No row-level security configured",
+                     "No row-level security roles are defined in this model, so every viewer sees every row.",
+                     "If any of this data should be restricted by user, define RLS roles; otherwise "
+                     "confirm that unrestricted access is intended."),
     "PBIC-GOV-002": ("governance", "Medium", "Missing descriptions coverage",
                      "Fewer than 50% of measures and visible columns have descriptions.",
                      "Add descriptions to columns and measures to document their business purpose."),
@@ -1184,7 +1195,7 @@ def check_governance(
 
     if not model.roles:
         findings.append(GovernanceFinding(
-            area="rls",
+            area="rls_absent",
             detail="No row-level security roles are defined in this model." + security_note_suffix,
             severity="Medium",
         ))
@@ -1510,10 +1521,18 @@ _PERF_TEMPLATES = {
 
 _GOVERNANCE_TEMPLATES = {
     "rls": ("Medium",
-        "Row-level security gaps were found.",
-        "Without RLS (or with roles that have no members configured), sensitive rows may be visible to more users than intended.",
-        "Define RLS roles for any data that should be restricted, and assign members either in the model or in the Power BI Service.",
+        "Row-level security roles exist but have no members assigned.",
+        "A role with no members enforces nothing, so the rows it was meant to restrict stay visible to everyone who can open the report.",
+        "Assign members to each role, either in the model or in the Power BI Service.",
         "Data access that matches the intended audience."),
+    # Kept deliberately distinct from "rls" above: the ask for a model with no
+    # roles is to decide whether restriction is needed at all — never to review
+    # memberships of roles that don't exist.
+    "rls_absent": ("Medium",
+        "No row-level security is configured for this report.",
+        "Every viewer of this report can see every row, including any data intended for a narrower audience.",
+        "Decide whether this data should be restricted by user. If it should, define RLS roles and assign members; if not, record that unrestricted access is intended.",
+        "A deliberate, documented decision about who can see which rows."),
     "descriptions": ("Medium",
         "Description coverage across measures and columns is low.",
         "Missing descriptions increase onboarding time and the risk of misinterpreting a field's meaning.",

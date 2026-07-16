@@ -1172,6 +1172,26 @@ class ReasoningEffortWiringTest(unittest.TestCase):
             with self.subTest(model=model):
                 self.assertFalse(_meshapi_reasoning_capable(model))
 
+    def test_meshapi_reasoning_capable_covers_dot_versioned_gpt5(self):
+        """MeshAPI's catalog carries dot-separated GPT-5 point releases
+        (gpt-5.4/5.5/5.6-luna, ...) next to the bare `gpt-5`. The original
+        `gpt-5(-|$)` pattern matched none of them, so a real (expensive)
+        gpt-5.5 run silently never received reasoning_effort."""
+        from pbicompass.agents.llm import _meshapi_reasoning_capable
+
+        for model in ("openai/gpt-5", "openai/gpt-5-mini", "openai/gpt-5.4",
+                      "openai/gpt-5.5", "openai/gpt-5.5-pro", "openai/gpt-5.6-luna",
+                      "openai/gpt-5.2-chat", "openai/o3", "openai/o4-mini-high"):
+            with self.subTest(model=model):
+                self.assertTrue(_meshapi_reasoning_capable(model))
+
+        # The widened `[-.]` must not sweep in unrelated families — notably
+        # gpt-4o, which MeshAPI 400s when sent reasoning_effort.
+        for model in ("openai/gpt-4o", "openai/gpt-4.1", "inclusionai/ling-2.6-flash",
+                      "mistralai/mistral-nemo", "deepseek/deepseek-v3.1"):
+            with self.subTest(model=model):
+                self.assertFalse(_meshapi_reasoning_capable(model))
+
     def test_meshapi_sends_reasoning_effort_for_deepseek_speciale(self):
         import sys
         from unittest.mock import patch

@@ -131,9 +131,31 @@ class HumanClaimDiscrepancy:
     explanation: str      # why these two don't square, in plain language
 
 
+# Verbs/states that assert RLS is *operative*. The list deliberately goes beyond
+# "validated/tested": a real intake note found in live testing read "RLS restricts
+# each department head to their own cost centers" — the most natural way to
+# describe RLS in force — and matched none of the original verbs, so the
+# contradiction (model defines 0 roles) went unraised and the AI blended the
+# human claim into incoherent prose. Anything asserting RLS *does something*
+# counts as a claim it exists.
+_RLS_OPERATIVE = (
+    r"validated|tested|reviewed|configured|active|in place|enforced|enforces|"
+    r"restricts?|restricted|restricting|limits?|limited|filters?|filtered|"
+    r"applies|applied|implemented|set up|scoped|scopes|governs?|governed|"
+    r"controls?|controlled|segments?|segmented"
+)
+# Negation guard: "RLS is **not** configured" / "no row-level security is applied"
+# assert the opposite, and must not be read as a claim that RLS exists (a
+# pre-existing false positive — the old pattern matched "RLS ... configured"
+# regardless of the "not" sitting between them).
+_RLS_NEGATED_RE = re.compile(
+    r"\b(?:no|not|n't|never|without|isn't|aren't|lacks?)\b[^.]{0,40}?\b(?:" + _RLS_OPERATIVE + r")\b"
+    r"|\b(?:RLS|row-level security|roles?)\b[^.]{0,20}?\b(?:is|are|was|were)\s+(?:not|never)\b",
+    re.IGNORECASE,
+)
 _RLS_VALIDATED_RE = re.compile(
-    r"\b(validated|tested|reviewed|configured|active|in place|enforced)\b.{0,40}\b(RLS|row-level security|roles?)\b"
-    r"|\b(RLS|row-level security|roles?)\b.{0,40}\b(validated|tested|reviewed|configured|active|in place|enforced)\b",
+    r"\b(" + _RLS_OPERATIVE + r")\b.{0,40}\b(RLS|row-level security|roles?)\b"
+    r"|\b(RLS|row-level security|roles?)\b.{0,40}\b(" + _RLS_OPERATIVE + r")\b",
     re.IGNORECASE,
 )
 _RLS_NOT_NEEDED_RE = re.compile(
@@ -163,16 +185,21 @@ def find_human_claim_discrepancies(
         return []
     discrepancies: list[HumanClaimDiscrepancy] = []
 
+    # A note asserting RLS is operative, while the model defines none, is a
+    # security-relevant contradiction — unless the note is itself a negation
+    # ("RLS is not configured"), which agrees with the model and must not fire.
     validated_match = _RLS_VALIDATED_RE.search(security_notes)
-    if validated_match and rls_role_count == 0:
+    negated = _RLS_NEGATED_RE.search(security_notes)
+    if validated_match and not negated and rls_role_count == 0:
         discrepancies.append(HumanClaimDiscrepancy(
             field="security_notes",
             human_claim=security_notes.strip(),
             model_finding="The model defines 0 row-level security roles.",
-            explanation="The intake form describes RLS as validated/configured, but no RLS role "
-                        "exists in the model file — confirm whether RLS was removed after this note "
-                        "was written, or whether it's enforced somewhere this tool can't see "
-                        "(e.g. object-level security, a gateway policy).",
+            explanation="The intake form describes RLS as in force, but no RLS role exists in the "
+                        "model file — so nothing in this model restricts who sees which rows. "
+                        "Confirm whether RLS was removed after this note was written, or whether "
+                        "it's enforced somewhere this tool can't see (e.g. object-level security, "
+                        "a gateway policy).",
         ))
 
     not_needed_match = _RLS_NOT_NEEDED_RE.search(security_notes)
