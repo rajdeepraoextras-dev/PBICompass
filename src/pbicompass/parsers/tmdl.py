@@ -293,17 +293,24 @@ def _parse_calculation_group(header: Line, sub: list[Line], table: Table) -> Non
 def _parse_refresh_policy(header: Line, sub: list[Line]) -> RefreshPolicy:
     """Parse a table's incremental-refresh policy.
 
-    Both declaration shapes are accepted, because the TMDL spec doesn't pin this
-    one down and no real export on hand contains a refresh policy to check
-    against (the property *names* below are confirmed against Microsoft's docs
-    via the TMSL/JSON form, which TMDL mirrors):
+    The real shape — verified against TMDL emitted by Microsoft's own
+    TmdlSerializer (github.com/mthierba/tmdl-history, TMDL/tables/Sales.tmdl) —
+    is a bare header with ``policyType`` as a child property::
 
-        refreshPolicy: basic          |   refreshPolicy
-            rollingWindowPeriods: 3   |       policyType: basic
-            ...                       |       rollingWindowPeriods: 3
+        refreshPolicy
+            policyType: basic
+            rollingWindowGranularity: year
+            rollingWindowPeriods: 5
+            incrementalGranularity: day
+            incrementalPeriods: 7
+            sourceExpression =
+                let ...
 
-    The type is read from after the colon when present, else from a
-    ``policyType`` property — so whichever shape a real file uses, it parses.
+    The ``refreshPolicy: basic`` colon form is still accepted as well: it costs
+    one line, and neither the TMDL spec nor its object reference documents this
+    declaration, so tolerating the other plausible shape is cheap insurance. A
+    block that yields no detail at all still warns rather than quietly implying
+    the table has no incremental refresh.
     """
     _, policy_type = split_prop(header.text)
     props = props_at_level(sub, header.indent + 1)
@@ -385,14 +392,13 @@ def _parse_table(header: Line, body: list[Line], warnings: list[str]) -> Table:
                 table.hierarchies.append(_parse_hierarchy(child, sub))
             elif kw.rstrip(":") == "refreshPolicy":
                 table.refresh_policy = _parse_refresh_policy(child, sub)
-                # No real export on hand contains a refresh policy, and neither
-                # Microsoft's TMDL spec nor its object reference pins down this
-                # declaration's shape — so both plausible forms are parsed, but
-                # the possibility of a third remains. If a policy block yields
-                # nothing at all, that is exactly the silent data loss the
-                # cultureInfo bug taught us to distrust: say so loudly rather
-                # than emit an empty policy and let a document imply there is
-                # no incremental refresh configured.
+                # The real serializer's shape is verified (see
+                # _parse_refresh_policy), but the spec documents none, so a
+                # variant we haven't seen stays possible. If a policy block
+                # yields nothing at all, that is exactly the silent data loss
+                # the cultureInfo bug taught us to distrust: say so loudly
+                # rather than emit an empty policy and let a document imply
+                # there is no incremental refresh configured.
                 rp = table.refresh_policy
                 if not any((rp.policy_type, rp.rolling_window_periods, rp.incremental_periods,
                             rp.rolling_window_granularity, rp.incremental_granularity,

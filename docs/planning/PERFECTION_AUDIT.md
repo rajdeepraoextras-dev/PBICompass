@@ -516,8 +516,40 @@ asks. Echoes ("The total spend.") still fail. Both regressions pinned as tests.
 and C13 both false-failing). 1081 tests. 4/4 real reports ship (was 0/4). The
 deterministic fallback ships again.
 
-**The one genuinely open item** is not code: `refreshPolicy` cannot be verified
-until a real `.pbip` containing an incremental-refresh policy exists to test
-against. Both plausible shapes parse and an unknown third warns loudly, so the
-failure mode is loud rather than silent — but "probably right" is not "verified",
-and it should not be recorded as anything stronger.
+### 2026-07-16 — The last unknown closed: `refreshPolicy` verified against real serializer output
+
+I had recorded `refreshPolicy` as irreducible — no `.pbip` or `.pbit` on this
+machine has one (4 + 3 checked), and neither Microsoft's TMDL spec nor its object
+reference documents the declaration. That was true of *this machine*, and I stopped
+one step short: the artifact exists publicly. **github.com/mthierba/tmdl-history**
+publishes a Contoso model serialized by **Microsoft's own `TmdlSerializer`** — real
+TMDL, not our reading of it.
+
+`TMDL/tables/Sales.tmdl` settles the shape, and it is the **bare header**, not the
+colon form:
+
+```tmdl
+refreshPolicy
+	policyType: basic
+	rollingWindowGranularity: year
+	rollingWindowPeriods: 5
+	incrementalGranularity: day
+	incrementalPeriods: 7
+	sourceExpression =
+		let ...
+```
+
+Our parser reads it exactly — policy type, both windows, and the M source
+expression — with **zero warnings**. `TMDL/perspectives/'Perspective 1'.tmdl`
+likewise confirms `perspective → perspectiveTable → perspectiveColumn/Measure`
+against real output, including the serializer's blank lines and quoted names.
+Both are now pinned as regression tests citing the source. The colon form stays
+accepted as cheap insurance, and an unrecognised shape still warns.
+
+**Every parser this tool has is now verified against real, non-synthetic output:**
+TMDL against 4 real `.pbip` exports plus Microsoft's own serializer for the two
+features no local file had; TMSL against 3 real `.pbit` `DataModelSchema`
+documents including a 69-table / 216-measure enterprise model.
+
+**Standing: live 61/61, zero unresolved, bundle produced. 1083 tests. 4/4 real
+reports ship. Deterministic fallback ships. No known unverified parser remains.**

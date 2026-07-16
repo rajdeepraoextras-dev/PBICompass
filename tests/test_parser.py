@@ -410,6 +410,68 @@ class FieldParamPerspectiveCultureTest(unittest.TestCase):
         parse_tmdl_text(text, agg, [])
         self.assertEqual(agg["cultures"], [])
 
+    def test_refresh_policy_verbatim_from_real_serializer_output(self):
+        """The real thing at last. Taken verbatim from TMDL/tables/Sales.tmdl in
+        github.com/mthierba/tmdl-history — a Contoso model serialized by
+        Microsoft's own TmdlSerializer, i.e. genuine TMDL rather than our reading
+        of it. No .pbip or .pbit on hand contains a refresh policy, and neither
+        Microsoft's TMDL spec nor its object reference documents the declaration,
+        so this is the only non-circular evidence available.
+
+        It settles the shape: the bare `refreshPolicy` header with `policyType`
+        as a child property (not `refreshPolicy: basic`).
+        """
+        from pbicompass.parsers.tmdl import parse_tmdl_text
+        text = "\n".join([
+            "table Sales",
+            "\tlineageTag: abc-123",
+            "",
+            "\trefreshPolicy",
+            "\t\tpolicyType: basic",
+            "\t\trollingWindowGranularity: year",
+            "\t\trollingWindowPeriods: 5",
+            "\t\tincrementalGranularity: day",
+            "\t\tincrementalPeriods: 7",
+            "\t\tsourceExpression =",
+            "\t\t\tlet",
+            '\t\t\t    Source = Web.Contents(#"[SourceUrl]"),',
+            "\t\t\t    Csv = Csv.Document(Source)",
+            "\t\t\tin",
+            "\t\t\t    Csv",
+        ])
+        agg = {"tables": [], "relationships": [], "roles": [], "expressions": [],
+               "perspectives": [], "cultures": [], "model_name": None}
+        warnings = []
+        parse_tmdl_text(text, agg, warnings)
+        rp = agg["tables"][0].refresh_policy
+        self.assertEqual(rp.policy_type, "basic")
+        self.assertEqual((rp.rolling_window_periods, rp.rolling_window_granularity), (5, "year"))
+        self.assertEqual((rp.incremental_periods, rp.incremental_granularity), (7, "day"))
+        self.assertIn("Csv.Document", rp.source_expression)
+        self.assertEqual(warnings, [])  # no "shape unknown" warning on the real thing
+
+    def test_perspective_verbatim_from_real_serializer_output(self):
+        """Verbatim from TMDL/perspectives/'Perspective 1'.tmdl in the same
+        serializer-emitted model — confirming the spec's documented shape against
+        real output, including the blank lines the serializer emits between
+        children and quoted names containing spaces."""
+        from pbicompass.parsers.tmdl import parse_tmdl_text
+        text = "\n".join([
+            "perspective 'Perspective 1'", "",
+            "\tperspectiveTable Customer", "",
+            "\t\tperspectiveColumn 'Address Line 1'", "",
+            "\t\tperspectiveColumn City", "",
+            "\tperspectiveTable Sales", "",
+            "\t\tperspectiveMeasure 'Sales Amount'",
+        ])
+        agg = {"tables": [], "relationships": [], "roles": [], "expressions": [],
+               "perspectives": [], "cultures": [], "model_name": None}
+        parse_tmdl_text(text, agg, [])
+        p = agg["perspectives"][0]
+        self.assertEqual(p.name, "Perspective 1")
+        self.assertEqual(p.tables, ["Customer", "Sales"])
+        self.assertEqual(p.measures, ["Sales Amount"])
+
     def test_perspective_syntax_from_the_microsoft_tmdl_spec(self):
         """Syntax taken verbatim from Microsoft's TMDL spec ("Named object
         references"): perspective -> perspectiveTable -> perspectiveMeasure.
