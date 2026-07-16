@@ -113,7 +113,7 @@ def render_docx(doc: Document, out_path) -> Path:
         rag_rows = []
         for r in doc.requirements_matrix:
             evidence = ", ".join(e["name"] for e in r.get("evidence", [])) or "—"
-            rag_rows.append([r.get("priority") or "—", r["text"], r["status"], evidence])
+            rag_rows.append([r.get("priority") or "Medium", r["text"], r["status"], evidence])
         d.table(["Priority", "Requirement", "Status", "Evidence"], _t(rag_rows))
     elif md.requirements:
         for req in md.requirements.split('\n'):
@@ -444,14 +444,14 @@ def render_docx(doc: Document, out_path) -> Path:
     if recs:
         d.heading(2, "Prioritized recommendations")
         for i, r in enumerate(recs, 1):
-            d.heading(3, f"{i}. [{r.get('priority', 'Medium')}] {r.get('issue', '')}")
+            d.heading(3, f"{i}. [{r.get('priority') or 'Medium'}] {r.get('issue', '')}")
             d.para([d._run("Impact: ", bold=True), d._run(r.get("why_it_matters", ""))])
             fix_text = r.get("suggested_fix", "")
             cleaned_fix = re.sub(r"```[a-z]*\n", "", fix_text).replace("```", "")
             d.para([d._run("Recommendation: ", bold=True), d._run(cleaned_fix)])
             if r.get("expected_benefit"):
                 d.para([d._run("Expected benefit: ", bold=True), d._run(r.get("expected_benefit"))])
-            d.para([d._run("Estimated effort: ", bold=True), d._run(r.get("effort", "Medium"))])
+            d.para([d._run("Estimated effort: ", bold=True), d._run(r.get("effort") or "Medium")])
     elif hs:
         d.para("No recommendations — no findings were raised against this model.")
     if not hs and not recs:

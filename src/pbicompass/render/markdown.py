@@ -95,7 +95,7 @@ def render_markdown(doc: Document) -> str:
         rag_rows = []
         for r in doc.requirements_matrix:
             evidence = ", ".join(e["name"] for e in r.get("evidence", [])) or "—"
-            rag_rows.append([r.get("priority") or "—", r["text"], r["status"], evidence])
+            rag_rows.append([r.get("priority") or "Medium", r["text"], r["status"], evidence])
         out.append(_table(["Priority", "Requirement", "Status", "Evidence"], rag_rows))
     elif md.requirements:
         out.append(md.requirements + "\n")
@@ -445,12 +445,12 @@ def render_markdown(doc: Document) -> str:
     if recs:
         out.append("\n### Prioritized recommendations\n")
         for i, r in enumerate(recs, 1):
-            out.append(f"#### {i}. [{r.get('priority', 'Medium')}] {r.get('issue', '')}\n")
+            out.append(f"#### {i}. [{r.get('priority') or 'Medium'}] {r.get('issue', '')}\n")
             out.append(f"- **Impact:** {r.get('why_it_matters', '')}")
             out.append(f"- **Recommendation:** {r.get('suggested_fix', '')}")
             if r.get("expected_benefit"):
                 out.append(f"- **Expected benefit:** {r.get('expected_benefit')}")
-            out.append(f"- **Estimated effort:** {r.get('effort', 'Medium')}\n")
+            out.append(f"- **Estimated effort:** {r.get('effort') or 'Medium'}\n")
     elif hs:
         out.append("\n_No recommendations — no findings were raised against this model._\n")
     if not hs and not recs:

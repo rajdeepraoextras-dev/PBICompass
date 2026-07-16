@@ -675,12 +675,12 @@ def render_html(
         o.append("<h3>Prioritized recommendations</h3>")
         for i, r in enumerate(recs, 1):
             o.append('<div class="measure">')
-            o.append(f'<h3>{i}. <span class="pill">{_e(r.get("priority", "Medium"))}</span> {_e(r.get("issue", ""))}</h3>')
+            o.append(f'<h3>{i}. <span class="pill">{_e(r.get("priority") or "Medium")}</span> {_e(r.get("issue", ""))}</h3>')
             o.append(f'<p><strong>Impact:</strong> {_e(r.get("why_it_matters", ""))}</p>')
             o.append(f'<p><strong>Recommendation:</strong> {format_prose_with_code(r.get("suggested_fix", ""))}</p>')
             if r.get("expected_benefit"):
                 o.append(f'<p><strong>Expected benefit:</strong> {_e(r.get("expected_benefit"))}</p>')
-            o.append(f'<p><strong>Estimated effort:</strong> {_e(r.get("effort", "Medium"))}</p>')
+            o.append(f'<p><strong>Estimated effort:</strong> {_e(r.get("effort") or "Medium")}</p>')
             o.append("</div>")
     elif hs:
         o.append('<p class="muted">No recommendations — no findings were raised against this model.</p>')
