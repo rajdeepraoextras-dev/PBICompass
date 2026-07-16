@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..schemas.model import Page, Visual
 
-from ..agents.report_facts import friendly_visual_type, visual_label
+from ..agents.report_facts import DECORATIVE, friendly_visual_type, visual_label
 from ._diagram_theme import (
     ACCENT, CAPTION, EDGE, FAINT, GHOST_EDGE, GHOST_FILL, HAIRLINE, INK, MUTED,
     SKELETON, SKELETON_SOFT, canvas, canvas_defs, chip, legend,
@@ -34,7 +34,15 @@ from ._shared import anchor_slug, html_e, pluralize_count
 
 # Non-data layout elements — quieter styling, never linked to a
 # data-dictionary row (I3).
-_DECORATIVE_TYPES = {"image", "shape", "basicShape", "textbox"}
+# Must stay a superset of report_facts.DECORATIVE, which is what decides who
+# gets a row (and therefore an anchor) in the visuals table. This list used to
+# be an independent, narrower copy — it omitted "visualGroup" — so a group was
+# categorised "data" here, got an `#visual-...` link drawn on the wireframe, and
+# pointed at an anchor the table had excluded as decorative: a dead link that
+# fails the output gate and blocks the whole bundle (hit on a real report with a
+# grouped visual). Derive it instead of restating it. ``_NAV_TYPES`` is checked
+# before this in ``_category``, so buttons keep their distinct nav rendering.
+_DECORATIVE_TYPES = set(DECORATIVE) | {"image", "shape", "basicShape", "textbox"}
 _NAV_TYPES = {"actionButton", "button", "navBar", "bookmarkNavigator"}
 _SLICER_TYPES = {"slicer", "advancedSlicerVisual"}
 
