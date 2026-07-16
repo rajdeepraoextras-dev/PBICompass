@@ -168,6 +168,25 @@
 .err-text { color: var(--status-err); font-size: .84rem; min-height: 1.1rem; margin-top: 4px; }
 .ok-text { color: var(--status-ok); font-size: .84rem; min-height: 1.1rem; margin-top: 4px; }
 
+/* Post-signup confirmation notice. This is the only instruction a new user gets
+   and the mail currently lands in spam every time, so it is sized as a real
+   callout rather than the .84rem status line it used to share with .ok-text —
+   at that size the spam hint was a parenthetical nobody read, and users assumed
+   the email never arrived. Warning-toned on purpose: it needs to interrupt. */
+.mail-notice { display: flex; gap: 14px; align-items: flex-start; margin-top: 14px;
+  padding: 16px 18px; border-radius: 16px; text-align: left;
+  background: hsl(38 92% 55% / .10); border: 1px solid hsl(38 92% 60% / .38); }
+.mail-notice[hidden] { display: none; }
+.mail-notice-icon { flex: none; width: 26px; height: 26px; margin-top: 1px; color: hsl(38 96% 68%); }
+.mail-notice-icon svg { width: 100%; height: 100%; }
+.mail-notice-title { display: block; font-size: 1.12rem; font-weight: 650; letter-spacing: -.01em;
+  color: hsl(38 96% 74%); margin-bottom: 5px; }
+.mail-notice-lead { margin: 0; font-size: .96rem; line-height: 1.5; color: hsl(0 0% 100% / .92); }
+.mail-notice-lead b { color: #fff; font-weight: 650; }
+.mail-notice-hint { margin: 8px 0 0; font-size: .86rem; line-height: 1.45; color: hsl(0 0% 100% / .62); }
+.mail-notice-hint b { color: hsl(0 0% 100% / .85); font-weight: 600; }
+#signup-info-email { overflow-wrap: anywhere; }
+
 /* admin */
 .admin-stats { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
 .admin-stat { flex: 1; min-width: 120px; border-radius: 16px; padding: 14px 16px; background: hsl(0 0% 100% / .05); }
@@ -288,7 +307,31 @@
           <div class="step-title">Step 3 — Choose a plan</div>
           <div class="plan-grid" id="signup-plans"><!-- populated from /app/api/config --></div>
           <div class="err-text" id="signup-err"></div>
-          <div class="ok-text" id="signup-info"></div>
+          <!-- Confirmation notice. Deliberately loud and spam-first: until the
+               sending domain's deliverability is fixed, the confirmation mail
+               reliably lands in spam, so "check your spam folder" is the actual
+               instruction — not a parenthetical afterthought. Markup lives here
+               (toggled via [hidden]) rather than being built with innerHTML in
+               the handler. -->
+          <div class="mail-notice" id="signup-info" role="status" hidden>
+            <div class="mail-notice-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>
+              </svg>
+            </div>
+            <div class="mail-notice-body">
+              <strong class="mail-notice-title">Check your spam folder</strong>
+              <p class="mail-notice-lead">
+                We sent a confirmation link to <b id="signup-info-email">your inbox</b>.
+                <b>It will almost certainly be in spam or junk</b> — please look there first.
+              </p>
+              <p class="mail-notice-hint">
+                Found it? Mark it <b>“Not spam”</b> so the rest of our emails reach your inbox.
+                Give it a minute or two to arrive.
+              </p>
+            </div>
+          </div>
           <div class="step-nav">
             <button type="button" class="btn-ghost" data-back="1">Back</button>
             <button type="submit" class="btn-primary"><span class="spin" id="signup-spin"></span><span>Create account</span></button>
@@ -750,7 +793,9 @@ $("login-form").addEventListener("submit", async e => {
 $("signup-form").addEventListener("submit", async e => {
   e.preventDefault();
   if (!supa) return;
-  const f = e.target; $("signup-err").textContent = ""; $("signup-info").textContent = "";
+  // Hide the notice rather than blanking its text: it is structured markup now,
+  // and textContent = "" would strip it permanently on a retry.
+  const f = e.target; $("signup-err").textContent = ""; $("signup-info").hidden = true;
   $("signup-spin").style.display = "inline-block";
   const { data, error } = await supa.auth.signUp({
     email: f.email.value,
@@ -774,7 +819,13 @@ $("signup-form").addEventListener("submit", async e => {
   if (!data.session) {
     // Email confirmation required by the project's settings before a session
     // is issued — nothing more for this page to do until they click the link.
-    $("signup-info").textContent = "Check your email to confirm your account (check your spam/junk folder too if it doesn't show up in a minute or two).";
+    // Name the address back to them: "check your spam for a mail to <you>" is
+    // far easier to act on, and it surfaces a typo'd address immediately, which
+    // is otherwise indistinguishable from the mail being filtered.
+    // textContent (never innerHTML) — this is user-supplied input.
+    $("signup-info-email").textContent = f.email.value.trim() || "your inbox";
+    $("signup-info").hidden = false;
+    $("signup-info").scrollIntoView({ behavior: "smooth", block: "center" });
   }
   // If a session WAS issued immediately, onAuthStateChange drives the UI.
 });
