@@ -427,5 +427,46 @@ Widening to *multiple real reports* would send the owner's own business files'
 content to MeshAPI — outside the local-only consent under which those files were
 examined. Not done without explicit consent for that different action.
 
-**Still true:** `refreshPolicy`/`perspective` remain unseen in any real file;
-live scoring is still one report; C8's judge false-negatives on a cheap judge.
+### 2026-07-16 — Validation widened to 4 REAL reports: the tool shipped nothing on any of them
+
+With the owner's explicit consent, the real CLI was run over four real `.pbip`
+reports (HR Sample, Zomato, Corporate Spend, RCL demo). **All four were blocked
+by the output gate — 0/4 produced documents.** So was `--provider none`.
+
+| Report | live score | unresolved | gate | LLM failures |
+|---|---|---|---|---|
+| HR Sample | 59/61 | C8 | BLOCKED | 0 |
+| Zomato | 48/61 | T2, C5, C8, D6 | BLOCKED | 0 |
+| Corporate Spend | 48/61 | T2, C5, C8, D6 | BLOCKED | 0 |
+| RCL demo | 42/61 | T2, T4, C5, C8, D6 | BLOCKED | 0 |
+
+**Two root causes, both now fixed — all 4 reports pass offline (4/4, was 0/4):**
+
+1. **The deterministic fallback produced zero documents.** The user guide seeded
+   each page's purpose with the Business Analyst's page summary *verbatim*, so its
+   prose was byte-identical to the technical document's; the gate correctly
+   rejects duplicated narrative and blocked the bundle. This broke the core
+   "an LLM failure never fails a job" guarantee outright: if every agent degrades
+   to deterministic, the gate then throws the result away. The reuse was wrong on
+   its own terms too — that summary is a visual inventory ("Presents 11 visuals —
+   2 basicShapes…"), i.e. technical vocabulary in the one document forbidden it.
+   **Why 1074 tests missed it:** every gate test runs on SampleSales, whose
+   normalized page prose is **106–113 chars — seven short of the gate's 120-char
+   threshold**. Corporate Spend's is 135–152. The suite passed by seven characters.
+2. **The wireframe linked visuals the table never anchors.** `report_facts.DECORATIVE`
+   (which decides who gets an anchor) includes `visualGroup`;
+   `_wireframe._DECORATIVE_TYPES` was an independent, narrower copy that didn't —
+   so a grouped visual got an `#visual-…` link to a non-existent anchor. A
+   duplicated constant that drifted; the wireframe now derives it.
+
+**Also learned:** intake richness moves the score a lot — Corporate Spend scores
+**48/61 with a sparse intake (owner+audience)** vs **59/61 with the full 17-field
+intake**. That sits uneasily beside the project's own rule that optional intake
+"must never make a generated document look unfinished"; C5/C8/D6/T2 recur across
+reports precisely when intake is thin. Worth a decision: either the benchmark
+shouldn't penalise absent optional context, or the rule should be restated.
+
+**Still true:** `refreshPolicy`/`perspective` remain unseen in any real file (both
+declaration shapes now parse; the spec confirms perspective's); C8's judge
+false-negatives on a cheap judge (twice, verifiably wrong); live *scoring* of a
+clean full bundle remains one report + one model.
