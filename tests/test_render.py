@@ -1196,6 +1196,56 @@ class SectionProvenanceHonestyTest(unittest.TestCase):
                 self.assertEqual(self._pill(html, 16), "Extracted")
 
 
+class MethodologyDisclosureTest(unittest.TestCase):
+    """§19's "AI Agents Used" was a fixed string naming Anthropic Claude, Google
+    Gemini and Cohere on every document — false offline (nothing was called) and
+    false live (one model is called, not three vendors). It must describe the run."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.model = detect_and_parse(FIXTURE)
+
+    def _disclosure(self, html):
+        m = re.search(r"<strong>AI Agents Used:</strong>([^<]+)</p>", html)
+        self.assertIsNotNone(m, "§19 AI disclosure missing")
+        return m.group(1).strip()
+
+    def test_offline_names_no_model(self):
+        text = self._disclosure(render_html(generate_document(self.model)))
+        self.assertIn("No AI model contributed", text)
+        for vendor in ("Anthropic", "Claude", "Gemini", "Cohere", "OpenAI"):
+            self.assertNotIn(vendor, text, f"offline output must not name {vendor}")
+
+    def test_live_names_only_the_model_actually_called(self):
+        client = _FakeBusinessAnalyst()
+        client.model = "test-model-xyz"
+        text = self._disclosure(render_html(generate_document(self.model, client, on_warning=lambda m: None)))
+        self.assertIn("test-model-xyz", text)
+        # The old stock sentence's vendors must not reappear alongside it.
+        for vendor in ("Gemini", "Cohere"):
+            self.assertNotIn(vendor, text)
+
+    def test_engine_version_tracks_the_package(self):
+        """The version was hardcoded "v0.1.0"; it must follow __version__ so a
+        release can't silently ship a document claiming the previous engine."""
+        from pbicompass import __version__
+
+        text = self._disclosure(render_html(generate_document(self.model)))
+        self.assertIn(f"v{__version__}", text)
+
+    def test_all_renderers_agree(self):
+        doc = generate_document(self.model)
+        html_text = self._disclosure(render_html(doc))
+        self.assertIn("No AI model contributed", render_markdown(doc))
+        with tempfile.TemporaryDirectory() as td:
+            out = render_docx(doc, Path(td) / "r.docx")
+            with zipfile.ZipFile(out) as zf:
+                document = zf.read("word/document.xml").decode("utf-8")
+        self.assertIn("No AI model contributed", document)
+        self.assertNotIn("Cohere", document)
+        self.assertTrue(html_text)
+
+
 class _FakeBusinessAnalyst:
     """Minimal client that answers the Business Analyst prompt and nothing else."""
 

@@ -137,14 +137,22 @@ def call_llm(client: LLMClient, system: str, payload: dict, schema: dict,
         cached = cache.get(system, payload, schema, model_id, effort)
         if cached is not None:
             try:
-                return _validate_response(cached, schema)
+                validated = _validate_response(cached, schema)
             except ValueError as exc:
                 warn(f"{name}: ignored invalid cached LLM response ({type(exc).__name__})")
+            else:
+                # Costs nothing, but it is still this model's prose going into
+                # the document, so §19's disclosure has to name it.
+                if ai_context is not None:
+                    ai_context.record_model(model_id)
+                return validated
         res = client.complete_json(system, json.dumps(payload, ensure_ascii=False), schema, effort=effort)
         if res is not None:
             res = _validate_response(res, schema)
             cache.set(system, payload, schema, model_id, res, effort)
             _record_usage(ai_context, client, name)
+            if ai_context is not None:
+                ai_context.record_model(model_id)
         return res
     except LLMResponseValidationError:
         warn(f"{name}: LLM response did not match schema; using deterministic fallback.")
@@ -185,9 +193,13 @@ def call_llm_with_retry(
         cached = cache.get(system, payload, schema, model_id, effort)
         if cached is not None:
             try:
-                return _validate_response(cached, schema)
+                validated = _validate_response(cached, schema)
             except ValueError:
                 pass
+            else:
+                if ai_context is not None:
+                    ai_context.record_model(model_id)  # cached prose is still this model's
+                return validated
         attempt = 0
         while True:
             try:
@@ -196,6 +208,8 @@ def call_llm_with_retry(
                     res = _validate_response(res, schema)
                     cache.set(system, payload, schema, model_id, res, effort)
                     _record_usage(ai_context, client, name)
+                    if ai_context is not None:
+                        ai_context.record_model(model_id)
                 return res
             except Exception:
                 if attempt >= retries:

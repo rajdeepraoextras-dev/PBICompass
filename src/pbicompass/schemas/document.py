@@ -198,6 +198,11 @@ class Document:
     # evidence: [{kind, name, anchor}]}. Empty when no requirements were
     # supplied — §3 then renders the plain requirements text/TODO as before.
     requirements_matrix: list[dict[str, Any]] = field(default_factory=list)
+    # Model ids that actually wrote prose in this document, in first-use order.
+    # Empty == a fully deterministic run, which is what §19's "AI Agents Used"
+    # disclosure reports. Never a list of *supported* providers — only what this
+    # particular run really called.
+    ai_models_used: list[str] = field(default_factory=list)
     # Model health score computed by the deterministic audit rules:
     # {overall, band, component_scores: {...}, component_notes: {...}}
     health_score: dict[str, Any] = field(default_factory=dict)

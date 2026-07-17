@@ -33,6 +33,7 @@ from ._shared import html_e as _e
 from ._shared import html_table as _table
 from ._shared import html_todo as _todo
 from ._shared import is_local_path as _is_local_path
+from ._shared import methodology_ai_disclosure
 from ._shared import non_data_note as _non_data_note
 from ._shared import refresh_policy_summary as _refresh_policy_summary
 from ._shared import section_provenance
@@ -815,7 +816,7 @@ def render_html(
     o.append('<h2 id="sec19">19. Methodology &amp; Guarantees <span class="pill extracted">Extracted</span></h2>')
     o.append('<div class="card-section">')
     o.append('<p><strong>Parsed Artifacts:</strong> Power BI metadata (tables, columns, measures, relationships, visuals, and page layout tables). No customer database row-level data is ever parsed, read, or transmitted.</p>')
-    o.append('<p><strong>AI Agents Used:</strong> PBICompass Engine v0.1.0 and prompt version 2026-07. Models called: Anthropic Claude, Google Gemini, Cohere. All operations run under zero-retention policies.</p>')
+    o.append(f'<p><strong>AI Agents Used:</strong> {_e(methodology_ai_disclosure(doc))}</p>')
     o.append('<p><strong>Guarantees:</strong> 100% offline-ready deliverables, zero CDNs, zero telemetry, and fully reproducible scoring metrics backed by deterministic compliance checking rules.</p>')
     o.append('<p><strong>Limitations:</strong> This tool cannot verify runtime query performance, network latency, database authentication credentials, or confirm the actual semantic business meaning without human verification.</p>')
     o.append('</div>')

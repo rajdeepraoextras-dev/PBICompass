@@ -1079,4 +1079,9 @@ class TechnicalDocumentationGenerator:
         # grounding ever run) — see sanitize.sanitize_narratives's docstring.
         sanitize_narratives(_narrative_triples(doc))
 
+        # Last, so the critic/grounding/consistency passes above are counted:
+        # §19 discloses which models really wrote in this document. Stays empty
+        # for an offline run, and for a run whose every LLM call failed.
+        doc.ai_models_used = list(ai_context.models_used) if ai_context is not None else []
+
         return doc

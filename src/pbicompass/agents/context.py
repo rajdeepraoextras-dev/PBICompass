@@ -87,11 +87,24 @@ class JobAIContext:
     # Per-agent call/token counters — content-free (names and integers only).
     usage: dict[str, dict[str, int]] = field(default_factory=dict)
 
+    # Model ids whose output actually reached a document, in first-use order.
+    # Distinct from ``usage``, which counts *spend*: a cache hit costs nothing
+    # but still puts model-written prose in front of the reader, so it belongs
+    # here. Empty means the deterministic engine wrote everything, which is
+    # what §19's disclosure reports rather than naming the vendors we merely
+    # support. A list (not a set) so this stays JSON-safe alongside ``usage``.
+    models_used: list[str] = field(default_factory=list)
+
     def record(self, agent: str, *, calls: int = 1, input_tokens: int = 0, output_tokens: int = 0) -> None:
         bucket = self.usage.setdefault(agent, {"calls": 0, "input_tokens": 0, "output_tokens": 0})
         bucket["calls"] += calls
         bucket["input_tokens"] += input_tokens
         bucket["output_tokens"] += output_tokens
+
+    def record_model(self, model_id: Optional[str]) -> None:
+        """Note that ``model_id`` produced text this job. Idempotent."""
+        if model_id and model_id not in self.models_used:
+            self.models_used.append(model_id)
 
 
 def _compute_audit_summary(model: SemanticModel) -> dict:

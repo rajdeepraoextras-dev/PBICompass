@@ -16,6 +16,7 @@ from ._shared import MODEL_DIAGRAM_RENDERED
 from ._shared import format_timestamp as _fmt_ts
 from ._shared import md_discrepancy_callout
 from ._shared import is_local_path as _is_local_path
+from ._shared import methodology_ai_disclosure
 from ._shared import md_table as _table
 from ._shared import md_todo as _todo
 from ._shared import non_data_note as _non_data_note
@@ -547,7 +548,7 @@ def render_markdown(doc: Document) -> str:
     # 19. Methodology & Guarantees
     out.append("\n## 19. Methodology & Guarantees [Extracted]\n")
     out.append("- **Parsed Artifacts:** Power BI metadata (tables, columns, measures, relationships, visuals, and page layout tables). No customer database row-level data is ever parsed, read, or transmitted.\n")
-    out.append("- **AI Agents Used:** PBICompass Engine v0.1.0 and prompt version 2026-07. Models called: Anthropic Claude, Google Gemini, Cohere. All operations run under zero-retention policies.\n")
+    out.append(f"- **AI Agents Used:** {methodology_ai_disclosure(doc)}\n")
     out.append("- **Guarantees:** 100% offline-ready deliverables, zero CDNs, zero telemetry, and fully reproducible scoring metrics backed by deterministic compliance checking rules.\n")
     out.append("- **Limitations:** This tool cannot verify runtime query performance, network latency, database authentication credentials, or confirm the actual semantic business meaning without human verification.\n")
 

@@ -12,6 +12,11 @@ from datetime import datetime
 from html import escape as _escape
 
 
+# Version stamp for the agent prompt set, disclosed in §19. Bump it when the
+# prompts in ``agents/io.py`` change in a way that would change output for the
+# same input — it is how a reader tells two runs of the same engine apart.
+PROMPT_VERSION = "2026-07"
+
 # Reader-facing names for the health-score components computed by
 # ``agents.audit_rules.compute_health_score`` — shared by every renderer so
 # the same component is never labelled two different ways.
@@ -356,6 +361,30 @@ def md_discrepancy_callout(discrepancies: list[dict]) -> str:
             f">\n> {d.get('explanation', '')}\n"
         )
     return "".join(parts)
+
+
+def methodology_ai_disclosure(doc: Any) -> str:
+    """§19's "AI Agents Used" sentence, built from what the run actually did.
+
+    This used to be a fixed string naming Anthropic Claude, Google Gemini and
+    Cohere on every document. That was wrong twice over: an offline run calls
+    no model at all, and even a live run calls *one* model, not the whole list
+    of providers PBICompass can talk to. A compliance disclosure is the last
+    place that can afford a stock sentence, so it is derived, not asserted.
+    """
+    from .. import __version__
+
+    engine = f"PBICompass Engine v{__version__} and prompt version {PROMPT_VERSION}."
+    models = list(getattr(doc, "ai_models_used", None) or [])
+    if not models:
+        # Deliberately "contributed to", not "was called": this tracks model
+        # output that reached the page. A run whose LLM calls all failed also
+        # lands here, and it did attempt calls — so claiming none were made
+        # would trade one false sentence for another.
+        return (f"{engine} No AI model contributed to this document — every section was "
+                f"produced by the deterministic engine from the parsed metadata alone.")
+    return (f"{engine} Models called: {', '.join(models)}. All operations run under "
+            f"zero-retention policies.")
 
 
 def section_provenance(section_num: int, metadata: Any, doc: Any = None) -> str:

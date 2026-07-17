@@ -18,6 +18,7 @@ from ._shared import HEALTH_COMPONENT_LABELS
 from ._shared import MODEL_DIAGRAM_RENDERED
 from ._shared import format_timestamp as _fmt_ts
 from ._shared import is_local_path as _is_local_path
+from ._shared import methodology_ai_disclosure
 from ._shared import non_data_note as _non_data_note
 from ._shared import refresh_policy_summary as _refresh_policy_summary
 from ._shared import section_provenance
@@ -539,7 +540,7 @@ def render_docx(doc: Document, out_path) -> Path:
     # 19. Methodology & Guarantees
     d.heading(1, "19. Methodology & Guarantees [Extracted]")
     d.bullet([d._run("Parsed Artifacts: ", bold=True), d._run("Power BI metadata (tables, columns, measures, relationships, visuals, and page layout tables). No customer database row-level data is ever parsed, read, or transmitted.")])
-    d.bullet([d._run("AI Agents Used: ", bold=True), d._run("PBICompass Engine v0.1.0 and prompt version 2026-07. Models called: Anthropic Claude, Google Gemini, Cohere. All operations run under zero-retention policies.")])
+    d.bullet([d._run("AI Agents Used: ", bold=True), d._run(methodology_ai_disclosure(doc))])
     d.bullet([d._run("Guarantees: ", bold=True), d._run("100% offline-ready deliverables, zero CDNs, zero telemetry, and fully reproducible scoring metrics backed by deterministic compliance checking rules.")])
     d.bullet([d._run("Limitations: ", bold=True), d._run("This tool cannot verify runtime query performance, network latency, database authentication credentials, or confirm the actual semantic business meaning without human verification.")])
 
