@@ -130,6 +130,7 @@ def _executive_summary(model: SemanticModel, client, warn, ai_context: Optional[
         core_purpose = f"{core_purpose} This report exists to support: {business_decision}"
     if client is None:
         deterministic.core_purpose = core_purpose
+        deterministic.provenance = "Extracted"
         return deterministic
 
     pages = list(deterministic.pages)
@@ -138,6 +139,10 @@ def _executive_summary(model: SemanticModel, client, warn, ai_context: Optional[
     nav_seen = set(navigation_guide)
     explainer_seen = {(e.visual, e.page) for e in complex_visual_explainers}
     core_purpose_set = False
+    # Having a client is not the same as the LLM having written anything: every
+    # batch can fail (or degrade to the deterministic template) and still leave
+    # a document here. Only text that actually landed earns the AI-inferred pill.
+    ai_applied = False
     offset = 0
 
     report_context = ai_context.insights if ai_context is not None else None
@@ -149,6 +154,7 @@ def _executive_summary(model: SemanticModel, client, warn, ai_context: Optional[
         rp = report_context.get("report_purpose") or {}
         if rp.get("statement") and rp.get("confidence") in ("High", "Medium"):
             core_purpose = rp["statement"]
+            ai_applied = True  # the whole-model synthesis is itself an LLM call
             if business_decision:
                 core_purpose = f"{core_purpose} This report exists to support: {business_decision}"
 
@@ -171,6 +177,7 @@ def _executive_summary(model: SemanticModel, client, warn, ai_context: Optional[
                      f"({exc}) — deterministic summary used")
 
         if batch_pages is not None:
+            ai_applied = True
             for i, page in enumerate(batch_pages):
                 if offset + i < len(pages):
                     pages[offset + i] = page
@@ -198,6 +205,7 @@ def _executive_summary(model: SemanticModel, client, warn, ai_context: Optional[
     return ExecutiveSummary(
         core_purpose=core_purpose, pages=pages,
         navigation_guide=navigation_guide, complex_visual_explainers=complex_visual_explainers,
+        provenance="AI-inferred" if ai_applied else "Extracted",
     )
 
 

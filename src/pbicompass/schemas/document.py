@@ -46,7 +46,10 @@ class ExecutiveSummary:
     pages: list[PageSummary] = field(default_factory=list)
     navigation_guide: list[str] = field(default_factory=list)
     complex_visual_explainers: list[VisualExplainer] = field(default_factory=list)
-    provenance: str = "AI-inferred"
+    # Defaults to the *weaker* claim on purpose: this summary falls back to the
+    # deterministic template whenever the LLM is absent or its batches fail, and
+    # an unset provenance must never be the thing that claims AI wrote it.
+    provenance: str = "Extracted"
 
 
 # -- I. Document Metadata -----------------------------------------------------

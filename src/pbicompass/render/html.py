@@ -160,7 +160,7 @@ def render_html(
     o: list[str] = []
 
     def _header_badge(section_num: int) -> str:
-        prov = section_provenance(section_num, md)
+        prov = section_provenance(section_num, md, doc)
         cls = "extracted"
         if prov == "Human-provided":
             cls = "human-provided"

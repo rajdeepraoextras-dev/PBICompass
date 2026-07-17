@@ -1307,7 +1307,7 @@ details.collapsible > .code-block pre {
 <h2 id="sec1">1. Document Control <span class="pill extracted">Extracted</span></h2>
 <table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Dashboard / Report Name</td><td>SampleSales</td></tr><tr><td>Source format</td><td>pbip-tmdl</td></tr><tr><td>Owner</td><td><span class="muted">not specified</span></td></tr><tr><td>Author</td><td><span class="muted">not specified</span></td></tr><tr><td>Reviewer / Approver</td><td><span class="muted">not specified</span></td></tr><tr><td>Version</td><td><span class="muted">not specified</span></td></tr><tr><td>Status</td><td><span class="muted">not specified</span></td></tr><tr><td>Classification</td><td><span class="muted">not specified</span></td></tr><tr><td>Target audience</td><td>BI developers and business stakeholders</td></tr><tr><td>Refresh schedule</td><td><span class="muted">not specified</span></td></tr><tr><td>Generated</td><td>TIMESTAMP</td></tr></tbody></table>
 <div class="todo"><b>Not provided during generation:</b> Optional document-control context: Version, Status, Author, Reviewer, Classification</div>
-<h2 id="sec2">2. Executive Summary <span class="pill ai-inferred">AI-inferred</span></h2>
+<h2 id="sec2">2. Executive Summary <span class="pill extracted">Extracted</span></h2>
 <div class="card-section">
 <p>&#x27;SampleSales&#x27; reports on Sales, tracking Avg Order Value, Total Revenue, Revenue YTD across Customer, Date. It spans 2 report pages, documented individually below. This purpose statement is derived from the model contents alone — the business context requires confirmation from the report owner.</p>
 <p><strong>Headline metrics:</strong> Avg Order Value, Total Revenue, Revenue YTD, Orphan Margin.</p>
@@ -1607,7 +1607,7 @@ Model.Tables[&quot;Sales&quot;].Measures[&quot;Revenue YTD&quot;].Delete();</cod
 <h3>Modeling risks</h3>
 <ul><li>Sales ↔ Date uses bi-directional cross-filtering, which can create ambiguous filter paths and slow performance.</li><li>Sales[ShipDateKey] → Date[DateKey] is inactive and only applies via USERELATIONSHIP() in DAX.</li></ul>
 <div class="todo"><b>Not provided during generation:</b> Business assumptions and limitations (e.g. &quot;returns lag source by 1 day&quot;) with impact and workaround.</div>
-<h2 id="sec16">16. Model Health &amp; AI Recommendations <span class="pill ai-inferred">AI-inferred</span></h2>
+<h2 id="sec16">16. Model Health &amp; AI Recommendations <span class="pill extracted">Extracted</span></h2>
 <h3>Health Score: 85 / 100 (Good)</h3>
 <table><thead><tr><th>Component</th><th>Score</th><th>Why</th></tr></thead><tbody><tr><td>Model Design</td><td><span class="num">70</span></td><td>6 of 19 best-practice checks failed.</td></tr><tr><td>DAX Quality</td><td><span class="num">96</span></td><td>4 DAX findings (worst severity: Low).</td></tr><tr><td>Governance &amp; Security</td><td><span class="num">87</span></td><td>7 governance findings (worst severity: Medium).</td></tr><tr><td>Performance</td><td><span class="num">97</span></td><td>3 performance risk signals (worst severity: Low).</td></tr><tr><td>Maintainability</td><td><span class="num">76</span></td><td>12 unused assets add size and maintenance load without analytical value.</td></tr></tbody></table>
 <p class="muted">Scored by deterministic rules over the model metadata — reproducible, not an AI guess.</p>

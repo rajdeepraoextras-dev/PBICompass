@@ -65,7 +65,7 @@ def render_docx(doc: Document, out_path) -> Path:
         return [[str(c) for c in r] for r in rows]
 
     def _badge(section_num: int) -> str:
-        return f" [{section_provenance(section_num, md)}]"
+        return f" [{section_provenance(section_num, md, doc)}]"
 
     # 1. Document Control
     d.heading(1, f"1. Document Control{_badge(1)}")

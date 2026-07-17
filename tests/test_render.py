@@ -7,6 +7,7 @@ is installed, graceful ``PandocError`` if not.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -512,8 +513,13 @@ class DocxRenderTest(unittest.TestCase):
                 document = zf.read("word/document.xml").decode("utf-8")
         for icon in ("⚙", "✨", "\U0001F464"):
             self.assertNotIn(icon, document)
-        for label in ("[Extracted]", "[AI-inferred]", "[Human-provided]"):
+        for label in ("[Extracted]", "[Human-provided]"):
             self.assertIn(label, document)
+        # ``_doc()`` runs the deterministic pipeline with no LLM, so nothing in
+        # this document was AI-inferred and no badge may say otherwise. (This
+        # assertion used to be reversed — it required an "[AI-inferred]" badge
+        # in AI-free output, which is how the mislabel went unnoticed.)
+        self.assertNotIn("[AI-inferred]", document)
 
 
 class MarkdownRenderTest(unittest.TestCase):
@@ -1147,6 +1153,77 @@ class WireframeHrefResolutionTest(unittest.TestCase):
         html = render_html(generate_document(model))
         self.assertIn("×3", html)  # confirms the grouping this test targets actually fired
         self._assert_no_dead_hrefs(html, "technical (duplicate-visual fixture)")
+
+
+class SectionProvenanceHonestyTest(unittest.TestCase):
+    """Benchmark check X1: a section pill must match where its prose actually
+    came from. The pills used to be a static per-section map, so an offline run
+    still stamped §2 "AI-inferred" over deterministic template text, and §16
+    claimed AI in every mode while saying "not an AI guess" in its own body."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.model = detect_and_parse(FIXTURE)
+
+    def _pill(self, html, section_num):
+        m = re.search(rf'<h2 id="sec{section_num}">.*?<span class="pill [\w-]+">([\w-]+)</span>', html)
+        self.assertIsNotNone(m, f"no provenance pill on section {section_num}")
+        return m.group(1)
+
+    def test_offline_run_does_not_claim_ai_wrote_the_summary(self):
+        """The reported bug: deterministic engine, AI-inferred pill."""
+        html = render_html(generate_document(self.model))
+        self.assertEqual(self._pill(html, 2), "Extracted")
+
+    def test_ai_run_does_claim_ai(self):
+        """The pill must still earn "AI-inferred" when the LLM really wrote it,
+        or the fix would just be a blanket downgrade."""
+        html = render_html(generate_document(self.model, _FakeBusinessAnalyst(), on_warning=lambda m: None))
+        self.assertEqual(self._pill(html, 2), "AI-inferred")
+
+    def test_ai_that_fails_every_batch_does_not_claim_ai(self):
+        """Graceful degradation leaves deterministic text behind; the pill has
+        to degrade with it rather than advertise an LLM that never answered."""
+        html = render_html(generate_document(self.model, _DeadLLM(), on_warning=lambda m: None))
+        self.assertEqual(self._pill(html, 2), "Extracted")
+
+    def test_health_section_never_claims_ai(self):
+        """§16 is scored and written by the deterministic rule engine in every
+        mode, despite its "AI Recommendations" title."""
+        for label, client in (("offline", None), ("ai", _FakeBusinessAnalyst())):
+            with self.subTest(mode=label):
+                html = render_html(generate_document(self.model, client, on_warning=lambda m: None))
+                self.assertEqual(self._pill(html, 16), "Extracted")
+
+
+class _FakeBusinessAnalyst:
+    """Minimal client that answers the Business Analyst prompt and nothing else."""
+
+    model = "fake"
+
+    def complete_json(self, system, user, schema, *, effort=None):
+        if "Business Analyst" in system or "BI consultant" in system:
+            payload = json.loads(user)
+            return {
+                "core_purpose": "AI_WRITTEN_PURPOSE",
+                "pages": [{
+                    "page_title": p.get("display_name", ""), "summary": "AI page summary.",
+                    "users": "Analysts", "business_questions": ["Q?"],
+                    "decisions": "A decision.", "confidence": "High",
+                } for p in payload.get("pages", [])],
+                "navigation_guide": ["nav"],
+                "complex_visual_explainers": [],
+            }
+        raise RuntimeError("not the agent under test")
+
+
+class _DeadLLM:
+    """Present but every call fails — the live credit-exhaustion / outage case."""
+
+    model = "dead"
+
+    def complete_json(self, system, user, schema, *, effort=None):
+        raise RuntimeError("provider unavailable")
 
 
 class ShellScriptSyntaxTest(unittest.TestCase):

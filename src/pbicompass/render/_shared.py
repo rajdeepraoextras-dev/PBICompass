@@ -296,11 +296,17 @@ SECTION_PROVENANCE_FIELDS: dict[int, list[str]] = {
 
 # Default provenance label per section (1-18; 19 "Methodology & Guarantees"
 # is a static, hand-written section every renderer labels "Extracted" directly).
+# §2 is the only entry here that is a *default* rather than a fact: its prose
+# comes from the LLM or from the deterministic template depending on the run,
+# so ``section_provenance`` prefers the summary's recorded provenance and only
+# falls back to this. §16 reads "AI Recommendations" but is scored and written
+# entirely by the deterministic rule engine (``_health_and_recommendations``),
+# which is why it is "Extracted" in every mode.
 SECTION_DEFAULT_PROVENANCE: dict[int, str] = {
-    1: "Extracted", 2: "AI-inferred", 3: "Human-provided", 4: "Human-provided",
+    1: "Extracted", 2: "Extracted", 3: "Human-provided", 4: "Human-provided",
     5: "Extracted", 6: "Extracted", 7: "Extracted", 8: "Extracted", 9: "Extracted",
     10: "Extracted", 11: "Extracted", 12: "Extracted", 13: "Extracted",
-    14: "Extracted", 15: "Extracted", 16: "AI-inferred", 17: "Extracted",
+    14: "Extracted", 15: "Extracted", 16: "Extracted", 17: "Extracted",
     18: "Extracted",
 }
 
@@ -352,13 +358,21 @@ def md_discrepancy_callout(discrepancies: list[dict]) -> str:
     return "".join(parts)
 
 
-def section_provenance(section_num: int, metadata: Any) -> str:
+def section_provenance(section_num: int, metadata: Any, doc: Any = None) -> str:
     """Bare-text provenance label (``"Extracted"``/``"AI-inferred"``/
     ``"Human-provided"``, no icon) for a technical-doc H2 section: the
     section's default, upgraded to "Human-provided" when any of its
     override-able metadata fields appear in ``metadata.overridden_fields``.
-    Shared by html.py/markdown.py/docx.py so all three renderers agree."""
+    Shared by html.py/markdown.py/docx.py so all three renderers agree.
+
+    Pass ``doc`` so §2 can report what the run actually did — offline runs and
+    failed LLM batches leave the deterministic template in place, and the pill
+    has to say so. Without it §2 falls back to the honest "Extracted"."""
     for f in SECTION_PROVENANCE_FIELDS.get(section_num, []):
         if f in getattr(metadata, "overridden_fields", []):
             return "Human-provided"
+    if section_num == 2 and doc is not None:
+        recorded = getattr(getattr(doc, "executive_summary", None), "provenance", None)
+        if recorded:
+            return recorded
     return SECTION_DEFAULT_PROVENANCE.get(section_num, "Extracted")

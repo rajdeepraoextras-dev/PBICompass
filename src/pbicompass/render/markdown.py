@@ -29,7 +29,7 @@ def render_markdown(doc: Document) -> str:
     s = doc.stats
 
     def _badge(section_num: int) -> str:
-        return f" [{section_provenance(section_num, md)}]"
+        return f" [{section_provenance(section_num, md, doc)}]"
     out: list[str] = [f"# {md.report_name} — Power BI Documentation\n"]
     subtitle_str = f"{md.target_audience or ''} · generated {_fmt_ts(md.generated_at)}"
     if getattr(md, "score_trend", None):
