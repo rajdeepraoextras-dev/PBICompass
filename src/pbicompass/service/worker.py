@@ -40,6 +40,7 @@ from ..agents import audit_rules, generate_document, get_client
 from ..agents.assist import build_report_summary, complete_metadata_fields
 from ..agents.context import JobAIContext, build_job_context
 from ..agents.generators import DOCUMENT_TYPES
+from ..agents.parallel import run_parallel
 from ..render import pandoc, registry
 from ..render._shared import GROUNDED_DEFAULT_REFRESH_PREFIX, GROUNDED_DEFAULT_TEXT, format_timestamp
 from ..render.audit import _top_cluster as _audit_top_cluster
@@ -362,17 +363,32 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
         # Phase A: generate every requested document first (no rendering yet)
         # so the whole-bundle Senior Reviewer pass below sees the complete
         # bundle — its highest-value checks are cross-document.
-        for dtype in document_types:
-            if not active(f"{dtype} generation"):
-                return
-            if dtype == "audit" and pre_audit_doc is not None:
-                doc = pre_audit_doc
-            else:
-                doc = _generate_one(dtype, model, client, meta, warn, ai_context,
+        #
+        # The document types are generated concurrently (on a live client;
+        # offline runs inline — see agents/parallel.py). Every input they
+        # share — ai_context, top_cluster, audit_verdicts, requirements_matrix
+        # — is fully built above and read-only from here on, and each
+        # generator writes only into the Document object it returns. The one
+        # genuine cross-document dependency, the audit's clusters/verdicts, is
+        # already resolved by the pre_audit_doc step above precisely so the
+        # rest need not wait on each other.
+        if not active("document generation"):
+            return
+
+        def _one(dtype: str):
+            def task():
+                if dtype == "audit" and pre_audit_doc is not None:
+                    return pre_audit_doc
+                return _generate_one(dtype, model, client, meta, warn, ai_context,
                                      top_cluster=top_cluster if dtype == "technical" else None,
                                      plan=plan if dtype == "audit" else None,
                                      audit_verdicts=audit_verdicts,
                                      requirements_matrix=requirements_matrix)
+            return task
+
+        generated = run_parallel([_one(d) for d in document_types],
+                                 enabled=client is not None)
+        for dtype, doc in zip(document_types, generated):
             if changelog_text and dtype in ("technical", "audit"):
                 doc.changelog = changelog_text
             docs[dtype] = doc

@@ -17,6 +17,7 @@ from typing import Optional
 
 from ..consistency import AuditVerdicts, check_consistency, find_human_claim_discrepancies
 from ..context import JobAIContext, build_job_context
+from ..parallel import run_parallel
 from ..traceability import build_requirements_matrix
 from ...schemas.document import (
     Document,
@@ -158,16 +159,29 @@ def _executive_summary(model: SemanticModel, client, warn, ai_context: Optional[
             if business_decision:
                 core_purpose = f"{core_purpose} This report exists to support: {business_decision}"
 
-    for batch in io.business_analyst_batches(
-            model, report_context=report_context,
-            business_decision=business_decision, target_audience=audience,
-            assumptions=assumptions, security_notes=security_notes,
-            refresh_notes=refresh_notes, deployment_notes=deployment_notes,
-            access_notes=access_notes, support_notes=support_notes):
+    # Each batch covers a disjoint slice of pages, so the calls fan out. The
+    # *results* are still applied strictly in batch order below: this loop
+    # accumulates order-sensitive state — first-batch-wins for core_purpose,
+    # and append-order dedupe for the navigation guide and visual explainers
+    # — so only the waiting is parallel, never the merging. A 30-page report
+    # is 5 of these; each was a serial round-trip before.
+    all_batches = list(io.business_analyst_batches(
+        model, report_context=report_context,
+        business_decision=business_decision, target_audience=audience,
+        assumptions=assumptions, security_notes=security_notes,
+        refresh_notes=refresh_notes, deployment_notes=deployment_notes,
+        access_notes=access_notes, support_notes=support_notes))
+
+    def _analyst(batch):
+        return lambda: call_llm_with_retry(
+            client, io.BUSINESS_ANALYST_SYSTEM, batch, io.BUSINESS_ANALYST_SCHEMA,
+            ai_context=ai_context, name="Business Analyst")
+
+    responses = run_parallel([_analyst(b) for b in all_batches], enabled=client is not None)
+
+    for batch, data in zip(all_batches, responses):
         batch_size = len(batch["pages"])
         slice_titles = [p.page_title for p in pages[offset:offset + batch_size]]
-        data = call_llm_with_retry(client, io.BUSINESS_ANALYST_SYSTEM, batch, io.BUSINESS_ANALYST_SCHEMA,
-                                    ai_context=ai_context, name="Business Analyst")
         batch_pages = None
         if data:
             try:
@@ -997,7 +1011,19 @@ class TechnicalDocumentationGenerator:
                 refresh_notes=refresh_notes, deployment_notes=deployment_notes,
                 access_notes=access_notes, support_notes=support_notes,
             )
-        col_descs = _column_descriptions(model, client, warn, ai_context)
+        # The Column Describer and the Business Analyst are independent — they
+        # read the model and write different sections — so they overlap. The
+        # Data Modeler below cannot join them: it takes ``col_descs`` as input
+        # and so must follow the Column Describer.
+        col_descs, executive_summary = run_parallel([
+            lambda: _column_descriptions(model, client, warn, ai_context),
+            lambda: _executive_summary(
+                model, client, warn, ai_context,
+                business_decision=business_decision, audience=audience,
+                assumptions=assumptions, security_notes=security_notes,
+                refresh_notes=refresh_notes, deployment_notes=deployment_notes,
+                access_notes=access_notes, support_notes=support_notes),
+        ], enabled=client is not None)
         from ...render._nav_map import render_navigation_map
         nav_edges, nav_map_svg = render_navigation_map(model)
         doc = Document(
@@ -1010,12 +1036,7 @@ class TechnicalDocumentationGenerator:
                 access_notes=access_notes, glossary=glossary,
                 assumptions=assumptions, support_notes=support_notes,
             ),
-            executive_summary=_executive_summary(
-                model, client, warn, ai_context,
-                business_decision=business_decision, audience=audience,
-                assumptions=assumptions, security_notes=security_notes,
-                refresh_notes=refresh_notes, deployment_notes=deployment_notes,
-                access_notes=access_notes, support_notes=support_notes),
+            executive_summary=executive_summary,
             lineage=_lineage(model),
             semantic_model=_semantic_model(model, client, warn, col_descs, ai_context),
             measure_catalog=_measure_catalog(model, client, warn, ai_context),

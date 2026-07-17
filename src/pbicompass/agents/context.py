@@ -27,11 +27,13 @@ the Report Intelligence call's success.
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from . import io
 from .llm import LLMClient
+from .parallel import run_parallel
 from ..schemas.model import SemanticModel
 
 Warn = Callable[[str], None]
@@ -95,16 +97,43 @@ class JobAIContext:
     # support. A list (not a set) so this stays JSON-safe alongside ``usage``.
     models_used: list[str] = field(default_factory=list)
 
+    # Guards every mutation below. One job's agents now run concurrently
+    # (``agents/parallel.py``), so ``usage``/``models_used``/``score_trend``
+    # are written from several threads at once: each is a read-modify-write
+    # that loses updates when interleaved, and ``score_trend`` guards a
+    # function that *appends to an on-disk file*, so racing it double-writes
+    # the run. Excluded from ``repr``/``eq`` so the dataclass keeps behaving
+    # like the plain value object every test compares.
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+
     def record(self, agent: str, *, calls: int = 1, input_tokens: int = 0, output_tokens: int = 0) -> None:
-        bucket = self.usage.setdefault(agent, {"calls": 0, "input_tokens": 0, "output_tokens": 0})
-        bucket["calls"] += calls
-        bucket["input_tokens"] += input_tokens
-        bucket["output_tokens"] += output_tokens
+        with self._lock:
+            bucket = self.usage.setdefault(agent, {"calls": 0, "input_tokens": 0, "output_tokens": 0})
+            bucket["calls"] += calls
+            bucket["input_tokens"] += input_tokens
+            bucket["output_tokens"] += output_tokens
 
     def record_model(self, model_id: Optional[str]) -> None:
         """Note that ``model_id`` produced text this job. Idempotent."""
-        if model_id and model_id not in self.models_used:
-            self.models_used.append(model_id)
+        with self._lock:
+            if model_id and model_id not in self.models_used:
+                self.models_used.append(model_id)
+
+    def memo_score_trend(self, compute: Callable[[], Optional[str]]) -> Optional[str]:
+        """Return the job's one score-trend string, computing it at most once.
+
+        ``compute`` (``audit_rules.get_and_update_score_history``) both reads
+        *and appends to* the history file, so it must run exactly once per
+        job — see ``score_trend``'s field comment. The check-then-set this
+        replaces was safe only while document generators ran one at a time;
+        under the parallel fan-out two generators could both observe
+        ``_score_trend_set is False`` and both append the same run.
+        """
+        with self._lock:
+            if not self._score_trend_set:
+                self.score_trend = compute()
+                self._score_trend_set = True
+            return self.score_trend
 
 
 def _compute_audit_summary(model: SemanticModel) -> dict:
@@ -208,18 +237,30 @@ def build_job_context(
     ctx.model_digest = insights_mod.build_model_digest(model, _compute_audit_summary(model))
     ctx.insights = _build_insights(model, client, warn, ctx, ctx.model_digest)
 
-    merged: dict[str, dict] = {}
-    for batch in io.dax_translator_batches(
+    # Each batch covers a disjoint set of measures and is translated
+    # independently, so the batches run concurrently. Results are merged in
+    # batch order (``run_parallel`` preserves it), which keeps the
+    # last-writer-wins behaviour of the sequential loop this replaces
+    # identical for the pathological case of a measure appearing twice.
+    # This is the fan-out that scales with the model: a 50-measure report is
+    # 2 batches, a 250-measure one is 10 — every one of them a serial
+    # round-trip before this.
+    batches = list(io.dax_translator_batches(
         model, report_context=ctx.insights,
         business_decision=business_decision, target_audience=target_audience,
         assumptions=assumptions, security_notes=security_notes,
         refresh_notes=refresh_notes, deployment_notes=deployment_notes,
         access_notes=access_notes, support_notes=support_notes,
-    ):
-        data = call_llm(
+    ))
+
+    def _translate(batch):
+        return lambda: call_llm(
             client, io.DAX_TRANSLATOR_SYSTEM, batch, io.DAX_TRANSLATOR_SCHEMA,
             warn, "DAX Translator", ai_context=ctx,
         )
+
+    merged: dict[str, dict] = {}
+    for data in run_parallel([_translate(b) for b in batches], enabled=True):
         if data:
             merged.update({t["name"]: t for t in data.get("translations", [])})
     ctx.translations = merged or None

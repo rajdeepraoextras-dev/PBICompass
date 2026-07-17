@@ -23,6 +23,7 @@ from ..context import JobAIContext
 from ..critic import apply_critic_pass, apply_results
 from ..grounding import apply_grounding_pass
 from ..llm import LLMClient
+from ..parallel import run_parallel
 from ..sanitize import enforce_score_consistency, is_meta_commentary, sanitize_narratives
 from .base import Warn, build_core_metadata, call_llm
 
@@ -305,9 +306,17 @@ class AuditReportGenerator:
         narrative = _deterministic_overview(
             health, complexity, dax_findings, best_practices, performance_risks, governance, recommendations,
         )
-        if client is not None:
+        # The Narrator and the Synthesizer are independent: both read only the
+        # deterministic rule output above, and they write to different fields
+        # (narrative vs clusters/strategic_narrative). They are run
+        # concurrently; the Fix Snippet Writer below deliberately stays after
+        # both — see its own comment, it *mutates* ``recommendations``, which
+        # the Narrator reads.
+        def _narrator():
+            if client is None:
+                return None
             failed = [c for c in best_practices if not c.passed]
-            data = call_llm(
+            return call_llm(
                 client, io.AUDIT_NARRATOR_SYSTEM,
                 io.audit_narrator_input(
                     health_overall=health.overall, health_band=health.band,
@@ -331,14 +340,12 @@ class AuditReportGenerator:
                 ),
                 io.AUDIT_NARRATOR_SCHEMA, warn, "Audit Narrator", ai_context=ai_context,
             )
-            if data and data.get("narrative_overview"):
-                narrative = data["narrative_overview"]
 
-        clusters: list[FindingCluster] = []
-        strategic_narrative = ""
-        if client is not None:
+        def _synthesizer():
+            if client is None:
+                return None
             failed_practices = [c for c in best_practices if not c.passed]
-            synth_data = call_llm(
+            return call_llm(
                 client, io.AUDIT_SYNTHESIZER_SYSTEM,
                 io.audit_synthesizer_input(
                     dax_findings=[
@@ -372,21 +379,27 @@ class AuditReportGenerator:
                 ),
                 io.AUDIT_SYNTHESIZER_SCHEMA, warn, "Audit Synthesizer", ai_context=ai_context,
             )
-            if synth_data:
-                clusters = [
-                    FindingCluster(
-                        root_cause=c.get("root_cause", ""),
-                        # Deduped, order-preserved: the LLM occasionally
-                        # repeats a rule_id within one cluster, which would
-                        # otherwise render the same "Related findings" link
-                        # twice (Day 2).
-                        rule_ids=list(dict.fromkeys(c.get("rule_ids", []))),
-                        narrative=c.get("narrative", ""),
-                        confidence=c.get("confidence", "Medium"),
-                    )
-                    for c in synth_data.get("clusters", [])
-                ]
-                strategic_narrative = synth_data.get("strategic_narrative", "")
+
+        clusters: list[FindingCluster] = []
+        strategic_narrative = ""
+        data, synth_data = run_parallel([_narrator, _synthesizer], enabled=client is not None)
+        if data and data.get("narrative_overview"):
+            narrative = data["narrative_overview"]
+        if synth_data:
+            clusters = [
+                FindingCluster(
+                    root_cause=c.get("root_cause", ""),
+                    # Deduped, order-preserved: the LLM occasionally
+                    # repeats a rule_id within one cluster, which would
+                    # otherwise render the same "Related findings" link
+                    # twice (Day 2).
+                    rule_ids=list(dict.fromkeys(c.get("rule_ids", []))),
+                    narrative=c.get("narrative", ""),
+                    confidence=c.get("confidence", "Medium"),
+                )
+                for c in synth_data.get("clusters", [])
+            ]
+            strategic_narrative = synth_data.get("strategic_narrative", "")
 
         # Day 9: runs last, after the deterministic overview and the Audit
         # Narrator/Synthesizer calls have already read ``recommendations``

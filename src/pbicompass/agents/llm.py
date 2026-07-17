@@ -19,6 +19,7 @@ import json
 import os
 import random
 import re
+import threading
 import time
 from typing import Any, Optional, Protocol
 
@@ -130,6 +131,34 @@ def _call_with_retries(fn, *, base_delay: float = 1.0, max_delay: float = 8.0):
             time.sleep(delay * (0.5 + random.random()))  # 50–150% jitter
 
 
+class _UsageTracker:
+    """Gives a client a per-thread ``last_usage`` attribute.
+
+    Clients stash the token counts of their most recent call so
+    ``generators/base.py::_record_usage`` can read them back immediately
+    afterwards and attribute them to the calling agent. One job now issues
+    several agent calls concurrently through the *same* client instance
+    (``agents/parallel.py``), so a single shared attribute would be
+    overwritten by whichever call finished last and the counts would land on
+    the wrong agent. Scoping the value to the calling thread keeps the
+    existing ``getattr(client, "last_usage", None)`` contract — including its
+    ``None`` default before the first call — exactly as it was.
+    """
+
+    _usage_local: threading.local
+
+    def _init_usage(self) -> None:
+        self._usage_local = threading.local()
+
+    @property
+    def last_usage(self) -> Optional[dict]:
+        return getattr(self._usage_local, "value", None)
+
+    @last_usage.setter
+    def last_usage(self, value: dict) -> None:
+        self._usage_local.value = value
+
+
 def _loose_json_parse(text: str) -> dict:
     """``json.loads``, tolerant of a stray ```json ... ``` fence — used for
     MeshAPI's unstructured JSON fallback (:class:`MeshAPIClient`), where a
@@ -142,7 +171,7 @@ def _loose_json_parse(text: str) -> dict:
     return json.loads(stripped)
 
 
-class AnthropicClient:
+class AnthropicClient(_UsageTracker):
     """Claude-backed client using structured outputs.
 
     Defaults to Claude Opus 4.8 with adaptive thinking at ``high`` effort — the
@@ -170,6 +199,7 @@ class AnthropicClient:
                 "The 'anthropic' package is required for the Claude provider. "
                 "Install it with: pip install -e \".[agents]\""
             ) from exc
+        self._init_usage()
         self._anthropic = anthropic
         self._client = (
             anthropic.Anthropic(api_key=api_key, timeout=timeout)
@@ -461,7 +491,7 @@ def _meshapi_reasoning_capable(model: str) -> bool:
     return bool(_MESHAPI_REASONING_MODEL_RE.match(name))
 
 
-class MeshAPIClient:
+class MeshAPIClient(_UsageTracker):
     """MeshAPI-backed client (https://developers.meshapi.ai) — a single
     ``rsk_...`` API key routes to 1000+ models across providers through one
     OpenAI-compatible endpoint, so BYOK users no longer need a separate
@@ -534,6 +564,7 @@ class MeshAPIClient:
                 "The 'openai' package is required for the MeshAPI provider (MeshAPI "
                 "exposes an OpenAI-compatible API). Install it with: pip install -e \".[agents]\""
             ) from exc
+        self._init_usage()
         key = api_key or os.environ.get("MESHAPI_API_KEY")
         self._client = openai.OpenAI(base_url=self._BASE_URL, api_key=key, timeout=timeout)
         self._openai = openai

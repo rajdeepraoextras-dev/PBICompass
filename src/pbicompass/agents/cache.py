@@ -15,7 +15,20 @@ class LLMResponseCache:
         self.conn = None
         if self.db_path != "off":
             try:
-                self.conn = sqlite3.connect(self.db_path)
+                # timeout: agents in one job now run concurrently, so several
+                # threads open their own connection to this same file and
+                # write to it at once. Without a busy timeout the loser of a
+                # write race raises "database is locked" immediately, which
+                # the callers below swallow — turning contention into silent
+                # cache misses (and, on a resumed job, re-billed LLM calls).
+                # WAL lets readers proceed during a write, which is the common
+                # case here: every call reads before it writes.
+                self.conn = sqlite3.connect(self.db_path, timeout=10.0,
+                                            check_same_thread=False)
+                try:
+                    self.conn.execute("PRAGMA journal_mode=WAL")
+                except Exception:
+                    pass  # e.g. a filesystem with no WAL support — plain mode still works
                 self._create_table()
             except Exception:
                 pass

@@ -1908,7 +1908,16 @@ def compute_checks_ledger(
     passed = all_ids - failed - suppressed
 
     by_category: dict[str, dict[str, int]] = {}
-    for rid in all_ids:
+    # sorted(), not raw set iteration: a set of strings iterates in an order
+    # that Python randomises per process (PYTHONHASHSEED), and this dict's
+    # insertion order is load-bearing twice over. It is rendered as-is
+    # (render/audit.py's checks-by-category table), so the same report
+    # documented twice produced the rows in a different order; and it is
+    # embedded in the Senior Reviewer's payload, which forms that call's
+    # LLM-cache key — so the key never matched across processes and the
+    # job's most expensive call (xhigh, whole-bundle) could never be served
+    # from cache. Sorting makes both deterministic.
+    for rid in sorted(all_ids):
         category = RULE_METADATA.get(rid, ("other",))[0]
         bucket = by_category.setdefault(category, {"run": 0, "passed": 0, "failed": 0, "suppressed": 0})
         bucket["run"] += 1
@@ -1987,10 +1996,14 @@ def get_shared_score_trend(ai_context, report_name: str, current_score: int) -> 
     cached value instead of writing again. When ``ai_context`` is ``None``
     (a generator invoked directly, as most tests do, or a single-doc-type
     run with no client), this degrades to a direct call — identical to the
-    pre-existing per-generator behavior."""
+    pre-existing per-generator behavior.
+
+    The memoization lives on ``JobAIContext`` (``memo_score_trend``) rather
+    than as a check-then-set here: document generators now run concurrently,
+    and two of them racing this would both see "not computed yet" and both
+    append the run — the exact double-write this wrapper exists to prevent."""
     if ai_context is None:
         return get_and_update_score_history(report_name, current_score)
-    if not ai_context._score_trend_set:
-        ai_context.score_trend = get_and_update_score_history(report_name, current_score)
-        ai_context._score_trend_set = True
-    return ai_context.score_trend
+    return ai_context.memo_score_trend(
+        lambda: get_and_update_score_history(report_name, current_score)
+    )
