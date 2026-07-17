@@ -20,7 +20,8 @@ import unittest
 import uuid
 from unittest import mock
 
-from pbicompass.service.accounts import (MAX_API_KEYS_PER_ACCOUNT, AccountStore)
+from pbicompass.service.accounts import (MAX_API_KEYS_PER_ACCOUNT, PLAN_AI_LIMITS,
+                                         PLAN_LIMITS, AccountStore)
 from pbicompass.service.jobs import JobStore
 
 try:
@@ -274,8 +275,12 @@ class DashboardApiTest(unittest.TestCase):
         self.assertEqual(body["supabase_url"], self._URL)
         self.assertIn("byok_enabled", body)
         # Day 33: the plan picker reads real quota numbers from here
-        self.assertEqual(body["plan_limits"]["free"], 2)
+        self.assertEqual(body["plan_limits"]["free"], PLAN_LIMITS["free"])
         self.assertIn("pro", body["plan_limits"])
+        # The picker also needs the AI sub-cap, or a free card would imply all
+        # of its runs come with an engine.
+        self.assertEqual(body["plan_ai_limits"]["free"], PLAN_AI_LIMITS["free"])
+        self.assertLess(body["plan_ai_limits"]["free"], body["plan_limits"]["free"])
 
     def test_app_page_is_served(self):
         res = self.client.get("/app")
@@ -310,7 +315,12 @@ class DashboardApiTest(unittest.TestCase):
         self.assertEqual(body["company"], "Acme Analytics")
         self.assertEqual(body["role"], "Head of BI")
         self.assertEqual(body["plan"], "free")
-        self.assertEqual(body["monthly_limit"], 2)
+        self.assertEqual(body["monthly_limit"], PLAN_LIMITS["free"])
+        # Both allowances are reported: the app greys out AI engines on
+        # ai_remaining, which empties well before remaining does.
+        self.assertEqual(body["ai_monthly_limit"], PLAN_AI_LIMITS["free"])
+        self.assertEqual(body["ai_used_this_month"], 0)
+        self.assertEqual(body["ai_remaining"], PLAN_AI_LIMITS["free"])
 
     def test_unknown_plan_in_metadata_falls_back_to_free(self):
         headers = self._headers(
@@ -457,7 +467,7 @@ class DashboardApiTest(unittest.TestCase):
         after = self.client.get("/app/api/admin/accounts", headers=admin).json()["accounts"]
         changed = next(a for a in after if a["id"] == target["id"])
         self.assertEqual(changed["plan"], "business")
-        self.assertEqual(changed["monthly_limit"], 30)
+        self.assertEqual(changed["monthly_limit"], PLAN_LIMITS["business"])
 
     def test_admin_plan_change_rejects_unknown_plan_and_missing_account(self):
         admin = self._make_admin()

@@ -52,7 +52,16 @@ from .db import _Connection, is_postgres_url  # noqa: F401  (re-exported)
 # Monthly document quota per plan (jobs accepted per calendar month, UTC).
 # Mirrors the tiers shown at /#pricing on the marketing site exactly — keep
 # these two in sync any time pricing changes.
-PLAN_LIMITS = {"free": 2, "pro": 10, "business": 30}
+PLAN_LIMITS = {"free": 10, "pro": 30, "business": 50}
+
+# Of those jobs, how many may use an AI engine. The rest must run on the
+# offline (deterministic) engine, which costs us nothing to serve — that
+# asymmetry is the whole point: free gets a generous *volume* allowance
+# because most of it is free for us to produce, and a small taste of AI.
+# A plan whose AI limit equals its PLAN_LIMITS entry has no sub-cap in
+# practice (every job may use AI); it is written out per plan rather than
+# left implicit so a new plan can't silently inherit "unlimited AI".
+PLAN_AI_LIMITS = {"free": 2, "pro": 30, "business": 50}
 # Monthly list price per plan (USD), matching /#pricing — powers the admin
 # portal's *estimated* MRR panel (Day 35) and Paddle checkout. Free is 0.
 PLAN_PRICES = {"free": 0, "pro": 20, "business": 50}
@@ -68,6 +77,21 @@ def _current_period() -> str:
     """The current UTC billing period key, e.g. ``"2026-07"``. Quotas reset
     when this rolls over to the next calendar month."""
     return date.today().strftime("%Y-%m")
+
+
+@dataclass
+class QuotaDecision:
+    """Outcome of a quota check, with both caps' numbers so a caller can
+    report the whole picture. ``blocked_by`` is ``None`` when allowed, else
+    ``"total"`` (the plan's monthly jobs are spent) or ``"ai"`` (AI runs are
+    spent but offline runs remain) — the two need different messages, and the
+    check that refused the job is the only thing that knows which."""
+    allowed: bool
+    used: int
+    limit: int
+    ai_used: int
+    ai_limit: int
+    blocked_by: Optional[str] = None
 
 
 @dataclass
@@ -176,6 +200,11 @@ class AccountStore:
             # Day 28: accounts.quota_override, added to a table that may
             # already have rows -- an idempotent ALTER (see _ensure_column).
             self._ensure_column("accounts", "quota_override", "INTEGER")
+            # usage.ai_count: how many of this period's jobs used an AI engine,
+            # for the free plan's AI sub-cap (PLAN_AI_LIMITS). Additive with a
+            # 0 default, so periods recorded before this column existed simply
+            # read as "no AI used" rather than needing a backfill.
+            self._ensure_column("usage", "ai_count", "INTEGER NOT NULL DEFAULT 0")
             # Onboarding plan (Day 33): profile fields captured at signup,
             # shown back on the Profile page. Optional, additive, same
             # idempotent-ALTER pattern as quota_override above.
@@ -516,41 +545,84 @@ class AccountStore:
             return override
         return PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
 
+    def ai_limit_for(self, plan: str, override: Optional[int] = None) -> int:
+        """How many of this plan's jobs may use an AI engine.
+
+        Clamped to the total limit so the two numbers can never contradict
+        each other in a message ("0 of 2 AI runs left" on an account whose
+        whole allowance is 1 job). ``override`` is a volume grant, not an AI
+        grant: an admin lifting a free account to 50 jobs still leaves it on
+        the free plan's 2 AI runs -- the clamp only ever lowers.
+        """
+        return min(PLAN_AI_LIMITS.get(plan, PLAN_AI_LIMITS["free"]), self.limit_for(plan, override))
+
+    def _period_counts(self, tenant: str) -> tuple[int, int]:
+        row = self._conn.execute(
+            "SELECT count, ai_count FROM usage WHERE tenant = ? AND day = ?",
+            (tenant, _current_period()),
+        ).fetchone()
+        return (row["count"], row["ai_count"]) if row else (0, 0)
+
     def usage_this_month(self, tenant: str) -> int:
         with self._lock:
-            row = self._conn.execute(
-                "SELECT count FROM usage WHERE tenant = ? AND day = ?",
-                (tenant, _current_period()),
-            ).fetchone()
-        return row["count"] if row else 0
+            return self._period_counts(tenant)[0]
 
-    def try_consume(self, tenant: str, plan: str, override: Optional[int] = None) -> tuple[bool, int, int]:
+    def ai_usage_this_month(self, tenant: str) -> int:
+        """Jobs this period that used an AI engine (subset of usage_this_month)."""
+        with self._lock:
+            return self._period_counts(tenant)[1]
+
+    def try_consume(
+        self, tenant: str, plan: str, override: Optional[int] = None, *, uses_ai: bool = False,
+    ) -> QuotaDecision:
         """Atomically check and increment this billing period's usage.
 
-        Returns (allowed, used_after, limit). When not allowed, ``used_after``
-        is the unchanged current count. ``override`` is an account's
-        ``quota_override`` (Day 28, admin manual override) if it has one.
+        ``uses_ai`` marks a job that picked an AI engine: it spends one of the
+        plan's AI runs *as well as* one of its total runs, and is refused once
+        either cap is full. An offline job only ever touches the total. Both
+        checks live in the one upsert's WHERE so a burst of concurrent uploads
+        can't slip past either cap between a read and a write.
+
+        ``override`` is an account's ``quota_override`` (Day 28, admin manual
+        override) if it has one.
         """
         limit = self.limit_for(plan, override)
+        ai_limit = self.ai_limit_for(plan, override)
         period = _current_period()
         if limit <= 0:
-            return False, 0, limit
+            return QuotaDecision(False, 0, limit, 0, ai_limit, blocked_by="total")
         with self._lock:
-            row = self._conn.execute(
-                "INSERT INTO usage (tenant, day, count) VALUES (?,?,1) "
-                "ON CONFLICT(tenant, day) DO UPDATE SET count = usage.count + 1 "
-                "WHERE usage.count < ? RETURNING count",
-                (tenant, period, limit),
-            ).fetchone()
-            if row is None:
-                current_row = self._conn.execute(
-                    "SELECT count FROM usage WHERE tenant = ? AND day = ?", (tenant, period)
+            if uses_ai and ai_limit <= 0:
+                # The upsert's WHERE only guards the DO UPDATE branch, so a
+                # first-of-period AI job would still insert ai_count=1 past a
+                # zero cap. Refuse before writing rather than rely on it.
+                used, ai_used = self._period_counts(tenant)
+                return QuotaDecision(False, used, limit, ai_used, ai_limit, blocked_by="ai")
+            if uses_ai:
+                row = self._conn.execute(
+                    "INSERT INTO usage (tenant, day, count, ai_count) VALUES (?,?,1,1) "
+                    "ON CONFLICT(tenant, day) DO UPDATE SET count = usage.count + 1, "
+                    "ai_count = usage.ai_count + 1 "
+                    "WHERE usage.count < ? AND usage.ai_count < ? RETURNING count, ai_count",
+                    (tenant, period, limit, ai_limit),
                 ).fetchone()
+            else:
+                row = self._conn.execute(
+                    "INSERT INTO usage (tenant, day, count, ai_count) VALUES (?,?,1,0) "
+                    "ON CONFLICT(tenant, day) DO UPDATE SET count = usage.count + 1 "
+                    "WHERE usage.count < ? RETURNING count, ai_count",
+                    (tenant, period, limit),
+                ).fetchone()
+            if row is None:
+                used, ai_used = self._period_counts(tenant)
                 self._conn.commit()
-                current = current_row["count"] if current_row else 0
-                return False, current, limit
+                # Name the cap that actually refused it: an AI job blocked with
+                # total headroom left still has offline runs available, and the
+                # message should send the user there rather than to next month.
+                blocked_by = "ai" if (uses_ai and used < limit) else "total"
+                return QuotaDecision(False, used, limit, ai_used, ai_limit, blocked_by=blocked_by)
             self._conn.commit()
-            return True, row["count"], limit
+            return QuotaDecision(True, row["count"], limit, row["ai_count"], ai_limit)
 
     # -- backup / restore drill (Day 20, §9/§12) -----------------------------
     def dump(self) -> dict:

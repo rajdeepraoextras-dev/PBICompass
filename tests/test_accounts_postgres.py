@@ -20,7 +20,7 @@ import unittest
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
-from pbicompass.service.accounts import AccountStore, is_postgres_url
+from pbicompass.service.accounts import PLAN_LIMITS, AccountStore, is_postgres_url
 
 
 class IsPostgresUrlTest(unittest.TestCase):
@@ -207,8 +207,9 @@ class AccountStorePostgresBackendTest(unittest.TestCase):
 
             self.assertEqual([a.tenant for a in store.list_accounts()], ["acme"])
 
-            allowed, used, limit = store.try_consume("acme", "pro")
-            self.assertEqual((allowed, used, limit), (True, 1, 10))
+            q = store.try_consume("acme", "pro")
+            allowed, used, limit = q.allowed, q.used, q.limit
+            self.assertEqual((allowed, used, limit), (True, 1, PLAN_LIMITS["pro"]))
             self.assertEqual(store.usage_this_month("acme"), 1)
 
             self.assertTrue(store.revoke_account(acct.id))
@@ -256,8 +257,10 @@ class AccountStorePostgresBackendTest(unittest.TestCase):
             with patch.dict("pbicompass.service.accounts.PLAN_LIMITS",
                             {"free": 1, "pro": 200, "business": 100000}, clear=True):
                 store.create_account("t", plan="free")
-                self.assertEqual(store.try_consume("t", "free"), (True, 1, 1))
-                self.assertEqual(store.try_consume("t", "free"), (False, 1, 1))
+                first = store.try_consume("t", "free")
+                self.assertEqual((first.allowed, first.used, first.limit), (True, 1, 1))
+                blocked = store.try_consume("t", "free")
+                self.assertEqual((blocked.allowed, blocked.used, blocked.limit), (False, 1, 1))
 
     def test_dump_and_restore_over_the_postgres_branch(self):
         # Day 20's backup/restore drill mechanism, proven over the Postgres
@@ -362,11 +365,20 @@ class TryConsumeAmbiguousColumnRegressionTest(unittest.TestCase):
             store.create_account("acme", plan="pro")
             # Two consecutive calls exercise both the INSERT and the
             # ON CONFLICT DO UPDATE (increment) branches of the same upsert.
-            allowed1, used1, _ = store.try_consume("acme", "pro")
-            allowed2, used2, _ = store.try_consume("acme", "pro")
-            self.assertTrue(allowed1)
-            self.assertTrue(allowed2)
-            self.assertEqual((used1, used2), (1, 2))
+            q1 = store.try_consume("acme", "pro")
+            q2 = store.try_consume("acme", "pro")
+            self.assertTrue(q1.allowed)
+            self.assertTrue(q2.allowed)
+            self.assertEqual((q1.used, q2.used), (1, 2))
+            # The AI sub-cap added a second upsert with its own
+            # "SET ai_count = usage.ai_count + 1" -- same ambiguity trap, and
+            # it needs the same table qualification. Exercise both of its
+            # branches (INSERT, then ON CONFLICT DO UPDATE) too.
+            a1 = store.try_consume("acme", "pro", uses_ai=True)
+            a2 = store.try_consume("acme", "pro", uses_ai=True)
+            self.assertTrue(a1.allowed)
+            self.assertTrue(a2.allowed)
+            self.assertEqual((a1.ai_used, a2.ai_used), (1, 2))
 
 
 if __name__ == "__main__":

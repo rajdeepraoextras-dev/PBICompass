@@ -33,7 +33,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from . import supabase_auth
 from ..agents import get_client
 from ..agents.assist import ASSIST_FIELDS, build_report_summary, fill_field, format_text
-from .accounts import PLAN_LIMITS, PLAN_PRICES, AccountStore
+from .accounts import PLAN_AI_LIMITS, PLAN_LIMITS, PLAN_PRICES, AccountStore
 from .admin import AdminGuard, verify_admin_token
 from .supabase_auth import SupabaseAuthConfig
 from .ingest import ingest_to_model
@@ -732,6 +732,9 @@ def create_app(
             # Day 33: lets the signup/profile plan picker render real quota
             # numbers instead of hardcoding them in the frontend.
             "plan_limits": PLAN_LIMITS,
+            # The AI sub-cap per plan, so the plan cards can say "10 reports,
+            # 2 with AI" rather than implying all 10 come with an engine.
+            "plan_ai_limits": PLAN_AI_LIMITS,
             # Day 36: which AI engines the picker may offer, and whether each is
             # currently available (admin-controlled). Offline is always usable.
             "providers": _provider_catalog(),
@@ -742,6 +745,8 @@ def create_app(
         claims, acct = _require_user(request)
         used = account_store.usage_this_month(acct.tenant)
         limit = account_store.limit_for(acct.plan, acct.quota_override)
+        ai_used = account_store.ai_usage_this_month(acct.tenant)
+        ai_limit = account_store.ai_limit_for(acct.plan, acct.quota_override)
         return {
             "email": claims.email,
             "email_verified": claims.email_verified,
@@ -752,6 +757,12 @@ def create_app(
             "used_this_month": used,
             "monthly_limit": limit,
             "remaining": max(0, limit - used),
+            # The AI sub-cap is a separate, smaller allowance inside the total
+            # (see accounts.PLAN_AI_LIMITS) — the engine picker greys itself out
+            # on ai_remaining, which hits 0 long before remaining does.
+            "ai_used_this_month": ai_used,
+            "ai_monthly_limit": ai_limit,
+            "ai_remaining": max(0, ai_limit - ai_used),
             "is_admin": account_store.is_admin(claims.sub),
             "blocked": acct.blocked,
         }
@@ -1192,14 +1203,29 @@ def create_app(
                        "Use a server-configured provider key or the inline queue.",
             )
 
-        # Freemium quota — enforced for authenticated tenants only.
+        # Freemium quota — enforced for authenticated tenants only. An AI
+        # engine spends one of the plan's (smaller) AI runs on top of a normal
+        # one; the offline engine only spends a normal one. The AI sub-cap
+        # exists because the server's own provider key pays for those runs, so
+        # a BYOK job doesn't spend it — the same "runs at its own expense"
+        # line the engine-availability check above already draws.
+        spends_ai_run = provider in AI_PROVIDER_IDS and not (provider_api_key or "").strip()
         if account_store and tenant != "public":
-            allowed, _used, limit = account_store.try_consume(tenant, plan)
-            if not allowed:
+            q = account_store.try_consume(tenant, plan, uses_ai=spends_ai_run)
+            if not q.allowed:
                 metrics.record_quota_rejected()
+                if q.blocked_by == "ai":
+                    raise HTTPException(
+                        status_code=429,
+                        detail=(
+                            f"AI engine quota reached ({q.ai_used}/{q.ai_limit} on the '{plan}' plan). "
+                            f"You still have {max(0, q.limit - q.used)} of {q.limit} runs left this month "
+                            f"on the offline engine — switch engine to use them."
+                        ),
+                    )
                 raise HTTPException(
                     status_code=429,
-                    detail=f"Monthly quota reached ({limit}/{limit} on the '{plan}' plan). Try again next month or upgrade.",
+                    detail=f"Monthly quota reached ({q.limit}/{q.limit} on the '{plan}' plan). Try again next month or upgrade.",
                 )
 
         job = app.state.store.create(file.filename or f"upload{suffix}", tenant=tenant)

@@ -97,6 +97,15 @@
 .profile-top .who h1 { font-size: 1.4rem; letter-spacing: -.02em; color: #fff; margin-bottom: 4px; }
 .usage-big { font-size: 2rem; font-weight: 600; letter-spacing: -.03em; color: #fff; }
 .usage-big small { font-size: .9rem; font-weight: 400; color: hsl(0 0% 100% / .6); }
+/* Secondary allowance (AI runs) under the headline usage meter — deliberately
+   quieter than .usage-big: it's a constraint inside that number, not a rival to it. */
+#p-ai-usage { margin-top: 16px; padding-top: 14px; border-top: 1px solid hsl(0 0% 100% / .1); }
+.usage-sub { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: .78rem; color: hsl(0 0% 100% / .72); }
+.usage-sub b { color: #fff; font-weight: 600; }
+.meter-sub { height: .3rem; }
+/* Spent, not merely low: the bar goes flat white->dim so "0 left" reads at a
+   glance without leaning on colour alone (the palette here is grayscale). */
+.meter-sub > span.spent { background: hsl(0 0% 100% / .35); }
 .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; font-size: .88rem; }
 .kv dt { color: hsl(0 0% 100% / .6); }
 .kv dd { color: hsl(0 0% 100% / .92); }
@@ -474,6 +483,10 @@
               <div class="form-group">
                 <label>Documentation Engine</label>
                 <select id="provider"><!-- populated from /app/api/config: AI engines (some may be "currently unavailable") + offline --></select>
+                <!-- Shown by syncProviderAvailability() once the plan's AI runs
+                     are spent, so a greyed-out engine list has a reason next to
+                     it rather than looking broken. -->
+                <p class="muted hidden" id="provider-quota-note" style="margin-top:6px; font-size:.78rem;">You've used this month's AI runs. The offline engine is still available for your remaining reports.</p>
               </div>
               <div class="form-group" id="provider-key-row">
                 <label>Engine API Key <small>(your Claude/Gemini/Cohere/MeshAPI key — used for this job only, never stored)</small></label>
@@ -577,6 +590,15 @@
         <div class="usage-big"><span id="p-used">0</span><small> / <span id="p-limit">0</span> reports</small></div>
         <div class="meter"><span id="p-meter"></span></div>
         <div class="muted" id="p-remaining"></div>
+        <!-- The AI allowance is a smaller cap inside the total, so it gets its
+             own meter: the headline one can read 2/10 while AI is already
+             spent, and a single bar can't show that. Hidden on plans whose AI
+             limit equals their total (nothing to distinguish). -->
+        <div id="p-ai-usage" class="hidden">
+          <div class="usage-sub">AI engine runs<span><b id="p-ai-used">0</b> / <span id="p-ai-limit">0</span></span></div>
+          <div class="meter meter-sub"><span id="p-ai-meter"></span></div>
+          <div class="muted" id="p-ai-remaining"></div>
+        </div>
       </div>
 
       <div class="panel-card liquid-glass">
@@ -715,8 +737,14 @@ let cfg = {};
 // showSignedOut() to show the "account created" banner, then cleared so a later,
 // ordinary sign-out doesn't keep re-showing it.
 let justConfirmedEmail = false;
-let planLimits = { free: 1, pro: 10, business: 30 };
+// Fallbacks only — /app/api/config replaces both at boot from accounts.py, which
+// is the single source of truth. Keep them in the same shape, not in sync by hand.
+let planLimits = { free: 10, pro: 30, business: 50 };
+let planAiLimits = { free: 2, pro: 30, business: 50 };
 let currentPlan = "free";
+// AI runs left this month; null until /app/api/me answers (signed out, or still
+// loading). Null means "don't gate the picker" — the server is the real check.
+let aiRemaining = null;
 
 /* ---------- helpers ---------- */
 async function api(path, opts = {}) {
@@ -730,7 +758,11 @@ function escHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", 
 function planLabel(p) { return p.charAt(0).toUpperCase() + p.slice(1); }
 function quotaText(p) {
   const n = planLimits[p];
-  return n + (n === 1 ? " report / month" : " reports / month");
+  const ai = planAiLimits[p];
+  const base = n + (n === 1 ? " report / month" : " reports / month");
+  // Only worth saying when AI is actually the scarcer of the two — on a plan
+  // where every run may use AI, "30 with AI" is noise.
+  return (typeof ai === "number" && ai < n) ? `${base} · ${ai} with AI` : base;
 }
 
 /* ---------- auth tab switching ---------- */
@@ -900,6 +932,25 @@ function fillProfile(me) {
   const pct = me.monthly_limit ? Math.min(100, Math.round(100 * me.used_this_month / me.monthly_limit)) : 0;
   $("p-meter").style.width = pct + "%";
   $("p-remaining").textContent = me.remaining + " remaining this month";
+
+  // AI sub-cap: shown only where it actually constrains anything.
+  const aiLimit = me.ai_monthly_limit, aiUsed = me.ai_used_this_month;
+  const showAi = typeof aiLimit === "number" && aiLimit < me.monthly_limit;
+  $("p-ai-usage").classList.toggle("hidden", !showAi);
+  if (showAi) {
+    $("p-ai-used").textContent = aiUsed;
+    $("p-ai-limit").textContent = aiLimit;
+    const aiPct = aiLimit ? Math.min(100, Math.round(100 * aiUsed / aiLimit)) : 0;
+    const bar = $("p-ai-meter");
+    bar.style.width = aiPct + "%";
+    bar.classList.toggle("spent", me.ai_remaining === 0);
+    $("p-ai-remaining").textContent = me.ai_remaining === 0
+      ? "No AI runs left this month — the offline engine is still available."
+      : me.ai_remaining + " AI run" + (me.ai_remaining === 1 ? "" : "s") + " remaining";
+  }
+  aiRemaining = typeof me.ai_remaining === "number" ? me.ai_remaining : null;
+  syncProviderAvailability();
+
   $("p-company").textContent = me.company || "—";
   $("p-role").textContent = me.role || "—";
   $("p-tenant").textContent = me.tenant || "—";
@@ -1207,6 +1258,39 @@ function renderProviderOptions() {
   off.textContent = "Offline engine — no AI, fully deterministic";
   sel.appendChild(off);
   sel.value = firstEnabled || "none";
+  syncProviderAvailability();
+}
+
+// The plan's AI runs are a smaller allowance than its total (see
+// accounts.PLAN_AI_LIMITS), so AI can be spent while plenty of offline runs
+// remain. Grey the AI engines out at that point rather than letting the upload
+// fail on a 429 the user could not have seen coming. The server still enforces
+// it -- this only saves the round trip.
+// BYOK is exempt for the same reason the server exempts it: a job on the
+// caller's own key costs us nothing and doesn't spend the allowance.
+function syncProviderAvailability() {
+  const sel = $("provider");
+  if (!sel || aiRemaining === null || cfg.byok_enabled) return;
+  const spent = aiRemaining === 0;
+  let switched = false;
+  [...sel.options].forEach(o => {
+    if (o.value === "none") return;
+    const unavailable = o.textContent.includes("currently unavailable");
+    if (spent && !unavailable) {
+      o.disabled = true;
+      if (!o.dataset.baseLabel) o.dataset.baseLabel = o.textContent;
+      o.textContent = o.dataset.baseLabel.replace(" — recommended", "") + " — no AI runs left this month";
+    } else if (!spent && o.dataset.baseLabel) {
+      o.disabled = false;
+      o.textContent = o.dataset.baseLabel;
+      delete o.dataset.baseLabel;
+    }
+    if (spent && sel.value === o.value) switched = true;
+  });
+  if (switched) { sel.value = "none"; }
+  const note = $("provider-quota-note");
+  if (note) note.classList.toggle("hidden", !spent);
+  syncEffortVisibility();
 }
 
 function syncEffortVisibility() {
@@ -1515,6 +1599,7 @@ async function onAuthState(session) {
 (async function init() {
   cfg = await api("/app/api/config").then(r => r.json()).catch(() => ({}));
   if (cfg.plan_limits) planLimits = cfg.plan_limits;
+  if (cfg.plan_ai_limits) planAiLimits = cfg.plan_ai_limits;
   renderPlanCards($("signup-plans"), signupPlan, p => { signupPlan = p; });
   renderProviderOptions();
   syncEffortVisibility();

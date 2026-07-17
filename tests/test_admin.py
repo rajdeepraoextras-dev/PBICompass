@@ -10,7 +10,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from pbicompass.service.accounts import AccountStore
+from pbicompass.service.accounts import PLAN_LIMITS, AccountStore
 from pbicompass.service.admin import AdminGuard, verify_admin_token
 
 try:
@@ -132,7 +132,7 @@ class AdminApiTest(unittest.TestCase):
         listed = self.client.get("/admin/api/accounts", headers=_h(self.token)).json()["accounts"]
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]["tenant"], "acme")
-        self.assertEqual(listed[0]["monthly_limit"], 10)
+        self.assertEqual(listed[0]["monthly_limit"], PLAN_LIMITS["pro"])
         self.assertEqual(listed[0]["used_this_month"], 0)
 
     def test_create_requires_tenant(self):

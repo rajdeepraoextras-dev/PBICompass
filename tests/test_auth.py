@@ -7,6 +7,7 @@ tests need the service extras and skip cleanly without them.
 from __future__ import annotations
 
 import io
+import os
 import tempfile
 import time
 import unittest
@@ -40,6 +41,12 @@ def _h(key: str) -> dict:
     return {"Authorization": "Bearer " + key}
 
 
+def _q(decision):
+    """The (allowed, used, limit) triple these tests were written against,
+    before try_consume grew the AI cap and returned a QuotaDecision."""
+    return (decision.allowed, decision.used, decision.limit)
+
+
 class AccountStoreTest(unittest.TestCase):
     def test_create_and_verify(self):
         store = AccountStore(":memory:")
@@ -63,10 +70,64 @@ class AccountStoreTest(unittest.TestCase):
             store = AccountStore(":memory:")
             self.addCleanup(store.close)
             store.create_account("t", plan="free")
-            self.assertEqual(store.try_consume("t", "free"), (True, 1, 2))
-            self.assertEqual(store.try_consume("t", "free"), (True, 2, 2))
-            self.assertEqual(store.try_consume("t", "free"), (False, 2, 2))  # blocked
+            self.assertEqual(_q(store.try_consume("t", "free")), (True, 1, 2))
+            self.assertEqual(_q(store.try_consume("t", "free")), (True, 2, 2))
+            self.assertEqual(_q(store.try_consume("t", "free")), (False, 2, 2))  # blocked
             self.assertEqual(store.usage_this_month("t"), 2)
+
+    def test_ai_subcap_blocks_ai_while_offline_runs_remain(self):
+        """The free plan's AI allowance is smaller than its total: once it is
+        spent, AI jobs are refused but the remaining runs stay usable offline.
+        The two caps are independent, so a rejection has to name which one."""
+        with mock.patch.dict("pbicompass.service.accounts.PLAN_LIMITS",
+                             {"free": 10, "pro": 200, "business": 100000}, clear=True), \
+             mock.patch.dict("pbicompass.service.accounts.PLAN_AI_LIMITS",
+                             {"free": 2, "pro": 200, "business": 100000}, clear=True):
+            store = AccountStore(":memory:")
+            self.addCleanup(store.close)
+            store.create_account("t", plan="free")
+            for _ in range(2):
+                self.assertTrue(store.try_consume("t", "free", uses_ai=True).allowed)
+            blocked = store.try_consume("t", "free", uses_ai=True)
+            self.assertFalse(blocked.allowed)
+            self.assertEqual(blocked.blocked_by, "ai")
+            self.assertEqual((blocked.ai_used, blocked.ai_limit), (2, 2))
+            self.assertLess(blocked.used, blocked.limit)  # total still has room
+            # a refused AI job must not have spent a run of either allowance
+            self.assertEqual((store.usage_this_month("t"), store.ai_usage_this_month("t")), (2, 2))
+            # ...and offline still works, up to the total
+            for _ in range(8):
+                self.assertTrue(store.try_consume("t", "free", uses_ai=False).allowed)
+            full = store.try_consume("t", "free", uses_ai=False)
+            self.assertFalse(full.allowed)
+            self.assertEqual(full.blocked_by, "total")
+            self.assertEqual((store.usage_this_month("t"), store.ai_usage_this_month("t")), (10, 2))
+
+    def test_offline_only_account_can_use_the_whole_allowance(self):
+        """The AI sub-cap must not leak into the offline path -- a user who
+        never touches AI gets all 10 runs."""
+        with mock.patch.dict("pbicompass.service.accounts.PLAN_LIMITS",
+                             {"free": 10, "pro": 200, "business": 100000}, clear=True), \
+             mock.patch.dict("pbicompass.service.accounts.PLAN_AI_LIMITS",
+                             {"free": 2, "pro": 200, "business": 100000}, clear=True):
+            store = AccountStore(":memory:")
+            self.addCleanup(store.close)
+            store.create_account("t", plan="free")
+            allowed = sum(1 for _ in range(12) if store.try_consume("t", "free", uses_ai=False).allowed)
+            self.assertEqual(allowed, 10)
+
+    def test_quota_override_grants_volume_not_ai(self):
+        """quota_override is an admin volume grant; it must not quietly hand
+        out AI runs too. It may only ever lower the AI cap (never raise it)."""
+        with mock.patch.dict("pbicompass.service.accounts.PLAN_LIMITS",
+                             {"free": 10, "pro": 200, "business": 100000}, clear=True), \
+             mock.patch.dict("pbicompass.service.accounts.PLAN_AI_LIMITS",
+                             {"free": 2, "pro": 200, "business": 100000}, clear=True):
+            store = AccountStore(":memory:")
+            self.addCleanup(store.close)
+            self.assertEqual(store.limit_for("free", 50), 50)
+            self.assertEqual(store.ai_limit_for("free", 50), 2)   # unchanged by the grant
+            self.assertEqual(store.ai_limit_for("free", 1), 1)    # clamped to the total
 
 
 @unittest.skipUnless(_HAVE_SERVICE, "service extras not installed")
@@ -139,6 +200,37 @@ class AuthApiTest(unittest.TestCase):
                                      data={"provider": "none"}, headers=_h(key))
             self.assertEqual(up().status_code, 200)
             self.assertEqual(up().status_code, 429)  # monthly quota of 1 exhausted
+
+    def test_ai_quota_returns_429_but_offline_still_uploads(self):
+        """End of the wiring: an upload picking an AI engine spends an AI run,
+        and once those are gone the same account can still upload offline. The
+        429 has to say which allowance ran out — "try again next month" would be
+        wrong advice when 8 offline runs are sitting there unused."""
+        with mock.patch.dict("pbicompass.service.accounts.PLAN_LIMITS",
+                             {"free": 10, "pro": 200, "business": 100000}, clear=True), \
+             mock.patch.dict("pbicompass.service.accounts.PLAN_AI_LIMITS",
+                             {"free": 2, "pro": 200, "business": 100000}, clear=True), \
+             mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}):
+            accounts = AccountStore(":memory:")
+            self.addCleanup(accounts.close)
+            _, key = accounts.create_account("lim", plan="free")
+            client = TestClient(create_app(JobStore(), sandbox_root=self._root,
+                                           account_store=accounts, require_auth=True))
+            up = lambda engine: client.post("/jobs", files={"file": ("s.zip", _zip(), "application/zip")},
+                                            data={"provider": engine}, headers=_h(key))
+            self.assertEqual(up("anthropic").status_code, 200)
+            self.assertEqual(up("anthropic").status_code, 200)
+            blocked = up("anthropic")
+            self.assertEqual(blocked.status_code, 429)
+            detail = blocked.json()["detail"]
+            self.assertIn("AI engine quota reached", detail)
+            self.assertIn("offline engine", detail)   # points at what's still usable
+            # The refused AI job must not have burned a run of the total either.
+            self.assertEqual(accounts.usage_this_month("lim"), 2)
+            # Offline keeps working for the rest of the allowance.
+            self.assertEqual(up("none").status_code, 200)
+            self.assertEqual(accounts.usage_this_month("lim"), 3)
+            self.assertEqual(accounts.ai_usage_this_month("lim"), 2)
 
 
 @unittest.skipUnless(_HAVE_SERVICE, "service extras not installed")
