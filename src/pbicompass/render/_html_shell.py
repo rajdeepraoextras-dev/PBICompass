@@ -1747,8 +1747,8 @@ _MOON_SVG = (
 
 _EDIT_SVG = (
     '<svg class="edit-icon edit-icon--start" viewBox="0 0 24 24" aria-hidden="true">'
-    '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>'
-    '<path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>'
+    '<circle cx="12" cy="12" r="10"/>'
+    '<path d="M12 16v-4"/><path d="M12 8h.01"/></svg>'
 )
 
 _EDIT_DONE_SVG = (
