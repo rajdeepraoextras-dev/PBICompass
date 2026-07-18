@@ -174,6 +174,18 @@ class HtmlRenderTest(unittest.TestCase):
         self.assertIn('id="table-sales"', self.html)
         self.assertIn("→", self.html)  # join-column tooltip text
 
+    def test_lineage_and_wireframes_are_hidden_behind_view_controls(self):
+        self.assertIn('<details class="diagram-reveal"><summary><span>View lineage</span></summary>', self.html)
+        self.assertIn('<details class="diagram-reveal"><summary><span>View wireframe</span></summary>', self.html)
+        self.assertLess(
+            self.html.index("<span>View lineage</span>"),
+            self.html.index('aria-labelledby="lineage-diagram-title"'),
+        )
+        self.assertLess(
+            self.html.index("<span>View wireframe</span>"),
+            self.html.index('aria-labelledby="wireframe-title-'),
+        )
+
     def test_client_side_search_index_present(self):
         # 2.2: a JSON search index (sections + measures + tables) and the
         # search box markup, no CDN/lunr dependency.
@@ -1134,7 +1146,9 @@ class WireframeHrefResolutionTest(unittest.TestCase):
         self._assert_no_dead_hrefs(render_html(_doc()), "technical")
 
     def test_user_guide_html_wireframe_hrefs_all_resolve(self):
-        self._assert_no_dead_hrefs(render_user_guide_html(_user_guide_doc()), "user_guide")
+        html = render_user_guide_html(_user_guide_doc())
+        self._assert_no_dead_hrefs(html, "user_guide")
+        self.assertIn('<details class="diagram-reveal"><summary><span>View wireframe</span></summary>', html)
 
     def test_grouped_duplicate_visuals_produce_no_dead_hrefs_end_to_end(self):
         """SampleSales has no duplicate/slug-colliding visuals, so it never

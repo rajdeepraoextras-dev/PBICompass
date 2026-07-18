@@ -96,6 +96,15 @@ def _status_pill(status: str) -> str:
     return f'<span class="pill {_STATUS_PILL_CLASS.get(status, "low")}">{_e(status)}</span>'
 
 
+def _diagram_reveal(label: str, html: str) -> str:
+    return (
+        '<details class="diagram-reveal">'
+        f'<summary><span>{_e(label)}</span></summary>'
+        f'{html}'
+        '</details>'
+    )
+
+
 def format_prose_with_code(text: str) -> str:
     if not text:
         return ""
@@ -301,7 +310,7 @@ def render_html(
             o.append('</div>')
     if ln.lineage_svg:
         o.append("<h3>Data lineage graph</h3>")
-        o.append(ln.lineage_svg)
+        o.append(_diagram_reveal("View lineage", ln.lineage_svg))
     if ln.lineage_edges:
         o.append("<h3>Lineage connection list</h3>")
         o.append(_table(["From", "To", "Link Type"],
@@ -488,7 +497,7 @@ def render_html(
         flag = f' <span class="muted">({", ".join(flags)})</span>' if flags else ""
         o.append(f"<h3>{_e(p['name'])}{flag}</h3>")
         if p.get("wireframe_svg"):
-            o.append(p["wireframe_svg"])
+            o.append(_diagram_reveal("View wireframe", p["wireframe_svg"]))
         pd = page_docs.get(p["name"])
         if pd:
             if pd.summary:

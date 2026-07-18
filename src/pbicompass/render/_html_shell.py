@@ -655,6 +655,46 @@ details.collapsible > .code-block pre {
   margin-top: 4px;
   opacity: 0.8;
 }
+.diagram-reveal {
+  margin: 12px 0 16px;
+}
+.diagram-reveal > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--primary);
+  font-size: 0.86rem;
+  font-weight: 650;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.08);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.diagram-reveal > summary::-webkit-details-marker { display: none; }
+.diagram-reveal > summary::after {
+  content: "↓";
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.diagram-reveal[open] > summary {
+  margin-bottom: 12px;
+  border-color: var(--primary);
+}
+.diagram-reveal[open] > summary::after { content: "↑"; }
+.diagram-reveal > summary:hover {
+  transform: translateY(-1px);
+  border-color: var(--primary);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08), 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+.diagram-reveal > summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 /* Page wireframe + lineage (v6 "Studio", 2026-07-11) — a white card per
    node with a layered soft shadow, gradient icon chip, and hover-lift.
    Hover feedback lives entirely here (a .wf-node class) instead of a
@@ -1503,7 +1543,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // whatever was open before once printing finishes.
   let detailsClosedBeforePrint = [];
   window.addEventListener('beforeprint', () => {
-    detailsClosedBeforePrint = Array.from(document.querySelectorAll('details.collapsible:not([open])'));
+    detailsClosedBeforePrint = Array.from(document.querySelectorAll('details.collapsible:not([open]), details.diagram-reveal:not([open])'));
     detailsClosedBeforePrint.forEach((d) => { d.open = true; });
   });
   window.addEventListener('afterprint', () => {
@@ -1531,7 +1571,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // ``moved`` permanently stuck true (no mouseup ever follows a print) and
   // silently swallow the very next click on every diagram link.
   const panZoomInstances = [];
-  document.querySelectorAll('.diagram svg').forEach((svg, diagramIndex) => {
+  let diagramIndexCounter = 0;
+  function initDiagram(svg) {
+    if (svg.dataset.diagramInit === '1') return;
     if (typeof svgPanZoom !== 'function') return; // vendor script failed to parse — degrade to static, never throw
     // "Report at a glance" thumbnails are static previews (pointer-events:
     // none — the whole card is already one link to the sibling doc's real,
@@ -1539,6 +1581,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // +/RESET/- control icons don't render uselessly on top of a tiny,
     // non-interactive card.
     if (svg.closest('.thumb-card')) return;
+    svg.dataset.diagramInit = '1';
+    const diagramIndex = diagramIndexCounter++;
     // svg-pan-zoom drives pan/zoom via an explicit pixel width/height that
     // it reads once at init and then bakes in (it discards the original
     // viewBox-driven auto-sizing entirely). Without an explicit height set
@@ -1639,6 +1683,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     });
+  }
+
+  document.querySelectorAll('.diagram svg').forEach((svg) => {
+    if (svg.closest('details.diagram-reveal:not([open])')) return;
+    initDiagram(svg);
+  });
+  document.querySelectorAll('details.diagram-reveal').forEach((details) => {
+    details.addEventListener('toggle', () => {
+      if (!details.open) return;
+      details.querySelectorAll('.diagram svg').forEach((svg) => initDiagram(svg));
+    });
   });
 
   // Print/PDF fallback: whatever pan/zoom state a reader left a diagram
@@ -1646,31 +1701,30 @@ document.addEventListener('DOMContentLoaded', () => {
   // diagram's height for the print layout's width, then reset to its
   // fitted, centered default right before printing (Ctrl+P or
   // window.print()), then restore the reader's on-screen view afterward.
-  if (panZoomInstances.length) {
-    window.addEventListener('beforeprint', () => {
+  window.addEventListener('beforeprint', () => {
+    document.querySelectorAll('.diagram svg').forEach((svg) => initDiagram(svg));
+    panZoomInstances.forEach(({ instance, sizeToAspect }) => {
+      sizeToAspect();
+      instance.resize();
+      instance.fit();
+      instance.center();
+    });
+  });
+
+  // Keep every diagram's aspect ratio correct across viewport changes
+  // (orientation flip, window resize) instead of only at initial load.
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
       panZoomInstances.forEach(({ instance, sizeToAspect }) => {
         sizeToAspect();
         instance.resize();
         instance.fit();
         instance.center();
       });
-    });
-
-    // Keep every diagram's aspect ratio correct across viewport changes
-    // (orientation flip, window resize) instead of only at initial load.
-    let resizeTimer = null;
-    window.addEventListener('resize', () => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        panZoomInstances.forEach(({ instance, sizeToAspect }) => {
-          sizeToAspect();
-          instance.resize();
-          instance.fit();
-          instance.center();
-        });
-      }, 150);
-    });
-  }
+    }, 150);
+  });
 });
 </script>
 """

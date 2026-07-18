@@ -125,6 +125,15 @@ def _bullet_list(items: list[str]) -> str:
     return "<ul>" + "".join(f"<li>{_e(i)}</li>" for i in items) + "</ul>"
 
 
+def _diagram_reveal(label: str, html: str) -> str:
+    return (
+        '<details class="diagram-reveal">'
+        f'<summary><span>{_e(label)}</span></summary>'
+        f'{html}'
+        '</details>'
+    )
+
+
 def render_html(
     doc: UserGuideDocument, *,
     doc_links: list[tuple[str, str]] | None = None,
@@ -154,7 +163,7 @@ def render_html(
         o.append(f'<div class="card-section" id="{_e(page_id)}">')
         o.append(f"<h3>{_e(p.page_title)}</h3>")
         if p.wireframe_svg:
-            o.append(p.wireframe_svg)
+            o.append(_diagram_reveal("View wireframe", p.wireframe_svg))
         o.append(f"<p>{_e(p.purpose)}</p>")
 
         if p.main_kpis:

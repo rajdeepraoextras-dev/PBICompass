@@ -593,5 +593,32 @@ class SemanticModelRoundTripTest(unittest.TestCase):
         self.assertEqual(SemanticModel.from_dict(model.to_dict()).to_dict(), model.to_dict())
 
 
+class PbirVisualFieldExtractionTest(unittest.TestCase):
+    def test_recursively_extracts_fields_from_prototype_query(self):
+        from pbicompass.parsers.pbir import _extract_fields
+
+        visual = {
+            "visualType": "barChart",
+            "prototypeQuery": {
+                "Select": [
+                    {
+                        "Column": {
+                            "Expression": {"SourceRef": {"Entity": "Orders"}},
+                            "Property": "City",
+                        }
+                    },
+                    {
+                        "Measure": {
+                            "Expression": {"SourceRef": {"Entity": "Sales"}},
+                            "Property": "Revenue",
+                        }
+                    },
+                ]
+            },
+        }
+
+        self.assertEqual(_extract_fields(visual), ["Orders.City", "Sales.Revenue"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

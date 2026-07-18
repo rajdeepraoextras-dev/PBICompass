@@ -99,40 +99,58 @@ def _clean_query_ref(ref: str) -> str:
     return ref
 
 
+def _field_from_node(field: dict) -> str | None:
+    for kind in ("Column", "Measure", "Aggregation"):
+        node = field.get(kind)
+        if not node:
+            continue
+        if kind == "Aggregation":
+            node = node.get("Expression", {}).get("Column", {})
+        entity = node.get("Expression", {}).get("SourceRef", {}).get("Entity")
+        prop = node.get("Property")
+        if entity and prop:
+            return f"{entity}.{prop}"
+        if prop:
+            return prop
+    return None
+
+
+def _walk_field_refs(node, fields: list[str]) -> None:
+    """Find Power BI field references across modern and legacy visual JSON.
+
+    PBIR exports have moved visual bindings between ``query.queryState``,
+    ``prototypeQuery.Select`` and nested expression nodes over time. A narrow
+    path makes real data visuals look unbound in the wireframe, so this walker
+    collects the same structured field object and queryRef shapes wherever
+    they appear in the visual payload.
+    """
+    if isinstance(node, dict):
+        resolved = None
+        nested_field = node.get("field")
+        if isinstance(nested_field, dict):
+            resolved = _field_from_node(nested_field)
+            if resolved:
+                fields.append(resolved)
+        if any(k in node for k in ("Column", "Measure", "Aggregation")):
+            resolved = _field_from_node(node)
+            if resolved:
+                fields.append(resolved)
+        ref = node.get("queryRef")
+        if not resolved and isinstance(ref, str) and ref.strip():
+            fields.append(_clean_query_ref(ref))
+        for key, value in node.items():
+            if resolved and key == "field":
+                continue
+            _walk_field_refs(value, fields)
+    elif isinstance(node, list):
+        for item in node:
+            _walk_field_refs(item, fields)
+
+
 def _extract_fields(visual_obj: dict) -> list[str]:
     fields: list[str] = []
     try:
-        query_state = visual_obj.get("query", {}).get("queryState", {})
-        for role in query_state.values():
-            for proj in role.get("projections", []):
-                # The structured ``field`` object (Column/Measure/Aggregation)
-                # is tried first -- it's already a clean {entity, property}
-                # pair. ``queryRef`` is a display string that, for an
-                # aggregated column, is wrapped in the aggregation function
-                # name (e.g. "Sum('HR Data'.BadHires)"); taking it verbatim
-                # (as this used to do, before the structured field was ever
-                # consulted) leaves that wrapper's trailing ")" glued onto
-                # whatever field name a caller later derives by splitting on
-                # ".", producing a malformed name like "BadHires)".
-                field = proj.get("field", {})
-                resolved = None
-                for kind in ("Column", "Measure", "Aggregation"):
-                    node = field.get(kind)
-                    if not node:
-                        continue
-                    if kind == "Aggregation":
-                        node = node.get("Expression", {}).get("Column", {})
-                    entity = node.get("Expression", {}).get("SourceRef", {}).get("Entity")
-                    prop = node.get("Property")
-                    if entity and prop:
-                        resolved = f"{entity}.{prop}"
-                    break
-                if resolved:
-                    fields.append(resolved)
-                    continue
-                ref = proj.get("queryRef")
-                if ref:
-                    fields.append(_clean_query_ref(ref))
+        _walk_field_refs(visual_obj, fields)
     except Exception:
         pass
     # de-dupe, preserve order
@@ -255,16 +273,11 @@ def _parse_legacy_container(container: dict, warnings: list[str]) -> Optional[Vi
         pass
     fields: list[str] = []
     try:
-        for sel in sv.get("prototypeQuery", {}).get("Select", []):
-            for kind in ("Column", "Measure", "Aggregation"):
-                node = sel.get(kind)
-                if node:
-                    entity = node.get("Expression", {}).get("SourceRef", {}).get("Entity", "")
-                    prop = node.get("Property", "")
-                    if prop:
-                        fields.append(f"{entity}.{prop}" if entity else prop)
+        _walk_field_refs(sv, fields)
     except Exception:
         pass
+    seen: set[str] = set()
+    fields = [f for f in fields if not (f in seen or seen.add(f))]
     return Visual(
         id=config.get("name", "unknown"),
         type=vtype,
