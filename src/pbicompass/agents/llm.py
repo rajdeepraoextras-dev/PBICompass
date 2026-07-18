@@ -516,8 +516,31 @@ _MESHAPI_REASONING_EFFORT = {
 
 
 def _meshapi_reasoning_capable(model: str) -> bool:
+    """Whether the model *accepts* the ``reasoning_effort`` param (a capability
+    fact about the routed model id). Distinct from whether we should *send* it
+    — see ``_meshapi_send_reasoning``."""
     name = model.rsplit("/", 1)[-1]
     return bool(_MESHAPI_REASONING_MODEL_RE.match(name))
+
+
+# Reasoning-capable models where sending ``reasoning_effort`` empirically HURTS
+# output quality instead of helping — so it is withheld despite the model
+# accepting the param. This is a measured quality decision, not a capability
+# one, hence separate from ``_meshapi_reasoning_capable``.
+#
+# deepseek-v4-flash (the default): a controlled cold A/B on the Corporate Spend
+# full bundle (2026-07-18) scored 44/61 *with* reasoning vs 50–56/61 *without*,
+# and reasoning uniquely introduced a factual contradiction against the audit
+# verdict (benchmark T4). Withholding it restores the better output while the
+# combo-cache still trims the wasted structured-output attempt. The effort
+# machinery remains fully active for any genuinely reasoning-benefiting model a
+# caller selects (o-series, gpt-5, ...). Revisit per-model as data accrues.
+_MESHAPI_REASONING_WITHHELD = frozenset({"deepseek-v4-flash"})
+
+
+def _meshapi_send_reasoning(model: str) -> bool:
+    name = model.rsplit("/", 1)[-1]
+    return _meshapi_reasoning_capable(model) and name.lower() not in _MESHAPI_REASONING_WITHHELD
 
 
 class MeshAPIClient(_UsageTracker):
@@ -539,13 +562,14 @@ class MeshAPIClient(_UsageTracker):
     could not pass this tool's own output gate — 2/2 full-bundle runs were
     blocked on T4 (user-guide prose contradicting the audit's verdict), leaving
     the user with an error and no documents, whereas v4-flash passed 3/3 at
-    59/61. It is also reasoning-capable, so the effort machinery actually
-    applies — but note it accepts ``reasoning_effort`` while *rejecting*
-    ``response_format: json_schema`` (measured live 2026-07-18, contra an
-    earlier smoke test): ``complete_json``'s ladder handles that by keeping
-    reasoning and restating the schema as text, and caches the result so the
-    discovery cost is paid once per client, not once per call. A Claude default
-    remains off the table: MeshAPI routes at least some Anthropic model ids
+    59/61. Note two measured quirks of v4-flash via MeshAPI (both 2026-07-18,
+    contra an earlier smoke test): it *rejects* ``response_format: json_schema``
+    (``complete_json``'s ladder restates the schema as text and caches that
+    discovery), and although it accepts ``reasoning_effort``, sending it
+    *lowers* output quality here (44/61 with vs 50–56/61 without, plus a T4
+    contradiction) — so reasoning is withheld for it (``_meshapi_send_reasoning``
+    / ``_MESHAPI_REASONING_WITHHELD``). A Claude default remains off the table:
+    MeshAPI routes at least some Anthropic model ids
     through AWS Bedrock's Converse API, which doesn't support the
     structured-output parameter MeshAPI's translation layer attaches for
     them (every ``complete_json`` call fails with a Bedrock
@@ -640,7 +664,7 @@ class MeshAPIClient(_UsageTracker):
         resolved_effort = effort if effort is not None else self.effort
         reasoning_effort = (
             _MESHAPI_REASONING_EFFORT.get(resolved_effort)
-            if _meshapi_reasoning_capable(self.model) else None
+            if _meshapi_send_reasoning(self.model) else None
         )
 
         # MeshAPI fronts 1000+ models of wildly varying structured-output

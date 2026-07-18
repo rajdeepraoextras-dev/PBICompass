@@ -1148,7 +1148,10 @@ class ReasoningEffortWiringTest(unittest.TestCase):
 
         fake_module = self._fake_openai_module(on_create)
         with patch.dict(sys.modules, {"openai": fake_module}):
-            client = MeshAPIClient(model="deepseek/deepseek-v4-flash", api_key="rsk_test")
+            # v4-pro, not v4-flash: v4-flash has reasoning *withheld* for quality
+            # (see _MESHAPI_REASONING_WITHHELD), so it would never send reasoning
+            # in the first place. v4-pro exercises the reasoning-kept rung.
+            client = MeshAPIClient(model="deepseek/deepseek-v4-pro", api_key="rsk_test")
             out = client.complete_json("sys", "user", {"type": "object"}, effort="high")
 
         self.assertEqual(out, {"ok": True})
@@ -1310,7 +1313,7 @@ class ReasoningEffortWiringTest(unittest.TestCase):
 
         fake_module = self._fake_openai_module(on_create)
         with patch.dict(sys.modules, {"openai": fake_module}):
-            client = MeshAPIClient(model="deepseek/deepseek-v4-flash", api_key="rsk_test")
+            client = MeshAPIClient(model="deepseek/deepseek-v4-pro", api_key="rsk_test")
             out = client.complete_json("sys", "user", {"type": "object"}, effort="high")
 
         self.assertEqual(out, {"ok": True})
@@ -1321,9 +1324,8 @@ class ReasoningEffortWiringTest(unittest.TestCase):
 
     def test_meshapi_caches_working_combo_across_calls(self):
         # The whole point of the fix: discover the accepted param combo once,
-        # then every later call on the same client is a single round-trip. A
-        # live deepseek-v4-flash bundle otherwise re-pays two doomed attempts
-        # per agent call.
+        # then every later call on the same client is a single round-trip.
+        # Otherwise a live bundle re-pays two doomed attempts per agent call.
         import sys
         from unittest.mock import patch
         from pbicompass.agents.llm import MeshAPIClient
@@ -1338,7 +1340,9 @@ class ReasoningEffortWiringTest(unittest.TestCase):
 
         fake_module = self._fake_openai_module(on_create)
         with patch.dict(sys.modules, {"openai": fake_module}):
-            client = MeshAPIClient(model="deepseek/deepseek-v4-flash", api_key="rsk_test")
+            # v4-pro keeps reasoning (unlike v4-flash), so this exercises the
+            # (reasoning-kept, structured-dropped) combo being cached.
+            client = MeshAPIClient(model="deepseek/deepseek-v4-pro", api_key="rsk_test")
             client.complete_json("sys", "user", {"type": "object"}, effort="high")
             first_pass = len(calls)
             calls.clear()
@@ -1352,6 +1356,40 @@ class ReasoningEffortWiringTest(unittest.TestCase):
         for kw in calls:                         # reasoning preserved throughout
             self.assertIn("reasoning_effort", kw)
             self.assertNotIn("response_format", kw)
+
+    def test_meshapi_withholds_reasoning_for_v4_flash_the_default(self):
+        # v4-flash *accepts* reasoning_effort but a measured cold A/B showed it
+        # LOWERS quality (44/61 with vs 50-56 without, + a T4 contradiction), so
+        # reasoning is withheld for it while other reasoning models keep it.
+        import sys
+        from unittest.mock import patch
+        from pbicompass.agents.llm import (
+            MeshAPIClient, _meshapi_reasoning_capable, _meshapi_send_reasoning,
+        )
+
+        # Capability is unchanged; only the send-decision differs.
+        self.assertTrue(_meshapi_reasoning_capable("deepseek/deepseek-v4-flash"))
+        self.assertFalse(_meshapi_send_reasoning("deepseek/deepseek-v4-flash"))
+        self.assertTrue(_meshapi_send_reasoning("deepseek/deepseek-v4-pro"))
+        self.assertTrue(_meshapi_send_reasoning("openai/gpt-5"))
+
+        calls: list = []
+
+        def on_create(kwargs):
+            calls.append(kwargs)
+            if "response_format" in kwargs:
+                raise fake_module.UnprocessableEntityError("response_format not supported")
+            return self._fake_meshapi_response()
+
+        fake_module = self._fake_openai_module(on_create)
+        with patch.dict(sys.modules, {"openai": fake_module}):
+            client = MeshAPIClient(model="deepseek/deepseek-v4-flash", api_key="rsk_test")
+            client.complete_json("sys", "user", {"type": "object"}, effort="high")
+
+        # No call ever carries reasoning_effort; ladder settles on (F, F).
+        for kw in calls:
+            self.assertNotIn("reasoning_effort", kw)
+        self.assertEqual(client._working_combo, (False, False))
 
     def test_meshapi_loose_json_parse_strips_code_fence(self):
         import sys
