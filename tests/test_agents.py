@@ -1068,9 +1068,16 @@ class ReasoningEffortWiringTest(unittest.TestCase):
         class BadRequestError(Exception):
             pass
 
+        class UnprocessableEntityError(Exception):
+            pass
+
         fake_module = ModuleType("openai")
         fake_module.OpenAI = _FakeOpenAI
         fake_module.BadRequestError = BadRequestError
+        # MeshAPI can surface a rejected param as either 400 or 422; the client
+        # catches both, so the fake must expose both for the ladder to resolve
+        # them rather than falling back to a bare ``Exception`` catch.
+        fake_module.UnprocessableEntityError = UnprocessableEntityError
         return fake_module
 
     @staticmethod
@@ -1119,7 +1126,14 @@ class ReasoningEffortWiringTest(unittest.TestCase):
 
         self.assertEqual(captured["reasoning_effort"], "high")
 
-    def test_meshapi_retries_without_reasoning_effort_on_bad_request(self):
+    def test_meshapi_first_fallback_keeps_reasoning_drops_structured(self):
+        # The ladder gives up structured output *before* reasoning, because
+        # reasoning is the quality lever and json_schema is only a
+        # parse-reliability convenience. So on the first bad_request, the retry
+        # keeps reasoning_effort and drops response_format — which is exactly
+        # what deepseek-v4-flash needs (it accepts reasoning_effort but rejects
+        # response_format: json_schema). The old ladder dropped reasoning first
+        # and so silently ran the default model with reasoning OFF.
         import sys
         from unittest.mock import patch
         from pbicompass.agents.llm import MeshAPIClient
@@ -1128,7 +1142,36 @@ class ReasoningEffortWiringTest(unittest.TestCase):
 
         def on_create(kwargs):
             calls.append(kwargs)
-            if len(calls) == 1:
+            if "response_format" in kwargs:
+                raise fake_module.UnprocessableEntityError("response_format not supported")
+            return self._fake_meshapi_response()
+
+        fake_module = self._fake_openai_module(on_create)
+        with patch.dict(sys.modules, {"openai": fake_module}):
+            client = MeshAPIClient(model="deepseek/deepseek-v4-flash", api_key="rsk_test")
+            out = client.complete_json("sys", "user", {"type": "object"}, effort="high")
+
+        self.assertEqual(out, {"ok": True})
+        self.assertEqual(len(calls), 2)
+        # attempt 1: both — rejected; attempt 2: reasoning kept, structured gone
+        self.assertIn("reasoning_effort", calls[0])
+        self.assertIn("response_format", calls[0])
+        self.assertIn("reasoning_effort", calls[1])
+        self.assertNotIn("response_format", calls[1])
+
+    def test_meshapi_recovers_when_reasoning_itself_is_rejected(self):
+        # The rarer case: a model our regex marks reasoning-capable actually
+        # rejects reasoning_effort. The ladder still recovers — it just walks
+        # past the two reasoning-bearing rungs to (reasoning off, structured on).
+        import sys
+        from unittest.mock import patch
+        from pbicompass.agents.llm import MeshAPIClient
+
+        calls: list = []
+
+        def on_create(kwargs):
+            calls.append(kwargs)
+            if "reasoning_effort" in kwargs:
                 raise fake_module.BadRequestError("reasoning_effort not supported")
             return self._fake_meshapi_response()
 
@@ -1138,9 +1181,10 @@ class ReasoningEffortWiringTest(unittest.TestCase):
             out = client.complete_json("sys", "user", {"type": "object"}, effort="high")
 
         self.assertEqual(out, {"ok": True})
-        self.assertEqual(len(calls), 2)
-        self.assertIn("reasoning_effort", calls[0])
-        self.assertNotIn("reasoning_effort", calls[1])
+        # (T,T) reject, (T,F) reject, (F,T) success — reasoning gone, structured kept
+        self.assertEqual(len(calls), 3)
+        self.assertNotIn("reasoning_effort", calls[2])
+        self.assertIn("response_format", calls[2])
 
     # -- MeshAPI: reasoning_effort for DeepSeek's "Thinking" models -----
 
@@ -1250,9 +1294,8 @@ class ReasoningEffortWiringTest(unittest.TestCase):
 
     def test_meshapi_falls_back_through_both_reasoning_and_structured_output(self):
         # A model that looks reasoning-capable (per _meshapi_reasoning_capable)
-        # but rejects *both* reasoning_effort and response_format needs two
-        # fallback tiers, not one — the retry loop must not give up after the
-        # first failure just because reasoning_effort was involved.
+        # but rejects *both* reasoning_effort and response_format must still
+        # recover, walking every rung down to (neither) rather than giving up.
         import sys
         from unittest.mock import patch
         from pbicompass.agents.llm import MeshAPIClient
@@ -1261,7 +1304,7 @@ class ReasoningEffortWiringTest(unittest.TestCase):
 
         def on_create(kwargs):
             calls.append(kwargs)
-            if len(calls) < 3:
+            if "reasoning_effort" in kwargs or "response_format" in kwargs:
                 raise fake_module.BadRequestError("unrecognized argument")
             return self._fake_meshapi_response()
 
@@ -1271,13 +1314,44 @@ class ReasoningEffortWiringTest(unittest.TestCase):
             out = client.complete_json("sys", "user", {"type": "object"}, effort="high")
 
         self.assertEqual(out, {"ok": True})
-        self.assertEqual(len(calls), 3)
-        self.assertIn("reasoning_effort", calls[0])
-        self.assertIn("response_format", calls[0])
-        self.assertNotIn("reasoning_effort", calls[1])
-        self.assertIn("response_format", calls[1])
-        self.assertNotIn("reasoning_effort", calls[2])
-        self.assertNotIn("response_format", calls[2])
+        # Ladder: (T,T), (T,F), (F,T), (F,F) — only the last carries neither.
+        self.assertEqual(len(calls), 4)
+        self.assertNotIn("reasoning_effort", calls[-1])
+        self.assertNotIn("response_format", calls[-1])
+
+    def test_meshapi_caches_working_combo_across_calls(self):
+        # The whole point of the fix: discover the accepted param combo once,
+        # then every later call on the same client is a single round-trip. A
+        # live deepseek-v4-flash bundle otherwise re-pays two doomed attempts
+        # per agent call.
+        import sys
+        from unittest.mock import patch
+        from pbicompass.agents.llm import MeshAPIClient
+
+        calls: list = []
+
+        def on_create(kwargs):
+            calls.append(kwargs)
+            if "response_format" in kwargs:
+                raise fake_module.UnprocessableEntityError("response_format not supported")
+            return self._fake_meshapi_response()
+
+        fake_module = self._fake_openai_module(on_create)
+        with patch.dict(sys.modules, {"openai": fake_module}):
+            client = MeshAPIClient(model="deepseek/deepseek-v4-flash", api_key="rsk_test")
+            client.complete_json("sys", "user", {"type": "object"}, effort="high")
+            first_pass = len(calls)
+            calls.clear()
+            # Three more calls should each be a single attempt now.
+            for _ in range(3):
+                client.complete_json("sys", "user", {"type": "object"}, effort="high")
+
+        self.assertEqual(first_pass, 2)          # discovery: (T,T) reject, (T,F) ok
+        self.assertEqual(len(calls), 3)          # 3 calls, 1 attempt each
+        self.assertEqual(client._working_combo, (True, False))
+        for kw in calls:                         # reasoning preserved throughout
+            self.assertIn("reasoning_effort", kw)
+            self.assertNotIn("response_format", kw)
 
     def test_meshapi_loose_json_parse_strips_code_fence(self):
         import sys

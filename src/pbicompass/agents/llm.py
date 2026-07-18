@@ -540,9 +540,12 @@ class MeshAPIClient(_UsageTracker):
     blocked on T4 (user-guide prose contradicting the audit's verdict), leaving
     the user with an error and no documents, whereas v4-flash passed 3/3 at
     59/61. It is also reasoning-capable, so the effort machinery actually
-    applies. Both are structured-output capable per MeshAPI's catalog and a
-    live smoke call. A Claude default remains off the table: MeshAPI routes at
-    least some Anthropic model ids
+    applies — but note it accepts ``reasoning_effort`` while *rejecting*
+    ``response_format: json_schema`` (measured live 2026-07-18, contra an
+    earlier smoke test): ``complete_json``'s ladder handles that by keeping
+    reasoning and restating the schema as text, and caches the result so the
+    discovery cost is paid once per client, not once per call. A Claude default
+    remains off the table: MeshAPI routes at least some Anthropic model ids
     through AWS Bedrock's Converse API, which doesn't support the
     structured-output parameter MeshAPI's translation layer attaches for
     them (every ``complete_json`` call fails with a Bedrock
@@ -609,6 +612,19 @@ class MeshAPIClient(_UsageTracker):
         self.effort = effort
         self.max_tokens = max_tokens
         self.timeout = timeout
+        # Discovered-once cache of the (include_reasoning, structured) parameter
+        # combination this model actually accepts. MeshAPI fronts 1000+ models
+        # of wildly varying support and exposes no per-model capability signal,
+        # so ``complete_json`` learns it by trying — but only once. Without this
+        # the degradation ladder re-pays the discovery cost on *every* call: a
+        # live deepseek-v4-flash bundle (2026-07-18) 422'd twice per agent call
+        # before its third attempt succeeded — 2 wasted round-trips × ~25 calls
+        # — because the model rejects ``response_format: json_schema``. Guarded
+        # by a lock since one client instance is shared across the parallel
+        # agent fan-out; the value converges (same model => same answer), the
+        # lock just keeps the read/write clean.
+        self._working_combo: Optional[tuple[bool, bool]] = None
+        self._combo_lock = threading.Lock()
 
     def complete_json(self, system: str, user: str, schema: dict, *, effort: Optional[str] = None) -> dict:
         # MeshAPI documents `reasoning_effort` as a unified-schema field, but
@@ -632,9 +648,9 @@ class MeshAPIClient(_UsageTracker):
         # rejected ``response_format`` also degrades gracefully: the schema
         # is restated as a plain-text instruction instead and the response
         # is parsed loosely (stripping a stray ```json fence some models add
-        # despite the instruction) — useful for whatever non-default model a
-        # caller passes in, even though the gemini-flash default itself
-        # never hits this path.
+        # despite the instruction). The default deepseek-v4-flash *does* hit
+        # this path — it rejects ``response_format: json_schema`` and lands on
+        # the reasoning-kept/text-schema rung below.
         def _call(*, include_reasoning: bool, structured: bool):
             sys_prompt = system if structured else (
                 system + "\n\nRespond with only a single valid JSON object (no markdown "
@@ -658,24 +674,60 @@ class MeshAPIClient(_UsageTracker):
                 kwargs["reasoning_effort"] = reasoning_effort
             return _call_with_retries(lambda: self._client.chat.completions.create(**kwargs))
 
-        # Graceful degradation (§4.0), in order of what's cheapest to give
-        # up: reasoning_effort first (a reasoning-capable-looking model that
-        # still rejects it), then structured output too (a model with no
-        # native JSON-schema-constrained decoding). Never more than one
-        # extra tier beyond the first real attempt, so this can't loop.
-        attempts = [(reasoning_effort is not None, True)]
-        if reasoning_effort is not None:
-            attempts.append((False, True))
-        attempts.append((False, False))
+        # Graceful degradation ladder (§4.0), most-capable first. Reasoning is
+        # preserved *before* structured output is given up, because reasoning is
+        # the quality lever and structured output is only a parse-reliability
+        # convenience (``_loose_json_parse`` + the caller's own schema
+        # validation in generators/base.py already backstop an unstructured
+        # reply). The old ladder dropped reasoning first and so never tried
+        # "reasoning without json_schema" — which is exactly what
+        # deepseek-v4-flash needs, since it accepts ``reasoning_effort`` but
+        # rejects ``response_format: json_schema``. The result was that the
+        # default model silently ran with reasoning OFF on every call (measured
+        # live 2026-07-18), defeating the whole reason it was chosen over ling.
+        #
+        #   (reasoning, structured)
+        #   (True,  True)   both — an o-series/gpt-5 / fully-capable model
+        #   (True,  False)  reasoning kept, schema restated as text — v4-flash
+        #   (False, True)   reasoning rejected but json_schema fine
+        #   (False, False)  neither — the universal floor
+        want_reasoning = reasoning_effort is not None
+        full_ladder: list[tuple[bool, bool]] = []
+        if want_reasoning:
+            full_ladder.append((True, True))
+            full_ladder.append((True, False))
+        full_ladder.append((False, True))
+        full_ladder.append((False, False))
 
-        bad_request = _resolve_error_class(self._openai, "BadRequestError")
+        # Try the combo this model already proved it accepts first, so calls
+        # 2..N are a single round-trip instead of re-walking the ladder. The
+        # rest stays as fallback in case a cached combo goes stale.
+        with self._combo_lock:
+            cached = self._working_combo
+        if cached is not None and cached in full_ladder:
+            attempts = [cached] + [c for c in full_ladder if c != cached]
+        else:
+            attempts = full_ladder
+
+        # Catch both 400 and 422: MeshAPI's telemetry labels a rejected
+        # ``response_format``/``reasoning_effort`` as "unprocessable_entity",
+        # and depending on the routed upstream it can surface as either status.
+        # Only catching BadRequestError (400) would let a 422 escape the ladder
+        # straight to the deterministic fallback — degrading a whole agent for a
+        # param the very next rung would have dropped.
+        param_rejected = (
+            _resolve_error_class(self._openai, "BadRequestError"),
+            _resolve_error_class(self._openai, "UnprocessableEntityError"),
+        )
         response = None
         last_exc: Exception | None = None
         for include_reasoning, structured in attempts:
             try:
                 response = _call(include_reasoning=include_reasoning, structured=structured)
+                with self._combo_lock:
+                    self._working_combo = (include_reasoning, structured)
                 break
-            except bad_request as exc:
+            except param_rejected as exc:
                 last_exc = exc
         if response is None:
             raise last_exc
