@@ -556,19 +556,15 @@ class MeshAPIClient(_UsageTracker):
     model ids, which use hyphens (``claude-opus-4-8``, as
     :class:`AnthropicClient` expects) — the two are not interchangeable.
 
-    Defaults to ``deepseek/deepseek-v4-flash`` (2026-07-16, switched from
-    ``inclusionai/ling-2.6-flash``, which was itself chosen for cost on
-    2026-07-14). The reason for the switch is measured, not stylistic: ling
-    could not pass this tool's own output gate — 2/2 full-bundle runs were
-    blocked on T4 (user-guide prose contradicting the audit's verdict), leaving
-    the user with an error and no documents, whereas v4-flash passed 3/3 at
-    59/61. Note two measured quirks of v4-flash via MeshAPI (both 2026-07-18,
-    contra an earlier smoke test): it *rejects* ``response_format: json_schema``
-    (``complete_json``'s ladder restates the schema as text and caches that
-    discovery), and although it accepts ``reasoning_effort``, sending it
-    *lowers* output quality here (44/61 with vs 50–56/61 without, plus a T4
-    contradiction) — so reasoning is withheld for it (``_meshapi_send_reasoning``
-    / ``_MESHAPI_REASONING_WITHHELD``). A Claude default remains off the table:
+    Defaults to ``openai/gpt-4o`` (2026-07-18, switched from
+    ``deepseek/deepseek-v4-flash``). The reason is a measured live failure:
+    v4-flash scored well in offline scoring but a real full-bundle run ran
+    ~15 minutes and then errored — the deepseek reasoning family is slow and
+    flaky through MeshAPI's routing under load — whereas a live run on gpt-4o
+    completed cleanly with first-class output. gpt-4o is a non-reasoning model,
+    so ``complete_json`` correctly never sends it ``reasoning_effort`` (see
+    ``_meshapi_send_reasoning``), and OpenAI ids have first-class
+    structured-output support on MeshAPI. A Claude default remains off the table:
     MeshAPI routes at least some Anthropic model ids
     through AWS Bedrock's Converse API, which doesn't support the
     structured-output parameter MeshAPI's translation layer attaches for
@@ -590,19 +586,24 @@ class MeshAPIClient(_UsageTracker):
     """
 
     _BASE_URL = "https://api.meshapi.ai/v1"
-    # The default engine has to be able to pass this tool's own output gate.
-    # Measured on the Corporate Spend fixture, full 4-doc bundle:
+    # The default engine has to reliably complete a full bundle and pass this
+    # tool's own output gate. History on the Corporate Spend fixture:
     #   inclusionai/ling-2.6-flash  2/2 runs BLOCKED by the gate (T4: user-guide
-    #                               prose contradicting the audit's verdict, same
-    #                               locations both times) -> the user gets an
-    #                               error and zero documents. ~$0.005/bundle.
-    #   deepseek/deepseek-v4-flash  3/3 runs pass, scoring 59/61. ~$0.06/bundle,
-    #                               and unlike ling it is reasoning-capable, so
-    #                               the effort/reasoning machinery actually runs.
-    # 12x the cost of a default that produces nothing is not a trade-off worth
-    # having. Override per-deploy with MESHAPI_MODEL if cost matters more than
-    # output on a given install.
-    _FALLBACK_MODEL = "deepseek/deepseek-v4-flash"
+    #                               prose contradicting the audit's verdict) ->
+    #                               error, zero documents.
+    #   deepseek/deepseek-v4-flash  scored well in offline scoring, but a live
+    #                               full-bundle run (2026-07-18) ran ~15 minutes
+    #                               and then FAILED — the reasoning family is slow
+    #                               and flaky through MeshAPI's routing under load.
+    #   openai/gpt-4o (now default)  a live full run completed cleanly with
+    #                               first-class output. A non-reasoning model, so
+    #                               the reasoning-effort machinery correctly never
+    #                               sends `reasoning_effort` to it, and OpenAI ids
+    #                               have first-class structured-output support on
+    #                               MeshAPI (no Bedrock/Converse rejection path).
+    # A default that finishes and produces good documents beats a cheaper one that
+    # burns 15 minutes and errors. Override per-deploy with MESHAPI_MODEL.
+    _FALLBACK_MODEL = "openai/gpt-4o"
 
     def __init__(
         self,

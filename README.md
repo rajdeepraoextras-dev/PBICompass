@@ -226,20 +226,20 @@ PYTHONPATH=src python -m pbicompass generate path/to/Project.pbip --provider gem
 PYTHONPATH=src python -m pbicompass generate path/to/Project.pbip --provider cohere    -o report.md   # COHERE_API_KEY
 
 # Or one key for any of 1000+ models via https://developers.meshapi.ai (model ids are "provider/model-name";
-# defaults to deepseek/deepseek-v4-flash, overridable with the MESHAPI_MODEL env var — MeshAPI's Bedrock-routed
+# defaults to openai/gpt-4o, overridable with the MESHAPI_MODEL env var — MeshAPI's Bedrock-routed
 # Anthropic models don't yet support the structured JSON output every agent here needs, per MeshAPI's own
 # structured-output docs):
 PYTHONPATH=src python -m pbicompass generate path/to/Project.pbip --provider meshapi -o report.md   # MESHAPI_API_KEY
 ```
 
-> **On the MeshAPI default:** it is `deepseek/deepseek-v4-flash`, chosen by
-> measurement rather than price. The previous default (`inclusionai/ling-2.6-flash`,
-> ~12× cheaper) could not pass this tool's *own* output gate — 2/2 full-bundle runs
-> were blocked on user-guide prose contradicting the audit, so the user got an error
-> and **zero documents**. v4-flash passes 3/3 at 61/61 and is reasoning-capable, so
-> the `--effort` knob actually applies. 12× the cost of a default that produces
-> nothing is not a trade-off worth having; set `MESHAPI_MODEL` if your install
-> weighs cost differently.
+> **On the MeshAPI default:** it is `openai/gpt-4o`, chosen by measurement rather
+> than price. The previous default (`deepseek/deepseek-v4-flash`) scored well in
+> offline scoring but **failed a live full-bundle run** — it ran ~15 minutes and
+> then errored, the deepseek reasoning family being slow and flaky through MeshAPI's
+> routing under load. A live run on `gpt-4o` completed cleanly with first-class
+> output. It is a non-reasoning model, so `--effort` has no native knob to drive on
+> it, and OpenAI ids have first-class structured-output support on MeshAPI. Set
+> `MESHAPI_MODEL` to a reasoning-capable id if you want `--effort` to apply.
 
 Output format is inferred from the `-o` extension (or forced with `--format`):
 

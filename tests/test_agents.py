@@ -875,14 +875,13 @@ class ClientFactoryTest(unittest.TestCase):
         self.assertFalse(client.model.startswith("anthropic/"))
 
     def test_meshapi_default_model_can_pass_our_own_gate_with_env_override(self):
-        # 2026-07-16: default switched from inclusionai/ling-2.6-flash (itself
-        # chosen for cost on 2026-07-14) to deepseek/deepseek-v4-flash. Measured,
-        # not stylistic: ling was BLOCKED by our own output gate on 2/2 full
-        # bundles (T4 — user-guide prose contradicting the audit), so the user
-        # got an error and zero documents; v4-flash passed 3/3 at 59/61 and is
-        # reasoning-capable. The MESHAPI_MODEL env var stays the deploy-time
-        # override so the next switch needs no code change. An env value without
-        # a "/" can't be a MeshAPI "provider/model-name" id, so it's ignored.
+        # 2026-07-18: default switched to openai/gpt-4o after deepseek/deepseek-
+        # v4-flash failed a live full-bundle run (~15 min then error — the
+        # deepseek reasoning family is slow/flaky through MeshAPI under load),
+        # while gpt-4o completed a live run cleanly with first-class output.
+        # The MESHAPI_MODEL env var stays the deploy-time override so the next
+        # switch needs no code change. An env value without a "/" can't be a
+        # MeshAPI "provider/model-name" id, so it's ignored.
         import os
         import sys
         from types import ModuleType
@@ -900,11 +899,11 @@ class ClientFactoryTest(unittest.TestCase):
         with patch.dict(sys.modules, {"openai": fake_module}):
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("MESHAPI_MODEL", None)
-                self.assertEqual(get_client("meshapi").model, "deepseek/deepseek-v4-flash")
+                self.assertEqual(get_client("meshapi").model, "openai/gpt-4o")
             with patch.dict(os.environ, {"MESHAPI_MODEL": "deepseek/deepseek-v3.2"}):
                 self.assertEqual(get_client("mesh").model, "deepseek/deepseek-v3.2")
             with patch.dict(os.environ, {"MESHAPI_MODEL": "not-a-mesh-id"}):
-                self.assertEqual(get_client("meshapi").model, "deepseek/deepseek-v4-flash")
+                self.assertEqual(get_client("meshapi").model, "openai/gpt-4o")
             with patch.dict(os.environ, {"MESHAPI_MODEL": "deepseek/deepseek-v3.2"}):
                 # An explicit model always wins over the env override.
                 self.assertEqual(
