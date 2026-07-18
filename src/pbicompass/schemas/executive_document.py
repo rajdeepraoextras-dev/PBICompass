@@ -106,7 +106,12 @@ class ExecutiveDocument:
     page_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
-        return dataclasses.asdict(self)
+        data = dataclasses.asdict(self)
+        # Retain page names and anchors for integrations, without embedding
+        # the HTML-only wireframe thumbnail SVG in JSON.
+        for thumbnail in data.get("page_thumbnails", []):
+            thumbnail.pop("svg", None)
+        return data
 
     def to_json(self, *, indent: int | None = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)

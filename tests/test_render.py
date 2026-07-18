@@ -94,6 +94,41 @@ def _user_guide_doc():
     return BusinessGuideGenerator.generate(detect_and_parse(FIXTURE))
 
 
+class DiagramPayloadOutputTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.technical = _doc()
+        cls.executive = _executive_doc()
+        cls.user_guide = _user_guide_doc()
+
+    def test_json_omits_html_only_diagram_markup(self):
+        technical = json.loads(self.technical.to_json())
+        self.assertNotIn("lineage_svg", technical["lineage"])
+        self.assertTrue(technical["lineage"]["lineage_edges"])
+        self.assertTrue(technical["report_pages"])
+        self.assertTrue(all("wireframe_svg" not in page for page in technical["report_pages"]))
+
+        executive = json.loads(self.executive.to_json())
+        self.assertTrue(executive["page_thumbnails"])
+        self.assertTrue(all("svg" not in page for page in executive["page_thumbnails"]))
+        self.assertTrue(all({"name", "anchor"} <= set(page) for page in executive["page_thumbnails"]))
+
+        user_guide = json.loads(self.user_guide.to_json())
+        self.assertTrue(user_guide["pages"])
+        self.assertTrue(all("wireframe_svg" not in page for page in user_guide["pages"]))
+
+    def test_markdown_contains_no_svg_diagram_markup(self):
+        outputs = (
+            render_markdown(self.technical),
+            render_executive_markdown(self.executive),
+            render_user_guide_markdown(self.user_guide),
+        )
+        for markdown in outputs:
+            self.assertNotIn("<svg", markdown)
+            self.assertNotIn("wireframe_svg", markdown)
+            self.assertNotIn("lineage_svg", markdown)
+
+
 class HtmlRenderTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

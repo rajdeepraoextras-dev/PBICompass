@@ -232,7 +232,14 @@ class Document:
     checks_by_category: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return dataclasses.asdict(self)
+        data = dataclasses.asdict(self)
+        # SVG is presentation data for the interactive HTML renderer. Keep
+        # lineage edges and page facts in JSON, but do not ship large raw
+        # diagram strings in a machine-readable output.
+        data.get("lineage", {}).pop("lineage_svg", None)
+        for page in data.get("report_pages", []):
+            page.pop("wireframe_svg", None)
+        return data
 
     def to_json(self, *, indent: int | None = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
