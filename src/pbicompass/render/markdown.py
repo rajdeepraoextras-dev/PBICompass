@@ -23,6 +23,7 @@ from ._shared import non_data_note as _non_data_note
 from ._shared import refresh_policy_summary as _refresh_policy_summary
 from ._shared import section_provenance
 from ._shared import slicer_field_label as _slicer_label
+from ._shared import with_period as _with_period
 
 
 def render_markdown(doc: Document) -> str:
@@ -360,7 +361,7 @@ def render_markdown(doc: Document) -> str:
     # 11. Refresh, Gateway & Performance
     out.append(f"\n## 11. Refresh, Gateway & Performance{_badge(11)}\n")
     if md.refresh_schedule:
-        out.append(f"**Refresh schedule:** {md.refresh_schedule}.\n")
+        out.append(f"**Refresh schedule:** {_with_period(md.refresh_schedule)}\n")
     if md.refresh_notes:
         out.append(md.refresh_notes + "\n")
     else:
@@ -524,7 +525,7 @@ def render_markdown(doc: Document) -> str:
     # 17. Support & Maintenance
     out.append(f"\n## 17. Support & Maintenance{_badge(17)}\n")
     if md.owner:
-        out.append(f"**First-line contact:** {md.owner}.\n")
+        out.append(f"**First-line contact:** {_with_period(md.owner)}\n")
     if md.support_notes:
         out.append(md.support_notes + "\n")
     else:

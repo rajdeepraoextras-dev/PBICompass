@@ -38,6 +38,7 @@ from ._shared import non_data_note as _non_data_note
 from ._shared import refresh_policy_summary as _refresh_policy_summary
 from ._shared import section_provenance
 from ._shared import slicer_field_label as _slicer_label
+from ._shared import with_period as _with_period
 
 
 def _md_inline(text: str) -> str:
@@ -580,7 +581,7 @@ def render_html(
     # 11. Refresh, Gateway & Performance
     o.append(f'<h2 id="sec11">11. Refresh, Gateway &amp; Performance{_header_badge(11)}</h2>')
     if md.refresh_schedule:
-        o.append(f"<p><strong>Refresh schedule:</strong> {_e(md.refresh_schedule)}.</p>")
+        o.append(f"<p><strong>Refresh schedule:</strong> {_with_period(_e(md.refresh_schedule))}</p>")
     if md.refresh_notes:
         o.append('<div class="card-section">')
         for line in md.refresh_notes.split('\n'):
@@ -784,7 +785,7 @@ def render_html(
     # 17. Support & Maintenance
     o.append(f'<h2 id="sec17">17. Support &amp; Maintenance{_header_badge(17)}</h2>')
     if md.owner:
-        o.append(f"<p><strong>First-line contact:</strong> {_e(md.owner)}.</p>")
+        o.append(f"<p><strong>First-line contact:</strong> {_with_period(_e(md.owner))}</p>")
     if md.support_notes:
         o.append('<div class="card-section">')
         for line in md.support_notes.split('\n'):

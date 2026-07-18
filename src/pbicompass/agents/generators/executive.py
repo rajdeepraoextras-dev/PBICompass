@@ -35,6 +35,7 @@ from ..deterministic import business_analyst_deterministic, schema_shape, transl
 from ..grounding import apply_grounding_pass
 from ..llm import LLMClient
 from ..report_facts import business_plain_english, data_source_type_counts, first_sentence
+from ...render._shared import mid_sentence
 from ..sanitize import sanitize_narratives
 from .base import Warn, build_core_metadata, call_llm
 
@@ -176,7 +177,10 @@ def _apply_reframed_risks(top_risks: list[ExecutiveRisk], reframed: Optional[lis
 
 
 def _business_value(key_kpis: list[str], audience: Optional[str]) -> str:
-    who = audience or "stakeholders"
+    # ``audience`` is embedded mid-sentence, so strip any trailing period it
+    # carries (the grounded default ends in one) — otherwise it reads as
+    # "…BI support staff. direct visibility into…".
+    who = mid_sentence(audience) if audience else "stakeholders"
     metrics = ", ".join(key_kpis[:3]) if key_kpis else "key metrics"
     return (f"This report gives {who} direct visibility into {metrics}, reducing reliance on "
             f"manual reporting and supporting faster, data-driven decisions.")

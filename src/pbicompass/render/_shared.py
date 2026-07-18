@@ -109,6 +109,31 @@ def pluralize_count(word: str, count: int, plural: str | None = None) -> str:
     return f"{count} {pluralize(word, count, plural)}"
 
 
+def mid_sentence(text: str) -> str:
+    """Strip a single trailing sentence-terminator from ``text`` so it can be
+    embedded *inside* a larger sentence. The grounded audience default ("…and
+    BI support staff.") ends in a period; dropped straight into "This report
+    gives {audience} direct visibility into…" it produces a mid-sentence full
+    stop. Idempotent; leaves internal punctuation and non-terminal text alone."""
+    stripped = (text or "").rstrip()
+    if stripped and stripped[-1] in ".!?":
+        return stripped[:-1].rstrip()
+    return stripped
+
+
+def with_period(text: str) -> str:
+    """Terminate ``text`` with a single period, unless it already ends with
+    sentence-ending punctuation. Several fields (grounded owner/refresh
+    defaults, user-supplied notes) already carry their own final period, so a
+    renderer that blindly appends ``.`` produces a doubled ``..`` — a
+    doubled-punctuation defect the T6 benchmark check flags. Idempotent and
+    safe on empty/whitespace input."""
+    stripped = (text or "").rstrip()
+    if not stripped or stripped[-1] in ".!?:":
+        return stripped
+    return stripped + "."
+
+
 def action_chip(text: str, *, tone: str = "warn") -> str:
     """A small actionable pill for a missing/unassigned governance field
     (owner, steward, classification) — replaces a bare, easy-to-miss "not

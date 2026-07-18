@@ -269,8 +269,9 @@ def render_markdown(doc: AuditDocument) -> str:
 
     if getattr(doc, "requirements_gaps", None):
         out.append("\n### Requirements gaps\n")
+        _pronoun = "it" if len(doc.requirements_gaps) == 1 else "them"
         out.append(f"_{pluralize('Business requirement', len(doc.requirements_gaps))} with nothing in the "
-                   "report satisfying them (Requirements Traceability Matrix — see Section 3 of the "
+                   f"report satisfying {_pronoun} (Requirements Traceability Matrix — see Section 3 of the "
                    "technical document):_\n")
         for g in doc.requirements_gaps:
             priority = f"[{g['priority']}] " if g.get("priority") else ""
@@ -454,8 +455,10 @@ def render_html(
     if getattr(doc, "requirements_gaps", None):
         o.append('<div class="card-section" style="border-left: 4px solid #b42318;">')
         o.append('<h3>Requirements gaps</h3>')
-        o.append(f'<p class="muted">{_e(pluralize("Business requirement", len(doc.requirements_gaps)))} '
-                 'with nothing in the report satisfying them '
+        _n_gaps = len(doc.requirements_gaps)
+        _pronoun = "it" if _n_gaps == 1 else "them"
+        o.append(f'<p class="muted">{_e(pluralize("Business requirement", _n_gaps))} '
+                 f'with nothing in the report satisfying {_pronoun} '
                  '(Requirements Traceability Matrix — see Section 3 of the technical document):</p>')
         o.append('<ul>')
         for g in doc.requirements_gaps:
@@ -629,7 +632,8 @@ def render_docx(doc: AuditDocument, out_path) -> Path:
     if getattr(doc, "requirements_gaps", None):
         d.heading(2, "Requirements gaps")
         d.para([d._run(f"{pluralize('Business requirement', len(doc.requirements_gaps))} with nothing in "
-                       "the report satisfying them (Requirements Traceability Matrix — see Section 3 of "
+                       f"the report satisfying {'it' if len(doc.requirements_gaps) == 1 else 'them'} "
+                       "(Requirements Traceability Matrix — see Section 3 of "
                        "the technical document):", italic=True)])
         for g in doc.requirements_gaps:
             prefix = f"[{g['priority']}] " if g.get("priority") else ""
