@@ -77,6 +77,7 @@ class DocumentMetadata:
     support_notes: Optional[str] = None
     score_trend: Optional[str] = None
     overridden_fields: list[str] = field(default_factory=list)
+    supplied_optional_fields: list[str] = field(default_factory=list)
 
 
 # -- III. Lineage & Architecture ----------------------------------------------

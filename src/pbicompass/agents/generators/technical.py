@@ -81,8 +81,32 @@ def _metadata(model: SemanticModel, owner, audience, refresh,
               version=None, status=None, author=None, reviewer=None,
               classification=None, business_decision=None, requirements=None,
               security_notes=None, refresh_notes=None, deployment_notes=None,
-              access_notes=None, glossary=None, assumptions=None, support_notes=None) -> DocumentMetadata:
+              access_notes=None, glossary=None, assumptions=None, support_notes=None,
+              supplied_optional_fields=None) -> DocumentMetadata:
     overridden = getattr(model.meta, "overridden_fields", [])
+    if supplied_optional_fields is None:
+        supplied_optional_fields = [
+            field for field, value in (
+                ("owner", owner),
+                ("refresh_schedule", refresh),
+                ("target_audience", audience),
+                ("version", version),
+                ("status", status),
+                ("author", author),
+                ("reviewer", reviewer),
+                ("classification", classification),
+                ("business_decision", business_decision),
+                ("requirements", requirements),
+                ("security_notes", security_notes),
+                ("refresh_notes", refresh_notes),
+                ("deployment_notes", deployment_notes),
+                ("access_notes", access_notes),
+                ("glossary", glossary),
+                ("assumptions", assumptions),
+                ("support_notes", support_notes),
+            )
+            if value
+        ]
     return DocumentMetadata(
         report_name=model.report_name,
         owner=owner,
@@ -105,6 +129,7 @@ def _metadata(model: SemanticModel, owner, audience, refresh,
         assumptions=assumptions,
         support_notes=support_notes,
         overridden_fields=list(overridden),
+        supplied_optional_fields=list(supplied_optional_fields or []),
     )
 
 
@@ -952,6 +977,7 @@ class TechnicalDocumentationGenerator:
         glossary: Optional[str] = None,
         assumptions: Optional[str] = None,
         support_notes: Optional[str] = None,
+        supplied_optional_fields: Optional[list[str]] = None,
         ai_context: Optional[JobAIContext] = None,
         top_cluster: Optional[FindingCluster] = None,
         audit_verdicts: Optional[AuditVerdicts] = None,
@@ -1035,6 +1061,7 @@ class TechnicalDocumentationGenerator:
                 refresh_notes=refresh_notes, deployment_notes=deployment_notes,
                 access_notes=access_notes, glossary=glossary,
                 assumptions=assumptions, support_notes=support_notes,
+                supplied_optional_fields=supplied_optional_fields,
             ),
             executive_summary=executive_summary,
             lineage=_lineage(model),

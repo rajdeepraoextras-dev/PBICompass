@@ -42,7 +42,12 @@ from ..agents.context import JobAIContext, build_job_context
 from ..agents.generators import DOCUMENT_TYPES
 from ..agents.parallel import run_parallel
 from ..render import pandoc, registry
-from ..render._shared import GROUNDED_DEFAULT_REFRESH_PREFIX, GROUNDED_DEFAULT_TEXT, format_timestamp
+from ..render._shared import (
+    GROUNDED_DEFAULT_REFRESH_PREFIX,
+    GROUNDED_DEFAULT_TEXT,
+    OPTIONAL_CONTEXT_FIELDS,
+    format_timestamp,
+)
 from ..render.audit import _top_cluster as _audit_top_cluster
 from ..render.hub import doc_switcher_links, hub_stats, render_hub
 from .ingest import ingest_to_model
@@ -143,6 +148,21 @@ def _complete_metadata(model, client, meta: dict, warn: Callable[[str], None]) -
         if not completed.get(key):
             completed[key] = value
     return completed
+
+
+def _supplied_optional_fields(meta: dict) -> list[str]:
+    """Which optional context fields the user/enrichment file actually gave.
+
+    This is captured before AI metadata completion and grounded defaults, so
+    the rendered "Optional context supplied" meter reflects human input only.
+    """
+    key_to_field = {"audience": "target_audience", "refresh": "refresh_schedule"}
+    supplied = []
+    for key, value in meta.items():
+        field = key_to_field.get(key, key)
+        if field in OPTIONAL_CONTEXT_FIELDS and value:
+            supplied.append(field)
+    return supplied
 
 
 def _synchronize_glossary(docs: dict[str, object]) -> None:
@@ -287,7 +307,10 @@ def process_job(store: JobStore, job_id: str, upload_path: Path,
                     changelog_text = history["previous_summary"]
                 history["previous_fingerprint"] = current_fp
 
-        meta = _complete_metadata(model, client, _effective_metadata(options, enrichment_meta), warn)
+        effective_meta = _effective_metadata(options, enrichment_meta)
+        supplied_optional_fields = _supplied_optional_fields(effective_meta)
+        meta = _complete_metadata(model, client, effective_meta, warn)
+        meta["supplied_optional_fields"] = supplied_optional_fields
 
         # Phase 0/2: one DAX Translator pass and one Report Intelligence pass
         # shared by every requested document type. Build this only after

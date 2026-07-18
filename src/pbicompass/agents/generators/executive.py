@@ -345,6 +345,7 @@ class ExecutiveSummaryGenerator:
         glossary: Optional[str] = None,
         assumptions: Optional[str] = None,
         support_notes: Optional[str] = None,
+        supplied_optional_fields: Optional[list[str]] = None,
         on_warning: Optional[Warn] = None,
         ai_context: Optional[JobAIContext] = None,
         audit_verdicts: Optional[AuditVerdicts] = None,
@@ -444,6 +445,7 @@ class ExecutiveSummaryGenerator:
             security_notes=security_notes, refresh_notes=refresh_notes,
             deployment_notes=deployment_notes, access_notes=access_notes,
             glossary=glossary, assumptions=assumptions, support_notes=support_notes,
+            supplied_optional_fields=supplied_optional_fields,
         )
         metadata.score_trend = audit_rules.get_shared_score_trend(
             ai_context, model.report_name or "UnknownReport", health.overall,

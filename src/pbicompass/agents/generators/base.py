@@ -242,6 +242,7 @@ def build_core_metadata(
     glossary: Optional[str] = None,
     assumptions: Optional[str] = None,
     support_notes: Optional[str] = None,
+    supplied_optional_fields: Optional[list[str]] = None,
 ) -> DocMetadataCore:
     """Assemble the metadata contract shared by the non-technical document
     types (audit, executive, user guide) — Day 3: carries the full human
@@ -249,6 +250,29 @@ def build_core_metadata(
     does, so every document type can steer its prose and render these
     sections, not just the technical one."""
     overridden = getattr(model.meta, "overridden_fields", [])
+    if supplied_optional_fields is None:
+        supplied_optional_fields = [
+            field for field, value in (
+                ("owner", owner),
+                ("refresh_schedule", refresh),
+                ("target_audience", audience),
+                ("version", version),
+                ("status", status),
+                ("author", author),
+                ("reviewer", reviewer),
+                ("classification", classification),
+                ("business_decision", business_decision),
+                ("requirements", requirements),
+                ("security_notes", security_notes),
+                ("refresh_notes", refresh_notes),
+                ("deployment_notes", deployment_notes),
+                ("access_notes", access_notes),
+                ("glossary", glossary),
+                ("assumptions", assumptions),
+                ("support_notes", support_notes),
+            )
+            if value
+        ]
     return DocMetadataCore(
         report_name=model.report_name,
         document_type=document_type,
@@ -260,6 +284,7 @@ def build_core_metadata(
         version=version,
         status=status,
         overridden_fields=list(overridden),
+        supplied_optional_fields=list(supplied_optional_fields or []),
         author=author,
         reviewer=reviewer,
         classification=classification,

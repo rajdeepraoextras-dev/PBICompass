@@ -279,6 +279,12 @@ def html_table(
 def compute_completeness(metadata: Any) -> tuple[int, int, list[str]]:
     """Report optional context coverage without treating absent input as a quality score.
 
+    When present, ``metadata.supplied_optional_fields`` is the authoritative
+    provenance list captured before AI metadata completion and grounded
+    defaults run. That keeps the visible user-input meter honest: AI can still
+    populate internal context, but it does not count as something the user
+    supplied.
+
     A field whose value is exactly the grounded-default text ``worker.py``'s
     ``_complete_metadata()`` substitutes in (see ``GROUNDED_DEFAULT_TEXT``
     above) still counts as missing -- by the time a generated document's
@@ -287,6 +293,15 @@ def compute_completeness(metadata: Any) -> tuple[int, int, list[str]]:
     fallback), so a plain truthiness check alone would always report every
     field "supplied" even when the user provided nothing at all."""
     fields = OPTIONAL_CONTEXT_FIELDS
+    explicit_supplied = getattr(metadata, "supplied_optional_fields", None)
+    if explicit_supplied is not None:
+        supplied = {f for f in explicit_supplied if f in fields}
+        missing = [f for f in fields if f not in supplied]
+        filled = len(supplied)
+        total = len(fields)
+        pct = round(100 * filled / total) if total > 0 else 100
+        return pct, total - filled, missing
+
     filled = 0
     missing = []
     for f in fields:

@@ -23,6 +23,7 @@ class DocMetadataCore:
     status: Optional[str] = None
     score_trend: Optional[str] = None
     overridden_fields: list[str] = field(default_factory=list)
+    supplied_optional_fields: list[str] = field(default_factory=list)
     # Day 3: the same human intake fields ``schemas.document.DocumentMetadata``
     # (the technical document) already carries — extended here so the audit,
     # executive, and user guide documents can receive and render them too,

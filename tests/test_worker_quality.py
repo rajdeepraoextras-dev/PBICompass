@@ -2,8 +2,9 @@ from pathlib import Path
 
 from pbicompass.agents.assist import ASSIST_FIELDS
 from pbicompass.agents.generators import DOCUMENT_TYPES
+from pbicompass.render._shared import compute_completeness
 from pbicompass.schemas.model import SemanticModel
-from pbicompass.service.worker import _complete_metadata, _synchronize_glossary
+from pbicompass.service.worker import _complete_metadata, _supplied_optional_fields, _synchronize_glossary
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "CorporateSpend" / "model.json"
@@ -35,6 +36,41 @@ def test_ai_metadata_completion_runs_once_and_preserves_human_values():
     assert meta["owner"] == "Human Owner"
     assert "actual spend" in meta["business_decision"].lower()
     assert all(meta.values())
+
+
+def test_ai_completed_fields_do_not_count_as_user_supplied_context():
+    client = MetadataClient()
+    effective_meta = {"owner": "Human Owner"}
+    meta = _complete_metadata(_model(), client, effective_meta, lambda _m: None)
+    meta["supplied_optional_fields"] = _supplied_optional_fields(effective_meta)
+    doc = DOCUMENT_TYPES["technical"].generate(_model(), None, **meta)
+
+    assert "actual spend" in doc.metadata.business_decision.lower()
+    assert compute_completeness(doc.metadata) == (
+        6,
+        16,
+        [
+            "refresh_schedule", "target_audience", "version", "status",
+            "author", "reviewer", "classification", "business_decision",
+            "requirements", "security_notes", "refresh_notes",
+            "deployment_notes", "access_notes", "glossary", "assumptions",
+            "support_notes",
+        ],
+    )
+
+
+def test_no_user_context_renders_zero_supplied_even_when_ai_completes_fields():
+    client = MetadataClient()
+    effective_meta = {}
+    meta = _complete_metadata(_model(), client, effective_meta, lambda _m: None)
+    meta["supplied_optional_fields"] = _supplied_optional_fields(effective_meta)
+    doc = DOCUMENT_TYPES["technical"].generate(_model(), None, **meta)
+
+    assert "actual spend" in doc.metadata.business_decision.lower()
+    pct, missing_count, missing = compute_completeness(doc.metadata)
+    assert pct == 0
+    assert missing_count == 17
+    assert "business_decision" in missing
 
 
 def test_offline_metadata_uses_grounded_defaults_without_ai():
